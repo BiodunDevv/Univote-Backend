@@ -4,13 +4,13 @@ module.exports = {
     "College of Agriculture, Engineering and Science": {
       code: "COAES",
       departments: {
-        "Microbiology": "MIC",
+        Microbiology: "MIC",
         "Pure & Applied Biology": "BIO",
-        "Biochemistry": "BCH",
+        Biochemistry: "BCH",
         "Industrial Chemistry": "CHM",
-        "Mathematics": "MTH",
-        "Statistics": "STA",
-        "Physics": "PHY",
+        Mathematics: "MTH",
+        Statistics: "STA",
+        Physics: "PHY",
         "Bachelor of Agriculture (B.Agric.)": "AGR",
         "Food Science and Technology": "FST",
         "Electrical/Electronics Engineering": "EEE",
@@ -21,12 +21,12 @@ module.exports = {
     "College of Management and Social Sciences": {
       code: "COMSS",
       departments: {
-        "Accounting": "ACC",
+        Accounting: "ACC",
         "Banking and Finance": "BNF",
         "Business Administration": "BUS",
         "Industrial Relations & Personnel Management": "IRP",
-        "Economics": "ECO",
-        "Sociology": "SOC",
+        Economics: "ECO",
+        Sociology: "SOC",
         "Political Science": "POL",
         "International Relations": "INT",
         "Political and Law": "PAL",
@@ -41,9 +41,9 @@ module.exports = {
     "College of Liberal Studies": {
       code: "COLBS",
       departments: {
-        "Music": "MUS",
+        Music: "MUS",
         "Theatre Arts": "THA",
-        "English": "ENG",
+        English: "ENG",
         "History & International Studies": "HIS",
         "Religious Studies": "REL",
       },
@@ -51,11 +51,11 @@ module.exports = {
     "College of Health Sciences": {
       code: "COHES",
       departments: {
-        "Anatomy": "ANA",
-        "Physiology": "PHS",
+        Anatomy: "ANA",
+        Physiology: "PHS",
         "Medicine & Surgery (MBBS)": "MED",
         "Nursing Science": "NUR",
-        "Physiotherapy": "PHT",
+        Physiotherapy: "PHT",
         "Public Health": "PHU",
         "Medical Laboratory Science (BMLS)": "MLS",
         "Nutrition & Dietetics": "NUT",
@@ -75,7 +75,7 @@ module.exports = {
     "College of Environmental Sciences": {
       code: "COEVS",
       departments: {
-        "Architecture": "ARC",
+        Architecture: "ARC",
       },
     },
   },

@@ -13,13 +13,13 @@ const collegesAndDepartments = {
   "College of Agriculture, Engineering and Science": {
     code: "COAES",
     departments: {
-      "Microbiology": "MIC",
+      Microbiology: "MIC",
       "Pure & Applied Biology": "BIO",
-      "Biochemistry": "BCH",
+      Biochemistry: "BCH",
       "Industrial Chemistry": "CHM",
-      "Mathematics": "MTH",
-      "Statistics": "STA",
-      "Physics": "PHY",
+      Mathematics: "MTH",
+      Statistics: "STA",
+      Physics: "PHY",
       "Bachelor of Agriculture (B.Agric.)": "AGR",
       "Food Science and Technology": "FST",
       "Electrical/Electronics Engineering": "EEE",
@@ -30,12 +30,12 @@ const collegesAndDepartments = {
   "College of Management and Social Sciences": {
     code: "COMSS",
     departments: {
-      "Accounting": "ACC",
+      Accounting: "ACC",
       "Banking and Finance": "BNF",
       "Business Administration": "BUS",
       "Industrial Relations & Personnel Management": "IRP",
-      "Economics": "ECO",
-      "Sociology": "SOC",
+      Economics: "ECO",
+      Sociology: "SOC",
       "Political Science": "POL",
       "International Relations": "INT",
       "Political and Law": "PAL",
@@ -50,9 +50,9 @@ const collegesAndDepartments = {
   "College of Liberal Studies": {
     code: "COLBS",
     departments: {
-      "Music": "MUS",
+      Music: "MUS",
       "Theatre Arts": "THA",
-      "English": "ENG",
+      English: "ENG",
       "History & International Studies": "HIS",
       "Religious Studies": "REL",
     },
@@ -60,11 +60,11 @@ const collegesAndDepartments = {
   "College of Health Sciences": {
     code: "COHES",
     departments: {
-      "Anatomy": "ANA",
-      "Physiology": "PHS",
+      Anatomy: "ANA",
+      Physiology: "PHS",
       "Medicine & Surgery (MBBS)": "MED",
       "Nursing Science": "NUR",
-      "Physiotherapy": "PHT",
+      Physiotherapy: "PHT",
       "Public Health": "PHU",
       "Medical Laboratory Science (BMLS)": "MLS",
       "Nutrition & Dietetics": "NUT",
@@ -84,7 +84,7 @@ const collegesAndDepartments = {
   "College of Environmental Sciences": {
     code: "COEVS",
     departments: {
-      "Architecture": "ARC",
+      Architecture: "ARC",
     },
   },
 };
@@ -348,7 +348,7 @@ async function generateStudents() {
   console.log(`✅ Generated ${insertedStudents.length} students`);
   console.log(`   📧 Welcome emails will be sent after first password change`);
   console.log(`\n   Sample Matric Numbers by Department:`);
-  
+
   // Show some examples
   const examples = [
     { dept: "Computer Science", code: "CSC", matric: "BU22CSC0001" },
@@ -356,7 +356,7 @@ async function generateStudents() {
     { dept: "Law", code: "LAW", matric: "BU22LAW0001" },
     { dept: "Medicine & Surgery", code: "MED", matric: "BU22MED0001" },
   ];
-  
+
   examples.forEach((ex) => {
     console.log(`   - ${ex.dept} (${ex.code}): ${ex.matric}`);
   });
@@ -385,12 +385,16 @@ async function seed() {
     console.log(
       `     • Muhammed Abiodun (BU22CSC1005) - muhammedabiodun42@gmail.com`
     );
-    console.log(`     • Mustapha Muhammed (BU22ACC0002) - Mustapha.muhammed@bowen.edu.ng`);
+    console.log(
+      `     • Mustapha Muhammed (BU22ACC0002) - Mustapha.muhammed@bowen.edu.ng`
+    );
     console.log(`   - Total students created: 86 (2 per department)`);
     console.log(`   - Default password for all students: 1234`);
     console.log(`   - All students must change password on first login`);
     console.log(`   - Matric format: BU{Year}{DeptCode}{Number}`);
-    console.log(`     Example: BU22CSC0001 = 2022, Computer Science, Student #1`);
+    console.log(
+      `     Example: BU22CSC0001 = 2022, Computer Science, Student #1`
+    );
     console.log("\n🚀 You can now start the server with: npm start");
     console.log("=".repeat(50));
   } catch (error) {
