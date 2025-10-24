@@ -3,7 +3,7 @@ info:
   title: Univote - University Voting System API
   description: |
     Complete API documentation for Univote, a secure university voting system with facial recognition, geofencing, and email notifications.
-    
+
     ## Features
     - 🔐 JWT-based authentication for students and admins
     - 👤 Azure Face API facial verification
@@ -13,25 +13,25 @@ info:
     - 📊 Comprehensive analytics and reporting
     - 🔒 Single session enforcement
     - 📝 Audit logging for all critical operations
-    
+
     ## Authentication Flow
     1. **First Login**: Use default password '1234' to get `first_login` token
     2. **Change Password**: Use first_login token to set new password (triggers welcome email)
     3. **Regular Login**: Login with new password to get `student` token
     4. **Access Protected Routes**: Use student/admin token in Authorization header
-    
+
     ## Rate Limits
     - Authentication endpoints: 5 requests per 15 minutes
     - Voting endpoints: 10 requests per minute
     - Face API endpoints: 20 requests per minute
     - General API: 100 requests per 15 minutes
-    
+
     ## Security
     - Passwords hashed with bcrypt (10 rounds)
     - JWT tokens expire after 24 hours
     - Single active session per user
     - Geofencing: 5000m radius from Bowen University (7.8525, 4.2811)
-    
+
   version: 1.0.0
   contact:
     email: muhammedabiodun42@gmail.com
@@ -69,7 +69,7 @@ components:
       description: |
         JWT token obtained from login endpoints. 
         Token types: 'student', 'admin', 'first_login'
-        
+
   schemas:
     Error:
       type: object
@@ -89,7 +89,7 @@ components:
                 type: string
               message:
                 type: string
-    
+
     Student:
       type: object
       properties:
@@ -134,7 +134,7 @@ components:
         created_at:
           type: string
           format: date-time
-    
+
     Admin:
       type: object
       properties:
@@ -157,7 +157,7 @@ components:
         last_login:
           type: string
           format: date-time
-    
+
     VotingSession:
       type: object
       properties:
@@ -217,7 +217,7 @@ components:
         categories:
           type: array
           items:
-            $ref: '#/components/schemas/Category'
+            $ref: "#/components/schemas/Category"
         face_person_group_id:
           type: string
           example: "session-uuid-person-group"
@@ -232,7 +232,7 @@ components:
         created_at:
           type: string
           format: date-time
-    
+
     Category:
       type: object
       properties:
@@ -245,8 +245,8 @@ components:
         candidates:
           type: array
           items:
-            $ref: '#/components/schemas/Candidate'
-    
+            $ref: "#/components/schemas/Candidate"
+
     Candidate:
       type: object
       properties:
@@ -263,7 +263,7 @@ components:
         votes:
           type: number
           example: 0
-    
+
     Vote:
       type: object
       properties:
@@ -306,10 +306,10 @@ paths:
       summary: Student login
       description: |
         Login as a student using matric number and password.
-        
+
         **First Login**: Returns `first_login` token if password hasn't been changed.
         **Regular Login**: Returns `student` token after password change.
-        
+
         Default password for new students: `1234`
       operationId: studentLogin
       requestBody:
@@ -329,7 +329,7 @@ paths:
                   type: string
                   example: "1234"
       responses:
-        '200':
+        "200":
           description: Login successful
           content:
             application/json:
@@ -350,14 +350,14 @@ paths:
                     enum: [first_login, student]
                     example: "first_login"
                   student:
-                    $ref: '#/components/schemas/Student'
-        '401':
+                    $ref: "#/components/schemas/Student"
+        "401":
           description: Invalid credentials
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-        '429':
+                $ref: "#/components/schemas/Error"
+        "429":
           description: Rate limit exceeded (5 requests per 15 minutes)
 
   /auth/admin-login:
@@ -385,7 +385,7 @@ paths:
                   type: string
                   example: "balikiss12"
       responses:
-        '200':
+        "200":
           description: Admin login successful
           content:
             application/json:
@@ -404,10 +404,10 @@ paths:
                     type: string
                     example: "admin"
                   admin:
-                    $ref: '#/components/schemas/Admin'
-        '401':
+                    $ref: "#/components/schemas/Admin"
+        "401":
           description: Invalid credentials
-        '429':
+        "429":
           description: Rate limit exceeded
 
   /auth/change-password:
@@ -419,7 +419,7 @@ paths:
         Change student password. Can be used with either:
         - `first_login` token (first-time password change)
         - `student` token (regular password change)
-        
+
         **Important**: Welcome email is sent after first password change.
       operationId: changePassword
       security:
@@ -438,7 +438,7 @@ paths:
                   minLength: 6
                   example: "mySecurePassword123"
       responses:
-        '200':
+        "200":
           description: Password changed successfully
           content:
             application/json:
@@ -457,9 +457,9 @@ paths:
                   token_type:
                     type: string
                     example: "student"
-        '400':
+        "400":
           description: Validation error
-        '401':
+        "401":
           description: Unauthorized
 
   /auth/logout:
@@ -472,7 +472,7 @@ paths:
       security:
         - BearerAuth: []
       responses:
-        '200':
+        "200":
           description: Logout successful
           content:
             application/json:
@@ -485,7 +485,7 @@ paths:
                   message:
                     type: string
                     example: "Logout successful"
-        '401':
+        "401":
           description: Unauthorized
 
   /auth/me:
@@ -498,7 +498,7 @@ paths:
       security:
         - BearerAuth: []
       responses:
-        '200':
+        "200":
           description: Profile retrieved successfully
           content:
             application/json:
@@ -509,8 +509,8 @@ paths:
                     type: boolean
                     example: true
                   student:
-                    $ref: '#/components/schemas/Student'
-        '401':
+                    $ref: "#/components/schemas/Student"
+        "401":
           description: Unauthorized
 
   # ==================== ADMIN - STUDENTS ====================
@@ -522,7 +522,7 @@ paths:
       description: |
         Bulk upload students from CSV data. Creates student accounts with default password '1234'.
         Students must change password on first login.
-        
+
         **Note**: Welcome emails are NOT sent during upload. They are sent after first password change.
       operationId: uploadStudents
       security:
@@ -570,7 +570,7 @@ paths:
                         enum: ["100", "200", "300", "400", "500"]
                         example: "200"
       responses:
-        '201':
+        "201":
           description: Students uploaded successfully
           content:
             application/json:
@@ -593,9 +593,9 @@ paths:
                     type: array
                     items:
                       type: object
-        '400':
+        "400":
           description: Validation error
-        '401':
+        "401":
           description: Unauthorized (admin only)
 
   /admin/students:
@@ -645,7 +645,7 @@ paths:
             default: 20
           description: Items per page
       responses:
-        '200':
+        "200":
           description: Students retrieved successfully
           content:
             application/json:
@@ -658,7 +658,7 @@ paths:
                   students:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Student'
+                      $ref: "#/components/schemas/Student"
                   pagination:
                     type: object
                     properties:
@@ -670,7 +670,7 @@ paths:
                         type: integer
                       limit:
                         type: integer
-        '401':
+        "401":
           description: Unauthorized
 
   /admin/remove-department:
@@ -697,7 +697,7 @@ paths:
                     type: string
                   example: ["Computer Science", "Biology"]
       responses:
-        '200':
+        "200":
           description: Students removed successfully
           content:
             application/json:
@@ -711,7 +711,7 @@ paths:
                     type: string
                   deleted_count:
                     type: integer
-        '401':
+        "401":
           description: Unauthorized
 
   # ==================== ADMIN - SESSIONS ====================
@@ -722,7 +722,7 @@ paths:
       summary: Create voting session
       description: |
         Create a new voting session with categories, candidates, eligibility criteria, and geofencing.
-        
+
         **Important**: Creates Azure Face API PersonGroup for facial verification.
       operationId: createSession
       security:
@@ -822,7 +822,7 @@ paths:
                               type: string
                               example: "Building a united student community"
       responses:
-        '201':
+        "201":
           description: Session created successfully
           content:
             application/json:
@@ -835,10 +835,10 @@ paths:
                   message:
                     type: string
                   session:
-                    $ref: '#/components/schemas/VotingSession'
-        '400':
+                    $ref: "#/components/schemas/VotingSession"
+        "400":
           description: Validation error
-        '401':
+        "401":
           description: Unauthorized
 
   /admin/sessions:
@@ -868,7 +868,7 @@ paths:
             type: integer
             default: 10
       responses:
-        '200':
+        "200":
           description: Sessions retrieved successfully
           content:
             application/json:
@@ -881,7 +881,7 @@ paths:
                   sessions:
                     type: array
                     items:
-                      $ref: '#/components/schemas/VotingSession'
+                      $ref: "#/components/schemas/VotingSession"
                   pagination:
                     type: object
 
@@ -925,13 +925,13 @@ paths:
                   items:
                     type: object
       responses:
-        '200':
+        "200":
           description: Session updated successfully
-        '400':
+        "400":
           description: Cannot update active session
-        '401':
+        "401":
           description: Unauthorized
-        '404':
+        "404":
           description: Session not found
 
   /admin/delete-session/{id}:
@@ -952,13 +952,13 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: Session deleted successfully
-        '400':
+        "400":
           description: Cannot delete active session
-        '401':
+        "401":
           description: Unauthorized
-        '404':
+        "404":
           description: Session not found
 
   /admin/session-stats/{id}:
@@ -983,7 +983,7 @@ paths:
             type: string
           description: Session ID
       responses:
-        '200':
+        "200":
           description: Statistics retrieved successfully
           content:
             application/json:
@@ -1015,9 +1015,9 @@ paths:
                         type: object
                       votes_by_level:
                         type: object
-        '401':
+        "401":
           description: Unauthorized
-        '404':
+        "404":
           description: Session not found
 
   # ==================== ADMIN - SYSTEM ====================
@@ -1060,7 +1060,7 @@ paths:
                   default: admin
                   example: "admin"
       responses:
-        '201':
+        "201":
           description: Admin created successfully
           content:
             application/json:
@@ -1073,12 +1073,12 @@ paths:
                   message:
                     type: string
                   admin:
-                    $ref: '#/components/schemas/Admin'
-        '400':
+                    $ref: "#/components/schemas/Admin"
+        "400":
           description: Validation error
-        '401':
+        "401":
           description: Unauthorized
-        '403':
+        "403":
           description: Super admin privileges required
 
   /admin/cleanup-all:
@@ -1093,7 +1093,7 @@ paths:
       security:
         - BearerAuth: []
       responses:
-        '200':
+        "200":
           description: Cleanup completed successfully
           content:
             application/json:
@@ -1114,9 +1114,9 @@ paths:
                         type: integer
                       candidates:
                         type: integer
-        '401':
+        "401":
           description: Unauthorized
-        '403':
+        "403":
           description: Super admin privileges required
 
   # ==================== STUDENT - SESSIONS ====================
@@ -1139,7 +1139,7 @@ paths:
             enum: [upcoming, active, completed]
           description: Filter by session status
       responses:
-        '200':
+        "200":
           description: Sessions retrieved successfully
           content:
             application/json:
@@ -1152,8 +1152,8 @@ paths:
                   sessions:
                     type: array
                     items:
-                      $ref: '#/components/schemas/VotingSession'
-        '401':
+                      $ref: "#/components/schemas/VotingSession"
+        "401":
           description: Unauthorized
 
   /sessions/{id}:
@@ -1173,7 +1173,7 @@ paths:
             type: string
           description: Session ID
       responses:
-        '200':
+        "200":
           description: Session retrieved successfully
           content:
             application/json:
@@ -1184,13 +1184,13 @@ paths:
                     type: boolean
                     example: true
                   session:
-                    $ref: '#/components/schemas/VotingSession'
+                    $ref: "#/components/schemas/VotingSession"
                   has_voted:
                     type: boolean
                     example: false
-        '401':
+        "401":
           description: Unauthorized
-        '404':
+        "404":
           description: Session not found
 
   # ==================== STUDENT - VOTING ====================
@@ -1201,14 +1201,14 @@ paths:
       summary: Submit vote
       description: |
         Submit a vote with facial verification and geofencing validation.
-        
+
         ## Verification Steps:
         1. ✅ Session is active
         2. ✅ Student is eligible (college/department/level match)
         3. ✅ Student hasn't voted yet
         4. ✅ Student is within campus radius (5000m from center)
         5. ✅ Face matches enrolled photo (Azure Face API - 70% confidence minimum)
-        
+
         **Success**: Sends vote confirmation email
       operationId: submitVote
       security:
@@ -1267,7 +1267,7 @@ paths:
                   example: 4.2811
                   description: "Student's current longitude"
       responses:
-        '201':
+        "201":
           description: Vote submitted successfully
           content:
             application/json:
@@ -1281,14 +1281,14 @@ paths:
                     type: string
                     example: "Vote submitted successfully"
                   vote:
-                    $ref: '#/components/schemas/Vote'
-        '400':
+                    $ref: "#/components/schemas/Vote"
+        "400":
           description: Validation error or voting not allowed
-        '401':
+        "401":
           description: Unauthorized
-        '403':
+        "403":
           description: Face verification failed or geofencing failed
-        '429':
+        "429":
           description: Rate limit exceeded
 
   /vote/history:
@@ -1301,7 +1301,7 @@ paths:
       security:
         - BearerAuth: []
       responses:
-        '200':
+        "200":
           description: History retrieved successfully
           content:
             application/json:
@@ -1325,7 +1325,7 @@ paths:
                           format: date-time
                         verification_status:
                           type: object
-        '401':
+        "401":
           description: Unauthorized
 
   # ==================== RESULTS ====================
@@ -1348,7 +1348,7 @@ paths:
             type: string
           description: Session ID
       responses:
-        '200':
+        "200":
           description: Results retrieved successfully
           content:
             application/json:
@@ -1392,11 +1392,11 @@ paths:
                                 type: number
                               is_winner:
                                 type: boolean
-        '401':
+        "401":
           description: Unauthorized
-        '403':
+        "403":
           description: Results not yet published
-        '404':
+        "404":
           description: Session not found
 
   /results/{session_id}/publish:
@@ -1418,7 +1418,7 @@ paths:
             type: string
           description: Session ID
       responses:
-        '200':
+        "200":
           description: Results published successfully
           content:
             application/json:
@@ -1432,11 +1432,11 @@ paths:
                     type: string
                   results:
                     type: object
-        '400':
+        "400":
           description: Session not completed yet
-        '401':
+        "401":
           description: Unauthorized (admin only)
-        '404':
+        "404":
           description: Session not found
 
   /results/stats/overview:
@@ -1451,7 +1451,7 @@ paths:
       security:
         - BearerAuth: []
       responses:
-        '200':
+        "200":
           description: Statistics retrieved successfully
           content:
             application/json:
@@ -1480,5 +1480,5 @@ paths:
                         type: object
                       recent_activity:
                         type: array
-        '401':
+        "401":
           description: Unauthorized (admin only)

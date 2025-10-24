@@ -7,6 +7,7 @@ The complete API documentation is available via Swagger UI. Once the server is r
 **🔗 http://localhost:5000/api-docs**
 
 The Swagger documentation provides:
+
 - ✅ Complete endpoint reference (31 endpoints)
 - ✅ Interactive API testing interface
 - ✅ Request/response schemas
@@ -19,18 +20,23 @@ The Swagger documentation provides:
 ## 🚀 Quick Start
 
 ### 1. Start the Server
+
 ```bash
 npm run dev
 ```
 
 ### 2. Access Documentation
+
 Open your browser and navigate to:
+
 ```
 http://localhost:5000/api-docs
 ```
 
 ### 3. Test the API
+
 The root URL automatically redirects to documentation:
+
 ```
 http://localhost:5000/
 ```
@@ -40,17 +46,21 @@ http://localhost:5000/
 ## 📖 API Overview
 
 ### Base URL
+
 ```
 http://localhost:5000/api
 ```
 
 ### Authentication
+
 All protected endpoints require a Bearer token in the Authorization header:
+
 ```
 Authorization: Bearer <your-jwt-token>
 ```
 
 ### Token Types
+
 - **`first_login`** - Initial login token (requires password change)
 - **`student`** - Regular student access token
 - **`admin`** - Admin access token
@@ -62,6 +72,7 @@ Authorization: Bearer <your-jwt-token>
 ### New Student Login Flow
 
 1. **First Login** (Default password: `1234`)
+
    ```http
    POST /api/auth/login
    {
@@ -69,9 +80,11 @@ Authorization: Bearer <your-jwt-token>
      "password": "1234"
    }
    ```
+
    **Response**: Returns `first_login` token
 
 2. **Change Password**
+
    ```http
    PATCH /api/auth/change-password
    Authorization: Bearer <first_login_token>
@@ -79,6 +92,7 @@ Authorization: Bearer <your-jwt-token>
      "new_password": "mySecurePassword123"
    }
    ```
+
    **Response**: Returns `student` token + sends welcome email ✉️
 
 3. **Regular Login** (Use new password)
@@ -100,6 +114,7 @@ POST /api/auth/admin-login
   "password": "balikiss12"
 }
 ```
+
 **Response**: Returns `admin` token
 
 ---
@@ -107,6 +122,7 @@ POST /api/auth/admin-login
 ## 📋 Endpoint Categories
 
 ### 🔑 Authentication (6 endpoints)
+
 - `POST /api/auth/login` - Student login
 - `POST /api/auth/admin-login` - Admin login
 - `PATCH /api/auth/change-password` - Change password
@@ -114,11 +130,13 @@ POST /api/auth/admin-login
 - `GET /api/auth/me` - Get profile
 
 ### 👥 Admin - Students (3 endpoints)
+
 - `POST /api/admin/upload-students` - Bulk upload students
 - `GET /api/admin/students` - Get all students (with filters)
 - `DELETE /api/admin/remove-department` - Remove department
 
 ### 🗳️ Admin - Sessions (5 endpoints)
+
 - `POST /api/admin/create-session` - Create voting session
 - `GET /api/admin/sessions` - Get all sessions
 - `PATCH /api/admin/update-session/:id` - Update session
@@ -126,18 +144,22 @@ POST /api/auth/admin-login
 - `GET /api/admin/session-stats/:id` - Get session statistics
 
 ### ⚙️ Admin - System (2 endpoints)
+
 - `POST /api/admin/create-admin` - Create admin (super admin only)
 - `DELETE /api/admin/cleanup-all` - Cleanup all data (super admin only)
 
 ### 📊 Student - Sessions (2 endpoints)
+
 - `GET /api/sessions` - List eligible sessions
 - `GET /api/sessions/:id` - Get session details
 
 ### ✅ Student - Voting (2 endpoints)
+
 - `POST /api/vote` - Submit vote (with face verification & geofencing)
 - `GET /api/vote/history` - Get voting history
 
 ### 🏆 Results (3 endpoints)
+
 - `GET /api/results/:session_id` - Get session results
 - `POST /api/results/:session_id/publish` - Publish results (admin)
 - `GET /api/results/stats/overview` - Get overall statistics (admin)
@@ -235,22 +257,26 @@ Authorization: Bearer <admin_token>
 ## 🔒 Security Features
 
 ### Rate Limiting
+
 - **Authentication**: 5 requests per 15 minutes
 - **Voting**: 10 requests per minute
 - **Face API**: 20 requests per minute
 - **General API**: 100 requests per 15 minutes
 
 ### Geofencing
+
 - **Campus Location**: Bowen University (7.8525°N, 4.2811°E)
 - **Radius**: 5000 meters
 - **Validation**: Student must be within radius to vote
 
 ### Face Verification
+
 - **Provider**: Azure Face API v1.0
 - **Minimum Confidence**: 70%
 - **Verification**: Student's face must match enrolled photo
 
 ### Password Security
+
 - **Hashing**: bcrypt with 10 rounds
 - **Minimum Length**: 6 characters (8 for admins)
 - **Default Password**: `1234` (must change on first login)
@@ -262,18 +288,22 @@ Authorization: Bearer <admin_token>
 The system sends automated emails for:
 
 1. **Welcome Email** ✉️
+
    - Triggered after first password change
    - Contains account details and getting started guide
 
 2. **Vote Confirmation** ✉️
+
    - Sent immediately after successful vote
    - Includes session details and security notice
 
 3. **New Device Alert** ✉️
+
    - Sent when login from new device detected
    - Contains device info and security instructions
 
 4. **Result Announcement** ✉️
+
    - Sent when admin publishes results
    - Includes election summary and results link
 
@@ -288,6 +318,7 @@ The system sends automated emails for:
 ## 🎓 Bowen University Configuration
 
 ### Colleges (7)
+
 - **COAES** - College of Agriculture & Engineering Sciences
 - **COMSS** - College of Management & Social Sciences
 - **COLAW** - College of Law
@@ -297,14 +328,17 @@ The system sends automated emails for:
 - **COEVS** - College of Environmental Sciences
 
 ### Student Levels
+
 - 100, 200, 300, 400, 500
 
 ### Default Admin
+
 - **Email**: louisdiaz43@gmail.com
 - **Password**: balikiss12
 - **Role**: Super Admin
 
 ### Test Student
+
 - **Matric No**: BU22CSC1005
 - **Email**: muhammedabiodun42@gmail.com
 - **Department**: Computer Science (COCCS)
@@ -315,6 +349,7 @@ The system sends automated emails for:
 ## 🧪 Testing with Swagger UI
 
 ### Step 1: Authorize
+
 1. Click the **"Authorize"** button in Swagger UI
 2. Login using admin or student endpoint
 3. Copy the token from response
@@ -322,6 +357,7 @@ The system sends automated emails for:
 5. Click "Authorize"
 
 ### Step 2: Test Endpoints
+
 - All authorized endpoints will now include your token
 - Click "Try it out" on any endpoint
 - Modify request body as needed
@@ -329,6 +365,7 @@ The system sends automated emails for:
 - View response below
 
 ### Step 3: Common Test Flow
+
 1. **Admin Login** → Copy admin token → Authorize
 2. **Create Session** → Save session ID
 3. **Student Login** → Copy student token → Authorize
@@ -341,6 +378,7 @@ The system sends automated emails for:
 ## 📊 Response Format
 
 ### Success Response
+
 ```json
 {
   "success": true,
@@ -350,6 +388,7 @@ The system sends automated emails for:
 ```
 
 ### Error Response
+
 ```json
 {
   "success": false,
@@ -370,16 +409,19 @@ The system sends automated emails for:
 Many endpoints support query parameters:
 
 ### Students List
+
 ```
 GET /api/admin/students?college=COCCS&department=Computer%20Science&level=200&page=1&limit=20
 ```
 
 ### Sessions List
+
 ```
 GET /api/sessions?status=active&page=1&limit=10
 ```
 
 ### Search Students
+
 ```
 GET /api/admin/students?search=Mohammed
 ```
@@ -388,16 +430,16 @@ GET /api/admin/students?search=Mohammed
 
 ## 🛠️ Error Codes
 
-| Code | Description |
-|------|-------------|
-| 200 | Success |
-| 201 | Created |
-| 400 | Bad Request / Validation Error |
-| 401 | Unauthorized / Invalid Token |
-| 403 | Forbidden / Insufficient Privileges |
-| 404 | Resource Not Found |
-| 429 | Rate Limit Exceeded |
-| 500 | Internal Server Error |
+| Code | Description                         |
+| ---- | ----------------------------------- |
+| 200  | Success                             |
+| 201  | Created                             |
+| 400  | Bad Request / Validation Error      |
+| 401  | Unauthorized / Invalid Token        |
+| 403  | Forbidden / Insufficient Privileges |
+| 404  | Resource Not Found                  |
+| 429  | Rate Limit Exceeded                 |
+| 500  | Internal Server Error               |
 
 ---
 
@@ -425,6 +467,7 @@ GET /api/admin/students?search=Mohammed
 ## 🆘 Support
 
 For issues or questions:
+
 - Check Swagger documentation for detailed schemas
 - Review example requests in Postman collection
 - Check server logs for error details

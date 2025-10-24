@@ -1,855 +1,733 @@
 {
-	"info": {
-		"_postman_id": "univote-backend-2024",
-		"name": "Univote Backend - Complete API Collection",
-		"description": "Complete Postman collection for Univote university voting system backend. Covers all authentication, admin, voting, session, and result endpoints with realistic test data for Bowen University.",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"_exporter_id": "univote-api"
-	},
-	"variable": [
-		{
-			"key": "base_url",
-			"value": "http://localhost:5000/api",
-			"type": "string"
-		},
-		{
-			"key": "admin_token",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "student_token",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "first_login_token",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "session_id",
-			"value": "",
-			"type": "string"
-		}
-	],
-	"item": [
-		{
-			"name": "1. Authentication",
-			"item": [
-				{
-					"name": "Admin Login",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const jsonData = pm.response.json();",
-									"    pm.collectionVariables.set('admin_token', jsonData.token);",
-									"    pm.environment.set('admin_token', jsonData.token);",
-									"    console.log('Admin token saved:', jsonData.token.substring(0, 20) + '...');",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"email\": \"louisdiaz43@gmail.com\",\n  \"password\": \"balikiss12\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/auth/admin-login",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"auth",
-								"admin-login"
-							]
-						},
-						"description": "Login as admin to get admin JWT token. Default credentials: louisdiaz43@gmail.com / balikiss12"
-					},
-					"response": []
-				},
-				{
-					"name": "Student Login (First Time)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const jsonData = pm.response.json();",
-									"    pm.collectionVariables.set('first_login_token', jsonData.token);",
-									"    pm.environment.set('first_login_token', jsonData.token);",
-									"    console.log('First login token saved. Must change password.');",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"matric_no\": \"BU22CSC1005\",\n  \"password\": \"1234\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/auth/login",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"auth",
-								"login"
-							]
-						},
-						"description": "First-time student login with default password '1234'. Returns first_login token that requires password change. Test with BU22CSC1005 (muhammedabiodun42@gmail.com)"
-					},
-					"response": []
-				},
-				{
-					"name": "Change Password (First Login)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const jsonData = pm.response.json();",
-									"    pm.collectionVariables.set('student_token', jsonData.token);",
-									"    pm.environment.set('student_token', jsonData.token);",
-									"    console.log('Password changed! Student token saved. Welcome email sent.');",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "PATCH",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{first_login_token}}"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"new_password\": \"mySecurePassword123\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/auth/change-password",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"auth",
-								"change-password"
-							]
-						},
-						"description": "Change password on first login. Requires first_login_token. Sends welcome email after successful change."
-					},
-					"response": []
-				},
-				{
-					"name": "Student Login (After Password Change)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const jsonData = pm.response.json();",
-									"    pm.collectionVariables.set('student_token', jsonData.token);",
-									"    pm.environment.set('student_token', jsonData.token);",
-									"    console.log('Student token saved:', jsonData.token.substring(0, 20) + '...');",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"matric_no\": \"BU22CSC1005\",\n  \"password\": \"mySecurePassword123\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/auth/login",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"auth",
-								"login"
-							]
-						},
-						"description": "Regular student login after password change. Returns student JWT token for accessing protected endpoints."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Student Profile",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{student_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/auth/me",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"auth",
-								"me"
-							]
-						},
-						"description": "Get current student profile information. Requires student authentication token."
-					},
-					"response": []
-				},
-				{
-					"name": "Student Logout",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{student_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/auth/logout",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"auth",
-								"logout"
-							]
-						},
-						"description": "Logout current student. Invalidates the session token."
-					},
-					"response": []
-				}
-			],
-			"description": "Authentication endpoints for admin and student login, password management, and profile access."
-		},
-		{
-			"name": "2. Admin - Student Management",
-			"item": [
-				{
-					"name": "Upload Students from CSV",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"csv_data\": [\n    {\n      \"matric_no\": \"BU22CSC2001\",\n      \"email\": \"student2001@bowen.edu.ng\",\n      \"full_name\": \"John Doe\",\n      \"college\": \"COCCS\",\n      \"department\": \"Computer Science\",\n      \"level\": \"200\"\n    },\n    {\n      \"matric_no\": \"BU22CSC2002\",\n      \"email\": \"student2002@bowen.edu.ng\",\n      \"full_name\": \"Jane Smith\",\n      \"college\": \"COCCS\",\n      \"department\": \"Computer Science\",\n      \"level\": \"200\"\n    },\n    {\n      \"matric_no\": \"BU22BIO3001\",\n      \"email\": \"student3001@bowen.edu.ng\",\n      \"full_name\": \"Michael Johnson\",\n      \"college\": \"COMSS\",\n      \"department\": \"Biology\",\n      \"level\": \"300\"\n    }\n  ]\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/admin/upload-students",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"admin",
-								"upload-students"
-							]
-						},
-						"description": "Bulk upload students from CSV data. Admin authentication required. Students are created with default password '1234'."
-					},
-					"response": []
-				},
-				{
-					"name": "Get All Students",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/admin/students?college=COCCS&department=Computer Science&level=200&page=1&limit=20",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"admin",
-								"students"
-							],
-							"query": [
-								{
-									"key": "college",
-									"value": "COCCS",
-									"description": "Filter by college (optional)"
-								},
-								{
-									"key": "department",
-									"value": "Computer Science",
-									"description": "Filter by department (optional)"
-								},
-								{
-									"key": "level",
-									"value": "200",
-									"description": "Filter by level (optional)"
-								},
-								{
-									"key": "page",
-									"value": "1",
-									"description": "Page number for pagination"
-								},
-								{
-									"key": "limit",
-									"value": "20",
-									"description": "Items per page"
-								}
-							]
-						},
-						"description": "Get all students with optional filters (college, department, level) and pagination. Admin only."
-					},
-					"response": []
-				},
-				{
-					"name": "Remove Department",
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"departments\": [\"Computer Science\", \"Biology\"]\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/admin/remove-department",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"admin",
-								"remove-department"
-							]
-						},
-						"description": "Remove all students from specified departments. Admin authentication required."
-					},
-					"response": []
-				}
-			],
-			"description": "Admin endpoints for managing students - bulk upload, retrieval with filters, and department removal."
-		},
-		{
-			"name": "3. Admin - Session Management",
-			"item": [
-				{
-					"name": "Create Voting Session",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 201) {",
-									"    const jsonData = pm.response.json();",
-									"    pm.collectionVariables.set('session_id', jsonData.session._id);",
-									"    pm.environment.set('session_id', jsonData.session._id);",
-									"    console.log('Session created with ID:', jsonData.session._id);",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"title\": \"Student Union Executive Elections 2024/2025\",\n  \"description\": \"Annual elections for Student Union Government positions\",\n  \"start_time\": \"2025-10-28T08:00:00Z\",\n  \"end_time\": \"2025-10-28T18:00:00Z\",\n  \"eligibility_criteria\": {\n    \"colleges\": [\"COCCS\", \"COMSS\", \"COLAW\", \"COLBS\", \"COHES\", \"COAES\", \"COEVS\"],\n    \"levels\": [\"100\", \"200\", \"300\", \"400\", \"500\"]\n  },\n  \"location\": {\n    \"type\": \"Point\",\n    \"coordinates\": [4.2811, 7.8525],\n    \"name\": \"Bowen University Campus\",\n    \"radius_meters\": 5000\n  },\n  \"categories\": [\n    {\n      \"position\": \"President\",\n      \"max_selections\": 1,\n      \"candidates\": [\n        {\n          \"matric_no\": \"BU22CSC1005\",\n          \"manifesto\": \"Building a united and progressive student community\"\n        }\n      ]\n    },\n    {\n      \"position\": \"Vice President\",\n      \"max_selections\": 1,\n      \"candidates\": []\n    },\n    {\n      \"position\": \"General Secretary\",\n      \"max_selections\": 1,\n      \"candidates\": []\n    }\n  ]\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/admin/create-session",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"admin",
-								"create-session"
-							]
-						},
-						"description": "Create new voting session with categories, candidates, eligibility criteria, and geofencing. Creates Azure Face API PersonGroup for facial verification."
-					},
-					"response": []
-				},
-				{
-					"name": "Get All Sessions (Admin)",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/admin/sessions?status=active&page=1&limit=10",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"admin",
-								"sessions"
-							],
-							"query": [
-								{
-									"key": "status",
-									"value": "active",
-									"description": "Filter by status: active, upcoming, completed"
-								},
-								{
-									"key": "page",
-									"value": "1"
-								},
-								{
-									"key": "limit",
-									"value": "10"
-								}
-							]
-						},
-						"description": "Get all voting sessions with optional status filter and pagination. Admin only."
-					},
-					"response": []
-				},
-				{
-					"name": "Update Voting Session",
-					"request": {
-						"method": "PATCH",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"title\": \"Student Union Executive Elections 2024/2025 - Updated\",\n  \"description\": \"Annual elections for Student Union Government positions (Extended)\",\n  \"end_time\": \"2025-10-28T20:00:00Z\",\n  \"categories\": [\n    {\n      \"position\": \"President\",\n      \"max_selections\": 1,\n      \"candidates\": [\n        {\n          \"matric_no\": \"BU22CSC1005\",\n          \"manifesto\": \"Building a united and progressive student community with innovative solutions\"\n        },\n        {\n          \"matric_no\": \"BU22BIO3001\",\n          \"manifesto\": \"Leadership for all, excellence for everyone\"\n        }\n      ]\n    }\n  ]\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/admin/update-session/{{session_id}}",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"admin",
-								"update-session",
-								"{{session_id}}"
-							]
-						},
-						"description": "Update existing voting session details, categories, or candidates. Cannot update once voting has started."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Session Statistics",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/admin/session-stats/{{session_id}}",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"admin",
-								"session-stats",
-								"{{session_id}}"
-							]
-						},
-						"description": "Get detailed statistics for a voting session including participation rates, votes by category, college/department/level breakdown."
-					},
-					"response": []
-				},
-				{
-					"name": "Delete Voting Session",
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/admin/delete-session/{{session_id}}",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"admin",
-								"delete-session",
-								"{{session_id}}"
-							]
-						},
-						"description": "Delete a voting session and all associated votes. Cannot delete active sessions."
-					},
-					"response": []
-				}
-			],
-			"description": "Admin endpoints for creating, updating, deleting voting sessions and viewing session statistics."
-		},
-		{
-			"name": "4. Admin - System Management",
-			"item": [
-				{
-					"name": "Create Admin (Super Admin Only)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"email\": \"newadmin@bowen.edu.ng\",\n  \"password\": \"SecureAdmin123!\",\n  \"full_name\": \"New Admin User\",\n  \"role\": \"admin\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/admin/create-admin",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"admin",
-								"create-admin"
-							]
-						},
-						"description": "Create new admin user. Requires super admin privileges. Role can be 'admin' or 'super_admin'."
-					},
-					"response": []
-				},
-				{
-					"name": "Cleanup All (Super Admin Only)",
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/admin/cleanup-all",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"admin",
-								"cleanup-all"
-							]
-						},
-						"description": "Delete all voting sessions, votes, and candidates. Requires super admin privileges. Use with extreme caution!"
-					},
-					"response": []
-				}
-			],
-			"description": "Super admin endpoints for system-level operations - creating admins and cleanup operations."
-		},
-		{
-			"name": "5. Student - Sessions",
-			"item": [
-				{
-					"name": "List Eligible Sessions",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{student_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/sessions?status=active",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"sessions"
-							],
-							"query": [
-								{
-									"key": "status",
-									"value": "active",
-									"description": "Filter by status: active, upcoming, completed"
-								}
-							]
-						},
-						"description": "Get all voting sessions that the student is eligible to participate in based on their college, department, and level."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Session Details",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{student_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/sessions/{{session_id}}",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"sessions",
-								"{{session_id}}"
-							]
-						},
-						"description": "Get detailed information about a specific voting session including categories, candidates, and eligibility criteria."
-					},
-					"response": []
-				}
-			],
-			"description": "Student endpoints for discovering and viewing voting sessions they're eligible for."
-		},
-		{
-			"name": "6. Student - Voting",
-			"item": [
-				{
-					"name": "Submit Vote",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{student_token}}"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"choices\": [\n    {\n      \"position\": \"President\",\n      \"candidate_id\": \"candidate_object_id_here\"\n    },\n    {\n      \"position\": \"Vice President\",\n      \"candidate_id\": \"candidate_object_id_here\"\n    }\n  ],\n  \"image_url\": \"https://example.com/student-face-image.jpg\",\n  \"lat\": 7.8525,\n  \"lng\": 4.2811\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/vote",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"vote"
-							]
-						},
-						"description": "Submit vote with facial verification and geofencing. Requires: session_id, candidate choices, student's face image URL, and GPS coordinates. System verifies:\n1. Session is active\n2. Student is eligible\n3. Student hasn't voted yet\n4. Student is within campus radius (5000m)\n5. Face matches enrolled photo (Azure Face API)\n\nSends vote confirmation email on success."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Voting History",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{student_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vote/history",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"vote",
-								"history"
-							]
-						},
-						"description": "Get student's complete voting history across all sessions. Shows sessions voted in with timestamps."
-					},
-					"response": []
-				}
-			],
-			"description": "Student voting endpoints - submit votes with verification and view voting history."
-		},
-		{
-			"name": "7. Results",
-			"item": [
-				{
-					"name": "Get Session Results (Student)",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{student_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/results/{{session_id}}",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"results",
-								"{{session_id}}"
-							]
-						},
-						"description": "Get published results for a voting session. Only shows results if they have been published by admin. Shows vote counts, percentages, and winners for each position."
-					},
-					"response": []
-				},
-				{
-					"name": "Publish Results (Admin)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/results/{{session_id}}/publish",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"results",
-								"{{session_id}}",
-								"publish"
-							]
-						},
-						"description": "Publish results for a completed voting session. Sends result announcement emails to all participants. Results become visible to students after publishing."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Overall Statistics (Admin)",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/results/stats/overview",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"results",
-								"stats",
-								"overview"
-							]
-						},
-						"description": "Get comprehensive system-wide statistics including total students, sessions, votes, participation rates, and trends. Admin only."
-					},
-					"response": []
-				}
-			],
-			"description": "Result endpoints for viewing election results (students) and publishing results (admin)."
-		}
-	],
-	"auth": {
-		"type": "bearer"
-	},
-	"event": [
-		{
-			"listen": "prerequest",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					""
-				]
-			}
-		},
-		{
-			"listen": "test",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					""
-				]
-			}
-		}
-	]
+  "info": {
+    "_postman_id": "univote-backend-2024",
+    "name": "Univote Backend - Complete API Collection",
+    "description": "Complete Postman collection for Univote university voting system backend. Covers all authentication, admin, voting, session, and result endpoints with realistic test data for Bowen University.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "univote-api"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000/api",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "student_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "first_login_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Admin Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('admin_token', jsonData.token);",
+                  "    pm.environment.set('admin_token', jsonData.token);",
+                  "    console.log('Admin token saved:', jsonData.token.substring(0, 20) + '...');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"louisdiaz43@gmail.com\",\n  \"password\": \"balikiss12\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/admin-login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "admin-login"]
+            },
+            "description": "Login as admin to get admin JWT token. Default credentials: louisdiaz43@gmail.com / balikiss12"
+          },
+          "response": []
+        },
+        {
+          "name": "Student Login (First Time)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('first_login_token', jsonData.token);",
+                  "    pm.environment.set('first_login_token', jsonData.token);",
+                  "    console.log('First login token saved. Must change password.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"matric_no\": \"BU22CSC1005\",\n  \"password\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "First-time student login with default password '1234'. Returns first_login token that requires password change. Test with BU22CSC1005 (muhammedabiodun42@gmail.com)"
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password (First Login)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('student_token', jsonData.token);",
+                  "    pm.environment.set('student_token', jsonData.token);",
+                  "    console.log('Password changed! Student token saved. Welcome email sent.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{first_login_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_password\": \"mySecurePassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/change-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "change-password"]
+            },
+            "description": "Change password on first login. Requires first_login_token. Sends welcome email after successful change."
+          },
+          "response": []
+        },
+        {
+          "name": "Student Login (After Password Change)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('student_token', jsonData.token);",
+                  "    pm.environment.set('student_token', jsonData.token);",
+                  "    console.log('Student token saved:', jsonData.token.substring(0, 20) + '...');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"matric_no\": \"BU22CSC1005\",\n  \"password\": \"mySecurePassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Regular student login after password change. Returns student JWT token for accessing protected endpoints."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Student Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Get current student profile information. Requires student authentication token."
+          },
+          "response": []
+        },
+        {
+          "name": "Student Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Logout current student. Invalidates the session token."
+          },
+          "response": []
+        }
+      ],
+      "description": "Authentication endpoints for admin and student login, password management, and profile access."
+    },
+    {
+      "name": "2. Admin - Student Management",
+      "item": [
+        {
+          "name": "Upload Students from CSV",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"csv_data\": [\n    {\n      \"matric_no\": \"BU22CSC2001\",\n      \"email\": \"student2001@bowen.edu.ng\",\n      \"full_name\": \"John Doe\",\n      \"college\": \"COCCS\",\n      \"department\": \"Computer Science\",\n      \"level\": \"200\"\n    },\n    {\n      \"matric_no\": \"BU22CSC2002\",\n      \"email\": \"student2002@bowen.edu.ng\",\n      \"full_name\": \"Jane Smith\",\n      \"college\": \"COCCS\",\n      \"department\": \"Computer Science\",\n      \"level\": \"200\"\n    },\n    {\n      \"matric_no\": \"BU22BIO3001\",\n      \"email\": \"student3001@bowen.edu.ng\",\n      \"full_name\": \"Michael Johnson\",\n      \"college\": \"COMSS\",\n      \"department\": \"Biology\",\n      \"level\": \"300\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/upload-students",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "upload-students"]
+            },
+            "description": "Bulk upload students from CSV data. Admin authentication required. Students are created with default password '1234'."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Students",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/students?college=COCCS&department=Computer Science&level=200&page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "students"],
+              "query": [
+                {
+                  "key": "college",
+                  "value": "COCCS",
+                  "description": "Filter by college (optional)"
+                },
+                {
+                  "key": "department",
+                  "value": "Computer Science",
+                  "description": "Filter by department (optional)"
+                },
+                {
+                  "key": "level",
+                  "value": "200",
+                  "description": "Filter by level (optional)"
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number for pagination"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                }
+              ]
+            },
+            "description": "Get all students with optional filters (college, department, level) and pagination. Admin only."
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Department",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"departments\": [\"Computer Science\", \"Biology\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/remove-department",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "remove-department"]
+            },
+            "description": "Remove all students from specified departments. Admin authentication required."
+          },
+          "response": []
+        }
+      ],
+      "description": "Admin endpoints for managing students - bulk upload, retrieval with filters, and department removal."
+    },
+    {
+      "name": "3. Admin - Session Management",
+      "item": [
+        {
+          "name": "Create Voting Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('session_id', jsonData.session._id);",
+                  "    pm.environment.set('session_id', jsonData.session._id);",
+                  "    console.log('Session created with ID:', jsonData.session._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Student Union Executive Elections 2024/2025\",\n  \"description\": \"Annual elections for Student Union Government positions\",\n  \"start_time\": \"2025-10-28T08:00:00Z\",\n  \"end_time\": \"2025-10-28T18:00:00Z\",\n  \"eligibility_criteria\": {\n    \"colleges\": [\"COCCS\", \"COMSS\", \"COLAW\", \"COLBS\", \"COHES\", \"COAES\", \"COEVS\"],\n    \"levels\": [\"100\", \"200\", \"300\", \"400\", \"500\"]\n  },\n  \"location\": {\n    \"type\": \"Point\",\n    \"coordinates\": [4.2811, 7.8525],\n    \"name\": \"Bowen University Campus\",\n    \"radius_meters\": 5000\n  },\n  \"categories\": [\n    {\n      \"position\": \"President\",\n      \"max_selections\": 1,\n      \"candidates\": [\n        {\n          \"matric_no\": \"BU22CSC1005\",\n          \"manifesto\": \"Building a united and progressive student community\"\n        }\n      ]\n    },\n    {\n      \"position\": \"Vice President\",\n      \"max_selections\": 1,\n      \"candidates\": []\n    },\n    {\n      \"position\": \"General Secretary\",\n      \"max_selections\": 1,\n      \"candidates\": []\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/create-session",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "create-session"]
+            },
+            "description": "Create new voting session with categories, candidates, eligibility criteria, and geofencing. Creates Azure Face API PersonGroup for facial verification."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Sessions (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/sessions?status=active&page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "sessions"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "active",
+                  "description": "Filter by status: active, upcoming, completed"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get all voting sessions with optional status filter and pagination. Admin only."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Voting Session",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Student Union Executive Elections 2024/2025 - Updated\",\n  \"description\": \"Annual elections for Student Union Government positions (Extended)\",\n  \"end_time\": \"2025-10-28T20:00:00Z\",\n  \"categories\": [\n    {\n      \"position\": \"President\",\n      \"max_selections\": 1,\n      \"candidates\": [\n        {\n          \"matric_no\": \"BU22CSC1005\",\n          \"manifesto\": \"Building a united and progressive student community with innovative solutions\"\n        },\n        {\n          \"matric_no\": \"BU22BIO3001\",\n          \"manifesto\": \"Leadership for all, excellence for everyone\"\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/update-session/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "update-session", "{{session_id}}"]
+            },
+            "description": "Update existing voting session details, categories, or candidates. Cannot update once voting has started."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Session Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/session-stats/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "session-stats", "{{session_id}}"]
+            },
+            "description": "Get detailed statistics for a voting session including participation rates, votes by category, college/department/level breakdown."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Voting Session",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/delete-session/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "delete-session", "{{session_id}}"]
+            },
+            "description": "Delete a voting session and all associated votes. Cannot delete active sessions."
+          },
+          "response": []
+        }
+      ],
+      "description": "Admin endpoints for creating, updating, deleting voting sessions and viewing session statistics."
+    },
+    {
+      "name": "4. Admin - System Management",
+      "item": [
+        {
+          "name": "Create Admin (Super Admin Only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newadmin@bowen.edu.ng\",\n  \"password\": \"SecureAdmin123!\",\n  \"full_name\": \"New Admin User\",\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/create-admin",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "create-admin"]
+            },
+            "description": "Create new admin user. Requires super admin privileges. Role can be 'admin' or 'super_admin'."
+          },
+          "response": []
+        },
+        {
+          "name": "Cleanup All (Super Admin Only)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/cleanup-all",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "cleanup-all"]
+            },
+            "description": "Delete all voting sessions, votes, and candidates. Requires super admin privileges. Use with extreme caution!"
+          },
+          "response": []
+        }
+      ],
+      "description": "Super admin endpoints for system-level operations - creating admins and cleanup operations."
+    },
+    {
+      "name": "5. Student - Sessions",
+      "item": [
+        {
+          "name": "List Eligible Sessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sessions?status=active",
+              "host": ["{{base_url}}"],
+              "path": ["sessions"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "active",
+                  "description": "Filter by status: active, upcoming, completed"
+                }
+              ]
+            },
+            "description": "Get all voting sessions that the student is eligible to participate in based on their college, department, and level."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Session Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sessions/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["sessions", "{{session_id}}"]
+            },
+            "description": "Get detailed information about a specific voting session including categories, candidates, and eligibility criteria."
+          },
+          "response": []
+        }
+      ],
+      "description": "Student endpoints for discovering and viewing voting sessions they're eligible for."
+    },
+    {
+      "name": "6. Student - Voting",
+      "item": [
+        {
+          "name": "Submit Vote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"choices\": [\n    {\n      \"position\": \"President\",\n      \"candidate_id\": \"candidate_object_id_here\"\n    },\n    {\n      \"position\": \"Vice President\",\n      \"candidate_id\": \"candidate_object_id_here\"\n    }\n  ],\n  \"image_url\": \"https://example.com/student-face-image.jpg\",\n  \"lat\": 7.8525,\n  \"lng\": 4.2811\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/vote",
+              "host": ["{{base_url}}"],
+              "path": ["vote"]
+            },
+            "description": "Submit vote with facial verification and geofencing. Requires: session_id, candidate choices, student's face image URL, and GPS coordinates. System verifies:\n1. Session is active\n2. Student is eligible\n3. Student hasn't voted yet\n4. Student is within campus radius (5000m)\n5. Face matches enrolled photo (Azure Face API)\n\nSends vote confirmation email on success."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Voting History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/vote/history",
+              "host": ["{{base_url}}"],
+              "path": ["vote", "history"]
+            },
+            "description": "Get student's complete voting history across all sessions. Shows sessions voted in with timestamps."
+          },
+          "response": []
+        }
+      ],
+      "description": "Student voting endpoints - submit votes with verification and view voting history."
+    },
+    {
+      "name": "7. Results",
+      "item": [
+        {
+          "name": "Get Session Results (Student)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/results/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["results", "{{session_id}}"]
+            },
+            "description": "Get published results for a voting session. Only shows results if they have been published by admin. Shows vote counts, percentages, and winners for each position."
+          },
+          "response": []
+        },
+        {
+          "name": "Publish Results (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/results/{{session_id}}/publish",
+              "host": ["{{base_url}}"],
+              "path": ["results", "{{session_id}}", "publish"]
+            },
+            "description": "Publish results for a completed voting session. Sends result announcement emails to all participants. Results become visible to students after publishing."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Overall Statistics (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/results/stats/overview",
+              "host": ["{{base_url}}"],
+              "path": ["results", "stats", "overview"]
+            },
+            "description": "Get comprehensive system-wide statistics including total students, sessions, votes, participation rates, and trends. Admin only."
+          },
+          "response": []
+        }
+      ],
+      "description": "Result endpoints for viewing election results (students) and publishing results (admin)."
+    }
+  ],
+  "auth": {
+    "type": "bearer"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    }
+  ]
 }
