@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome to Univote</title>
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        Helvetica, Arial, sans-serif;
+      background-color: #ffffff;
+    "
+  >
+    <table
+      cellpadding="0"
+      cellspacing="0"
+      border="0"
+      width="100%"
+      style="background-color: #ffffff; padding: 40px 20px"
+    >
+      <tr>
+        <td align="center">
+          <table
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            width="600"
+            style="
+              background-color: #ffffff;
+              border: 2px solid #000000;
+              border-radius: 12px;
+              overflow: hidden;
+            "
+          >
+            <!-- Header with Vote Icon -->
+            <tr>
+              <td
+                style="
+                  background-color: #000000;
+                  padding: 50px 40px;
+                  text-align: center;
+                "
+              >
+                <!-- Vote Icon SVG -->
+                <div style="margin-bottom: 20px">
+                  <svg
+                    width="80"
+                    height="80"
+                    viewBox="0 0 100 100"
+                    xmlns="http://www.w3.org/2000/svg"
+                    style="display: inline-block"
+                  >
+                    <!-- Ballot Box -->
+                    <rect
+                      x="20"
+                      y="40"
+                      width="60"
+                      height="50"
+                      fill="#ffffff"
+                      stroke="#ffffff"
+                      stroke-width="3"
+                      rx="4"
+                    />
+                    <!-- Ballot Paper -->
+                    <rect
+                      x="35"
+                      y="10"
+                      width="30"
+                      height="45"
+                      fill="#ffffff"
+                      stroke="#000000"
+                      stroke-width="2"
+                      rx="2"
+                      transform="rotate(-10 50 32)"
+                    />
+                    <!-- Checkmark on ballot -->
+                    <path
+                      d="M 42 25 L 47 32 L 58 18"
+                      stroke="#000000"
+                      stroke-width="3"
+                      fill="none"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      transform="rotate(-10 50 25)"
+                    />
+                    <!-- Slot -->
+                    <rect
+                      x="35"
+                      y="37"
+                      width="30"
+                      height="3"
+                      fill="#000000"
+                    />
+                  </svg>
+                </div>
+                <h1
+                  style="
+                    margin: 0;
+                    color: #ffffff;
+                    font-size: 36px;
+                    font-weight: 700;
+                    letter-spacing: -0.5px;
+                  "
+                >
+                  Welcome to Univote
+                </h1>
+                <p
+                  style="
+                    margin: 12px 0 0 0;
+                    color: #ffffff;
+                    font-size: 15px;
+                    font-weight: 500;
+                    letter-spacing: 1px;
+                    text-transform: uppercase;
+                    opacity: 0.9;
+                  "
+                >
+                  Your Voice. Your Vote. Your Future.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Content -->
+            <tr>
+              <td style="padding: 50px 40px">
+                <!-- Greeting -->
+                <div style="text-align: center; margin-bottom: 40px">
+                  <h2
+                    style="
+                      margin: 0 0 16px 0;
+                      color: #000000;
+                      font-size: 32px;
+                      font-weight: 700;
+                    "
+                  >
+                     Congratulations, {{full_name}}! 🎉
+                  </h2>
+                  <p
+                    style="
+                      margin: 0;
+                      color: #4a5568;
+                      font-size: 18px;
+                      line-height: 1.6;
+                    "
+                  >
+                    You've successfully activated your Univote account
+                  </p>
+                </div>
+
+                <!-- Account Details Box -->
+                <table
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  width="100%"
+                  style="
+                    background-color: #f8f9fa;
+                    border: 2px solid #e9ecef;
+                    border-radius: 10px;
+                    margin: 30px 0;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 30px">
+                      <p
+                        style="
+                          margin: 0 0 20px 0;
+                          color: #000000;
+                          font-size: 16px;
+                          font-weight: 700;
+                          text-transform: uppercase;
+                          letter-spacing: 0.5px;
+                        "
+                      >
+                        📋 Your Account Details
+                      </p>
+                      <table
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        width="100%"
+                      >
+                        <tr>
+                          <td style="padding: 15px 0">
+                            <p
+                              style="
+                                margin: 0 0 6px 0;
+                                color: #6c757d;
+                                font-size: 13px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                              "
+                            >
+                              Matric Number
+                            </p>
+                            <p
+                              style="
+                                margin: 0;
+                                color: #000000;
+                                font-size: 20px;
+                                font-weight: 700;
+                                font-family: 'Courier New', monospace;
+                              "
+                            >
+                              {{matric_no}}
+                            </p>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            style="
+                              padding: 15px 0;
+                              border-top: 1px solid #dee2e6;
+                            "
+                          >
+                            <p
+                              style="
+                                margin: 0 0 6px 0;
+                                color: #6c757d;
+                                font-size: 13px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                              "
+                            >
+                              Email Address
+                            </p>
+                            <p
+                              style="
+                                margin: 0;
+                                color: #000000;
+                                font-size: 18px;
+                                font-weight: 600;
+                              "
+                            >
+                              {{email}}
+                            </p>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            style="
+                              padding: 15px 0;
+                              border-top: 1px solid #dee2e6;
+                            "
+                          >
+                            <p
+                              style="
+                                margin: 0 0 6px 0;
+                                color: #6c757d;
+                                font-size: 13px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                              "
+                            >
+                              Account Status
+                            </p>
+                            <p
+                              style="
+                                margin: 0;
+                                color: #28a745;
+                                font-size: 18px;
+                                font-weight: 700;
+                              "
+                            >
+                              ✓ Activated
+                            </p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- What's Next Section -->
+                <div style="margin: 40px 0">
+                  <h3
+                    style="
+                      margin: 0 0 24px 0;
+                      color: #000000;
+                      font-size: 22px;
+                      font-weight: 700;
+                    "
+                  >
+                    What You Can Do Now:
+                  </h3>
+
+                  <!-- Feature Items -->
+                  <table
+                    cellpadding="0"
+                    cellspacing="0"
+                    border="0"
+                    width="100%"
+                  >
+                    <!-- Feature 1 -->
+                    <tr>
+                      <td style="padding: 16px 0">
+                        <table
+                          cellpadding="0"
+                          cellspacing="0"
+                          border="0"
+                          width="100%"
+                        >
+                          <tr>
+                            <td width="50" valign="top">
+                              <div
+                                style="
+                                  width: 40px;
+                                  height: 40px;
+                                  background-color: #000000;
+                                  border-radius: 50%;
+                                  display: flex;
+                                  align-items: center;
+                                  justify-content: center;
+                                "
+                              >
+                                <span
+                                  style="
+                                    color: #ffffff;
+                                    font-size: 20px;
+                                    line-height: 40px;
+                                    text-align: center;
+                                    display: block;
+                                  "
+                                  >🗳️</span
+                                >
+                              </div>
+                            </td>
+                            <td style="padding-left: 16px">
+                              <p
+                                style="
+                                  margin: 0 0 4px 0;
+                                  color: #000000;
+                                  font-size: 17px;
+                                  font-weight: 700;
+                                "
+                              >
+                                Vote in Elections
+                              </p>
+                              <p
+                                style="
+                                  margin: 0;
+                                  color: #6c757d;
+                                  font-size: 15px;
+                                  line-height: 1.5;
+                                "
+                              >
+                                Participate in ongoing and upcoming university
+                                elections
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+
+                    <!-- Feature 2 -->
+                    <tr>
+                      <td style="padding: 16px 0">
+                        <table
+                          cellpadding="0"
+                          cellspacing="0"
+                          border="0"
+                          width="100%"
+                        >
+                          <tr>
+                            <td width="50" valign="top">
+                              <div
+                                style="
+                                  width: 40px;
+                                  height: 40px;
+                                  background-color: #000000;
+                                  border-radius: 50%;
+                                  display: flex;
+                                  align-items: center;
+                                  justify-content: center;
+                                "
+                              >
+                                <span
+                                  style="
+                                    color: #ffffff;
+                                    font-size: 20px;
+                                    line-height: 40px;
+                                    text-align: center;
+                                    display: block;
+                                  "
+                                  >🔒</span
+                                >
+                              </div>
+                            </td>
+                            <td style="padding-left: 16px">
+                              <p
+                                style="
+                                  margin: 0 0 4px 0;
+                                  color: #000000;
+                                  font-size: 17px;
+                                  font-weight: 700;
+                                "
+                              >
+                                Secure Facial Verification
+                              </p>
+                              <p
+                                style="
+                                  margin: 0;
+                                  color: #6c757d;
+                                  font-size: 15px;
+                                  line-height: 1.5;
+                                "
+                              >
+                                Your vote is protected with advanced facial
+                                recognition technology
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+
+                    <!-- Feature 3 -->
+                    <tr>
+                      <td style="padding: 16px 0">
+                        <table
+                          cellpadding="0"
+                          cellspacing="0"
+                          border="0"
+                          width="100%"
+                        >
+                          <tr>
+                            <td width="50" valign="top">
+                              <div
+                                style="
+                                  width: 40px;
+                                  height: 40px;
+                                  background-color: #000000;
+                                  border-radius: 50%;
+                                  display: flex;
+                                  align-items: center;
+                                  justify-content: center;
+                                "
+                              >
+                                <span
+                                  style="
+                                    color: #ffffff;
+                                    font-size: 20px;
+                                    line-height: 40px;
+                                    text-align: center;
+                                    display: block;
+                                  "
+                                  >📊</span
+                                >
+                              </div>
+                            </td>
+                            <td style="padding-left: 16px">
+                              <p
+                                style="
+                                  margin: 0 0 4px 0;
+                                  color: #000000;
+                                  font-size: 17px;
+                                  font-weight: 700;
+                                "
+                              >
+                                View Results
+                              </p>
+                              <p
+                                style="
+                                  margin: 0;
+                                  color: #6c757d;
+                                  font-size: 15px;
+                                  line-height: 1.5;
+                                "
+                              >
+                                Access election results and track voting history
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+
+                    <!-- Feature 4 -->
+                    <tr>
+                      <td style="padding: 16px 0">
+                        <table
+                          cellpadding="0"
+                          cellspacing="0"
+                          border="0"
+                          width="100%"
+                        >
+                          <tr>
+                            <td width="50" valign="top">
+                              <div
+                                style="
+                                  width: 40px;
+                                  height: 40px;
+                                  background-color: #000000;
+                                  border-radius: 50%;
+                                  display: flex;
+                                  align-items: center;
+                                  justify-content: center;
+                                "
+                              >
+                                <span
+                                  style="
+                                    color: #ffffff;
+                                    font-size: 20px;
+                                    line-height: 40px;
+                                    text-align: center;
+                                    display: block;
+                                  "
+                                  >📱</span
+                                >
+                              </div>
+                            </td>
+                            <td style="padding-left: 16px">
+                              <p
+                                style="
+                                  margin: 0 0 4px 0;
+                                  color: #000000;
+                                  font-size: 17px;
+                                  font-weight: 700;
+                                "
+                              >
+                                Stay Connected
+                              </p>
+                              <p
+                                style="
+                                  margin: 0;
+                                  color: #6c757d;
+                                  font-size: 15px;
+                                  line-height: 1.5;
+                                "
+                              >
+                                Receive notifications about new elections and
+                                important updates
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+
+                <!-- Important Note -->
+                <table
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  width="100%"
+                  style="
+                    background-color: #000000;
+                    border-radius: 10px;
+                    margin: 40px 0 0 0;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 24px">
+                      <p
+                        style="
+                          margin: 0 0 10px 0;
+                          color: #ffffff;
+                          font-size: 16px;
+                          font-weight: 700;
+                        "
+                      >
+                        🔐 Security Reminder
+                      </p>
+                      <p
+                        style="
+                          margin: 0;
+                          color: #ffffff;
+                          font-size: 14px;
+                          line-height: 1.6;
+                          opacity: 0.95;
+                        "
+                      >
+                        Keep your password secure and never share it with
+                        anyone. If you notice any suspicious activity on your
+                        account, contact your election administrator
+                        immediately.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td
+                style="
+                  background-color: #f8f9fa;
+                  padding: 35px 40px;
+                  text-align: center;
+                  border-top: 2px solid #e9ecef;
+                "
+              >
+                <p
+                  style="
+                    margin: 0 0 8px 0;
+                    color: #000000;
+                    font-size: 18px;
+                    font-weight: 700;
+                  "
+                >
+                  Univote
+                </p>
+                <p
+                  style="
+                    margin: 0 0 12px 0;
+                    color: #6c757d;
+                    font-size: 13px;
+                    line-height: 1.5;
+                  "
+                >
+                  University Voting System
+                </p>
+                <p
+                  style="margin: 0; color: #adb5bd; font-size: 12px"
+                >
+                  © {{year}} Univote. All rights reserved.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+  >
+    <table
+      cellpadding="0"
+      cellspacing="0"
+      border="0"
+      width="100%"
+      style="background-color: #f0f2f5; padding: 40px 0"
+    >
+      <tr>
+        <td align="center">
+          <table
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            width="600"
+            style="
+              background-color: #ffffff;
+              border-radius: 8px;
+              overflow: hidden;
+              box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            "
+          >
+            <!-- Header with Logo -->
+            <tr>
+              <td
+                style="
+                  background-color: #000000;
+                  padding: 40px;
+                  text-align: center;
+                "
+              >
+                <!-- Logo Placeholder - Replace src with your logo path -->
+                <img
+                  src="cid:logoWhite"
+                  alt="Univote Logo"
+                  style="
+                    max-width: 180px;
+                    height: auto;
+                    margin-bottom: 15px;
+                    display: block;
+                    margin-left: auto;
+                    margin-right: auto;
+                  "
+                />
+                <p
+                  style="
+                    margin: 0;
+                    color: #ffffff;
+                    font-size: 14px;
+                    font-weight: 500;
+                    letter-spacing: 0.5px;
+                  "
+                >
+                  UNIVERSITY VOTING SYSTEM
+                </p>
+              </td>
+            </tr>
+
+            <!-- Content -->
+            <tr>
+              <td style="padding: 40px">
+                <h2
+                  style="
+                    margin: 0 0 24px 0;
+                    color: #000000;
+                    font-size: 28px;
+                    font-weight: 700;
+                  "
+                >
+                  Welcome, {{full_name}}! 👋
+                </h2>
+
+                <p
+                  style="
+                    margin: 0 0 20px 0;
+                    color: #1c1e21;
+                    font-size: 16px;
+                    line-height: 1.6;
+                  "
+                >
+                  Your Univote account has been created successfully. You're now
+                  part of our democratic voting platform where your voice
+                  matters!
+                </p>
+
+                <!-- Info Box with Black Border -->
+                <table
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  width="100%"
+                  style="
+                    background-color: #ffffff;
+                    border: 2px solid #000000;
+                    border-radius: 8px;
+                    margin: 30px 0;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 24px">
+                      <p
+                        style="
+                          margin: 0 0 16px 0;
+                          color: #000000;
+                          font-size: 15px;
+                          font-weight: 700;
+                          text-transform: uppercase;
+                          letter-spacing: 0.5px;
+                        "
+                      >
+                        Your Login Credentials
+                      </p>
+                      <table
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        width="100%"
+                      >
+                        <tr>
+                          <td
+                            style="
+                              padding: 10px 0;
+                              border-bottom: 1px solid #e4e6eb;
+                            "
+                          >
+                            <span
+                              style="
+                                color: #65676b;
+                                font-size: 14px;
+                                font-weight: 600;
+                              "
+                              >Matric Number:</span
+                            >
+                            <br />
+                            <span
+                              style="
+                                color: #000000;
+                                font-size: 16px;
+                                font-weight: 700;
+                                font-family: 'Courier New', monospace;
+                              "
+                              >{{matric_no}}</span
+                            >
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            style="
+                              padding: 10px 0;
+                              border-bottom: 1px solid #e4e6eb;
+                            "
+                          >
+                            <span
+                              style="
+                                color: #65676b;
+                                font-size: 14px;
+                                font-weight: 600;
+                              "
+                              >Email:</span
+                            >
+                            <br />
+                            <span
+                              style="
+                                color: #000000;
+                                font-size: 16px;
+                                font-weight: 600;
+                              "
+                              >{{email}}</span
+                            >
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding: 10px 0">
+                            <span
+                              style="
+                                color: #65676b;
+                                font-size: 14px;
+                                font-weight: 600;
+                              "
+                              >Default Password:</span
+                            >
+                            <br />
+                            <span
+                              style="
+                                color: #000000;
+                                font-size: 16px;
+                                font-weight: 700;
+                                font-family: 'Courier New', monospace;
+                              "
+                              >{{default_password}}</span
+                            >
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Warning Box -->
+                <table
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  width="100%"
+                  style="
+                    background-color: #000000;
+                    border-radius: 8px;
+                    margin: 25px 0;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 20px">
+                      <p
+                        style="
+                          margin: 0;
+                          color: #ffffff;
+                          font-size: 14px;
+                          line-height: 1.5;
+                        "
+                      >
+                        <span style="font-size: 18px; margin-right: 8px"
+                          >🔒</span
+                        >
+                        <strong>Security First:</strong> You must change your
+                        password on first login to secure your account.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Features Section -->
+                <div style="margin: 30px 0">
+                  <p
+                    style="
+                      margin: 0 0 20px 0;
+                      color: #000000;
+                      font-size: 17px;
+                      font-weight: 700;
+                    "
+                  >
+                    What you can do with Univote:
+                  </p>
+
+                  <table
+                    cellpadding="0"
+                    cellspacing="0"
+                    border="0"
+                    width="100%"
+                  >
+                    <tr>
+                      <td style="padding: 12px 0">
+                        <table
+                          cellpadding="0"
+                          cellspacing="0"
+                          border="0"
+                          width="100%"
+                        >
+                          <tr>
+                            <td
+                              width="30"
+                              valign="top"
+                              style="padding-right: 10px"
+                            >
+                              <div
+                                style="
+                                  width: 24px;
+                                  height: 24px;
+                                  background-color: #000000;
+                                  border-radius: 50%;
+                                  text-align: center;
+                                  line-height: 24px;
+                                  color: #ffffff;
+                                  font-size: 12px;
+                                  font-weight: bold;
+                                "
+                              >
+                                ✓
+                              </div>
+                            </td>
+                            <td>
+                              <p
+                                style="
+                                  margin: 0;
+                                  color: #1c1e21;
+                                  font-size: 15px;
+                                  line-height: 1.5;
+                                "
+                              >
+                                View ongoing and upcoming elections
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 12px 0">
+                        <table
+                          cellpadding="0"
+                          cellspacing="0"
+                          border="0"
+                          width="100%"
+                        >
+                          <tr>
+                            <td
+                              width="30"
+                              valign="top"
+                              style="padding-right: 10px"
+                            >
+                              <div
+                                style="
+                                  width: 24px;
+                                  height: 24px;
+                                  background-color: #000000;
+                                  border-radius: 50%;
+                                  text-align: center;
+                                  line-height: 24px;
+                                  color: #ffffff;
+                                  font-size: 12px;
+                                  font-weight: bold;
+                                "
+                              >
+                                ✓
+                              </div>
+                            </td>
+                            <td>
+                              <p
+                                style="
+                                  margin: 0;
+                                  color: #1c1e21;
+                                  font-size: 15px;
+                                  line-height: 1.5;
+                                "
+                              >
+                                Cast your vote securely with facial verification
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 12px 0">
+                        <table
+                          cellpadding="0"
+                          cellspacing="0"
+                          border="0"
+                          width="100%"
+                        >
+                          <tr>
+                            <td
+                              width="30"
+                              valign="top"
+                              style="padding-right: 10px"
+                            >
+                              <div
+                                style="
+                                  width: 24px;
+                                  height: 24px;
+                                  background-color: #000000;
+                                  border-radius: 50%;
+                                  text-align: center;
+                                  line-height: 24px;
+                                  color: #ffffff;
+                                  font-size: 12px;
+                                  font-weight: bold;
+                                "
+                              >
+                                ✓
+                              </div>
+                            </td>
+                            <td>
+                              <p
+                                style="
+                                  margin: 0;
+                                  color: #1c1e21;
+                                  font-size: 15px;
+                                  line-height: 1.5;
+                                "
+                              >
+                                Track your voting history and activity
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 12px 0">
+                        <table
+                          cellpadding="0"
+                          cellspacing="0"
+                          border="0"
+                          width="100%"
+                        >
+                          <tr>
+                            <td
+                              width="30"
+                              valign="top"
+                              style="padding-right: 10px"
+                            >
+                              <div
+                                style="
+                                  width: 24px;
+                                  height: 24px;
+                                  background-color: #000000;
+                                  border-radius: 50%;
+                                  text-align: center;
+                                  line-height: 24px;
+                                  color: #ffffff;
+                                  font-size: 12px;
+                                  font-weight: bold;
+                                "
+                              >
+                                ✓
+                              </div>
+                            </td>
+                            <td>
+                              <p
+                                style="
+                                  margin: 0;
+                                  color: #1c1e21;
+                                  font-size: 15px;
+                                  line-height: 1.5;
+                                "
+                              >
+                                View election results after voting ends
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+
+                <!-- Support Info -->
+                <table
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  width="100%"
+                  style="
+                    background-color: #f7f8fa;
+                    border-radius: 8px;
+                    margin: 30px 0 0 0;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 20px">
+                      <p
+                        style="
+                          margin: 0;
+                          color: #1c1e21;
+                          font-size: 14px;
+                          line-height: 1.5;
+                        "
+                      >
+                        <strong>Need Help?</strong> If you have any questions or
+                        need assistance, please contact your election
+                        administrator.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td
+                style="
+                  background-color: #000000;
+                  padding: 30px;
+                  text-align: center;
+                "
+              >
+                <!-- Logo in Footer -->
+                <img
+                  src="cid:logoWhite"
+                  alt="Univote"
+                  style="
+                    max-width: 120px;
+                    height: auto;
+                    margin-bottom: 15px;
+                    opacity: 0.8;
+                  "
+                />
+                <p
+                  style="
+                    margin: 0 0 8px 0;
+                    color: #ffffff;
+                    font-size: 13px;
+                    opacity: 0.7;
+                  "
+                >
+                  This is an automated message from Univote.
+                </p>
+                <p
+                  style="
+                    margin: 0;
+                    color: #ffffff;
+                    font-size: 12px;
+                    opacity: 0.6;
+                  "
+                >
+                  © {{year}} Univote. All rights reserved.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

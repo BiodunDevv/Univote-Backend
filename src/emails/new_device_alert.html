@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>New Device Login Alert</title>
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        Helvetica, Arial, sans-serif;
+      background-color: #ffffff;
+    "
+  >
+    <table
+      cellpadding="0"
+      cellspacing="0"
+      border="0"
+      width="100%"
+      style="background-color: #ffffff; padding: 40px 20px"
+    >
+      <tr>
+        <td align="center">
+          <table
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            width="600"
+            style="
+              background-color: #ffffff;
+              border: 2px solid #000000;
+              border-radius: 12px;
+              overflow: hidden;
+            "
+          >
+            <!-- Header with Alert Icon -->
+            <tr>
+              <td
+                style="
+                  background-color: #000000;
+                  padding: 50px 40px;
+                  text-align: center;
+                "
+              >
+                <div style="margin-bottom: 20px">
+                  <svg
+                    width="80"
+                    height="80"
+                    viewBox="0 0 100 100"
+                    xmlns="http://www.w3.org/2000/svg"
+                    style="display: inline-block"
+                  >
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="40"
+                      fill="none"
+                      stroke="#ffffff"
+                      stroke-width="4"
+                    />
+                    <circle cx="50" cy="70" r="3" fill="#ffffff" />
+                    <path
+                      d="M 50 30 L 50 60"
+                      stroke="#ffffff"
+                      stroke-width="4"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                </div>
+                <h1
+                  style="
+                    margin: 0;
+                    color: #ffffff;
+                    font-size: 36px;
+                    font-weight: 700;
+                  "
+                >
+                  Security Alert
+                </h1>
+                <p
+                  style="
+                    margin: 12px 0 0 0;
+                    color: #ffffff;
+                    font-size: 15px;
+                    font-weight: 500;
+                    letter-spacing: 1px;
+                    text-transform: uppercase;
+                    opacity: 0.9;
+                  "
+                >
+                  New Device Login Detected
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding: 50px 40px">
+                <div style="margin-bottom: 40px">
+                  <h2
+                    style="
+                      margin: 0 0 16px 0;
+                      color: #000000;
+                      font-size: 28px;
+                      font-weight: 700;
+                    "
+                  >
+                    Hi {{full_name}},
+                  </h2>
+                  <p
+                    style="
+                      margin: 0;
+                      color: #4a5568;
+                      font-size: 16px;
+                      line-height: 1.6;
+                    "
+                  >
+                    We detected a login to your Univote account from a new
+                    device. If this was you, you can ignore this message.
+                  </p>
+                </div>
+
+                <table
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  width="100%"
+                  style="
+                    background-color: #f8f9fa;
+                    border: 2px solid #e9ecef;
+                    border-radius: 10px;
+                    margin: 30px 0;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 30px">
+                      <p
+                        style="
+                          margin: 0 0 20px 0;
+                          color: #000000;
+                          font-size: 16px;
+                          font-weight: 700;
+                          text-transform: uppercase;
+                        "
+                      >
+                        📱 Login Details
+                      </p>
+                      <table
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        width="100%"
+                      >
+                        <tr>
+                          <td style="padding: 15px 0">
+                            <p
+                              style="
+                                margin: 0 0 6px 0;
+                                color: #6c757d;
+                                font-size: 13px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                              "
+                            >
+                              Matric Number
+                            </p>
+                            <p
+                              style="
+                                margin: 0;
+                                color: #000000;
+                                font-size: 18px;
+                                font-weight: 700;
+                                font-family: 'Courier New', monospace;
+                              "
+                            >
+                              {{matric_no}}
+                            </p>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            style="
+                              padding: 15px 0;
+                              border-top: 1px solid #dee2e6;
+                            "
+                          >
+                            <p
+                              style="
+                                margin: 0 0 6px 0;
+                                color: #6c757d;
+                                font-size: 13px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                              "
+                            >
+                              Device Information
+                            </p>
+                            <p
+                              style="
+                                margin: 0;
+                                color: #000000;
+                                font-size: 16px;
+                                font-weight: 600;
+                              "
+                            >
+                              {{device_info}}
+                            </p>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            style="
+                              padding: 15px 0;
+                              border-top: 1px solid #dee2e6;
+                            "
+                          >
+                            <p
+                              style="
+                                margin: 0 0 6px 0;
+                                color: #6c757d;
+                                font-size: 13px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                              "
+                            >
+                              Login Time
+                            </p>
+                            <p
+                              style="
+                                margin: 0;
+                                color: #000000;
+                                font-size: 16px;
+                                font-weight: 600;
+                              "
+                            >
+                              {{login_time}}
+                            </p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+
+                <table
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  width="100%"
+                  style="
+                    background-color: #000000;
+                    border-radius: 10px;
+                    margin: 30px 0;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 24px">
+                      <p
+                        style="
+                          margin: 0 0 10px 0;
+                          color: #ffffff;
+                          font-size: 16px;
+                          font-weight: 700;
+                        "
+                      >
+                        ⚠️ Didn't Recognize This Login?
+                      </p>
+                      <p
+                        style="
+                          margin: 0;
+                          color: #ffffff;
+                          font-size: 14px;
+                          line-height: 1.6;
+                          opacity: 0.95;
+                        "
+                      >
+                        If you didn't log in from this device, please change
+                        your password immediately and contact your election
+                        administrator.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td
+                style="
+                  background-color: #f8f9fa;
+                  padding: 35px 40px;
+                  text-align: center;
+                  border-top: 2px solid #e9ecef;
+                "
+              >
+                <p
+                  style="
+                    margin: 0 0 8px 0;
+                    color: #000000;
+                    font-size: 18px;
+                    font-weight: 700;
+                  "
+                >
+                  Univote
+                </p>
+                <p style="margin: 0 0 12px 0; color: #6c757d; font-size: 13px">
+                  University Voting System
+                </p>
+                <p style="margin: 0; color: #adb5bd; font-size: 12px">
+                  © {{year}} Univote. All rights reserved.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

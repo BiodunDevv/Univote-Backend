@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vote Confirmed</title>
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        Helvetica, Arial, sans-serif;
+      background-color: #ffffff;
+    "
+  >
+    <table
+      cellpadding="0"
+      cellspacing="0"
+      border="0"
+      width="100%"
+      style="background-color: #ffffff; padding: 40px 20px"
+    >
+      <tr>
+        <td align="center">
+          <table
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            width="600"
+            style="
+              background-color: #ffffff;
+              border: 2px solid #000000;
+              border-radius: 12px;
+              overflow: hidden;
+            "
+          >
+            <!-- Header with Success Icon -->
+            <tr>
+              <td
+                style="
+                  background-color: #000000;
+                  padding: 50px 40px;
+                  text-align: center;
+                "
+              >
+                <div style="margin-bottom: 20px">
+                  <svg
+                    width="80"
+                    height="80"
+                    viewBox="0 0 100 100"
+                    xmlns="http://www.w3.org/2000/svg"
+                    style="display: inline-block"
+                  >
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="45"
+                      fill="none"
+                      stroke="#ffffff"
+                      stroke-width="4"
+                    />
+                    <path
+                      d="M 30 50 L 42 65 L 70 35"
+                      stroke="#ffffff"
+                      stroke-width="6"
+                      fill="none"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </div>
+                <h1
+                  style="
+                    margin: 0;
+                    color: #ffffff;
+                    font-size: 36px;
+                    font-weight: 700;
+                  "
+                >
+                  Vote Confirmed!
+                </h1>
+                <p
+                  style="
+                    margin: 12px 0 0 0;
+                    color: #ffffff;
+                    font-size: 15px;
+                    font-weight: 500;
+                    letter-spacing: 1px;
+                    text-transform: uppercase;
+                    opacity: 0.9;
+                  "
+                >
+                  Your Voice Has Been Heard
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding: 50px 40px">
+                <div style="text-align: center; margin-bottom: 40px">
+                  <h2
+                    style="
+                      margin: 0 0 16px 0;
+                      color: #000000;
+                      font-size: 32px;
+                      font-weight: 700;
+                    "
+                  >
+                    Thank you, {{full_name}}!
+                  </h2>
+                  <p style="margin: 0; color: #4a5568; font-size: 18px">
+                    Your vote has been successfully recorded
+                  </p>
+                </div>
+
+                <table
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  width="100%"
+                  style="
+                    background-color: #f8f9fa;
+                    border: 2px solid #e9ecef;
+                    border-radius: 10px;
+                    margin: 30px 0;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 30px">
+                      <p
+                        style="
+                          margin: 0 0 20px 0;
+                          color: #000000;
+                          font-size: 16px;
+                          font-weight: 700;
+                          text-transform: uppercase;
+                        "
+                      >
+                        🗳️ Vote Details
+                      </p>
+                      <table
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        width="100%"
+                      >
+                        <tr>
+                          <td style="padding: 15px 0">
+                            <p
+                              style="
+                                margin: 0 0 6px 0;
+                                color: #6c757d;
+                                font-size: 13px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                              "
+                            >
+                              Election
+                            </p>
+                            <p
+                              style="
+                                margin: 0;
+                                color: #000000;
+                                font-size: 20px;
+                                font-weight: 700;
+                              "
+                            >
+                              {{session_title}}
+                            </p>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            style="
+                              padding: 15px 0;
+                              border-top: 1px solid #dee2e6;
+                            "
+                          >
+                            <p
+                              style="
+                                margin: 0 0 6px 0;
+                                color: #6c757d;
+                                font-size: 13px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                              "
+                            >
+                              Your Selection
+                            </p>
+                            <p
+                              style="
+                                margin: 0;
+                                color: #000000;
+                                font-size: 18px;
+                                font-weight: 600;
+                              "
+                            >
+                              {{candidate_name}} - {{position}}
+                            </p>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            style="
+                              padding: 15px 0;
+                              border-top: 1px solid #dee2e6;
+                            "
+                          >
+                            <p
+                              style="
+                                margin: 0 0 6px 0;
+                                color: #6c757d;
+                                font-size: 13px;
+                                font-weight: 600;
+                                text-transform: uppercase;
+                              "
+                            >
+                              Time Submitted
+                            </p>
+                            <p
+                              style="
+                                margin: 0;
+                                color: #000000;
+                                font-size: 16px;
+                                font-weight: 600;
+                              "
+                            >
+                              {{vote_time}}
+                            </p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+
+                <table
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  width="100%"
+                  style="
+                    background-color: #000000;
+                    border-radius: 10px;
+                    margin: 30px 0;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 24px">
+                      <p
+                        style="
+                          margin: 0 0 10px 0;
+                          color: #ffffff;
+                          font-size: 16px;
+                          font-weight: 700;
+                        "
+                      >
+                        🔒 Your Vote is Secure
+                      </p>
+                      <p
+                        style="
+                          margin: 0;
+                          color: #ffffff;
+                          font-size: 14px;
+                          opacity: 0.95;
+                        "
+                      >
+                        Your vote has been encrypted and securely stored.
+                        Results will be published after the voting period ends.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td
+                style="
+                  background-color: #f8f9fa;
+                  padding: 35px 40px;
+                  text-align: center;
+                  border-top: 2px solid #e9ecef;
+                "
+              >
+                <p
+                  style="
+                    margin: 0 0 8px 0;
+                    color: #000000;
+                    font-size: 18px;
+                    font-weight: 700;
+                  "
+                >
+                  Univote
+                </p>
+                <p style="margin: 0 0 12px 0; color: #6c757d; font-size: 13px">
+                  University Voting System
+                </p>
+                <p style="margin: 0; color: #adb5bd; font-size: 12px">
+                  © {{year}} Univote. All rights reserved.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
