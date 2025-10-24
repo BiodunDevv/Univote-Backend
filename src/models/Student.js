@@ -32,6 +32,12 @@ const studentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    department_code: {
+      type: String,
+      required: true,
+      uppercase: true,
+      trim: true,
+    },
     college: {
       type: String,
       required: true,

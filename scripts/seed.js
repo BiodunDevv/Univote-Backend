@@ -7,82 +7,85 @@ const VotingSession = require("../src/models/VotingSession");
 const Candidate = require("../src/models/Candidate");
 const Vote = require("../src/models/Vote");
 const AuditLog = require("../src/models/AuditLog");
-const emailService = require("../src/services/emailService");
 
-// College and Department mappings (Bowen University)
+// College and Department mappings (Bowen University) with department codes
 const collegesAndDepartments = {
   "College of Agriculture, Engineering and Science": {
     code: "COAES",
-    departments: [
-      "Microbiology",
-      "Pure and Applied Biology",
-      "Biochemistry",
-      "Industrial Chemistry",
-      "Mathematics",
-      "Statistics",
-      "Physics",
-      "Agriculture",
-      "Food Science and Technology",
-      "Electrical/Electronics Engineering",
-      "Mechatronics Engineering",
-      "Extension and Social Engineering",
-    ],
+    departments: {
+      "Microbiology": "MIC",
+      "Pure & Applied Biology": "BIO",
+      "Biochemistry": "BCH",
+      "Industrial Chemistry": "CHM",
+      "Mathematics": "MTH",
+      "Statistics": "STA",
+      "Physics": "PHY",
+      "Bachelor of Agriculture (B.Agric.)": "AGR",
+      "Food Science and Technology": "FST",
+      "Electrical/Electronics Engineering": "EEE",
+      "Mechatronics Engineering": "MCT",
+      "Agricultural Extension & Rural Development": "AER",
+    },
   },
   "College of Management and Social Sciences": {
     code: "COMSS",
-    departments: [
-      "Accounting",
-      "Banking and Finance",
-      "Business Administration",
-      "Industrial Relations and Personnel Management",
-      "Economics",
-      "Sociology",
-      "Political Science",
-      "International Relations",
-      "Political and Law",
-    ],
+    departments: {
+      "Accounting": "ACC",
+      "Banking and Finance": "BNF",
+      "Business Administration": "BUS",
+      "Industrial Relations & Personnel Management": "IRP",
+      "Economics": "ECO",
+      "Sociology": "SOC",
+      "Political Science": "POL",
+      "International Relations": "INT",
+      "Political and Law": "PAL",
+    },
   },
   "College of Law": {
     code: "COLAW",
-    departments: ["Law"],
+    departments: {
+      "Law (LL.B.)": "LAW",
+    },
   },
   "College of Liberal Studies": {
     code: "COLBS",
-    departments: [
-      "Music",
-      "Theatre Arts",
-      "English",
-      "History and International Studies",
-      "Religious Studies",
-    ],
+    departments: {
+      "Music": "MUS",
+      "Theatre Arts": "THA",
+      "English": "ENG",
+      "History & International Studies": "HIS",
+      "Religious Studies": "REL",
+    },
   },
   "College of Health Sciences": {
     code: "COHES",
-    departments: [
-      "Anatomy",
-      "Physiology",
-      "Medicine and Surgery",
-      "Nursing Science",
-      "Physiotherapy",
-      "Public Health",
-      "Medical Laboratory Science",
-      "Nutrition and Dietetics",
-    ],
+    departments: {
+      "Anatomy": "ANA",
+      "Physiology": "PHS",
+      "Medicine & Surgery (MBBS)": "MED",
+      "Nursing Science": "NUR",
+      "Physiotherapy": "PHT",
+      "Public Health": "PHU",
+      "Medical Laboratory Science (BMLS)": "MLS",
+      "Nutrition & Dietetics": "NUT",
+    },
   },
   "College of Computing and Communication Studies": {
     code: "COCCS",
-    departments: [
-      "Computer Science",
-      "Mass Communication",
-      "Communication Arts",
-      "Cyber Security",
-      "Software Engineering",
-      "Information Technology",
-    ],
+    departments: {
+      "Computer Science": "CSC",
+      "Mass Communication": "MAS",
+      "Communication Arts": "CMA",
+      "Cyber Security": "CYB",
+      "Software Engineering": "SEN",
+      "Information Technology": "IFT",
+    },
   },
   "College of Environmental Sciences": {
     code: "COEVS",
-    departments: ["Architecture", "Surveying and Geoinformatics"],
+    departments: {
+      "Architecture": "ARC",
+    },
   },
 };
 
@@ -168,14 +171,14 @@ const lastNames = [
 ];
 
 /**
- * Generate matric number in BU format
- * Format: BU{YY}{COLLEGE_CODE}{NUMBER}
- * Example: BU22CSC1001
+ * Generate matric number in BU format with department code
+ * Format: BU{YY}{DEPT_CODE}{NUMBER}
+ * Example: BU22CSC1005 (Computer Science), BU22ACC2001 (Accounting)
  */
-function generateMatricNo(year, collegeCode, index) {
+function generateMatricNo(year, deptCode, index) {
   const yearCode = year.toString().slice(-2);
   const studentNumber = String(index).padStart(4, "0");
-  return `BU${yearCode}${collegeCode}${studentNumber}`;
+  return `BU${yearCode}${deptCode}${studentNumber}`;
 }
 
 /**
@@ -258,19 +261,27 @@ async function generateStudents() {
   const students = [];
   const levels = ["100", "200", "300", "400"];
 
-  let studentCounter = 0;
+  // Track department counters for unique matric numbers per department
+  const departmentCounters = {};
   let isFirstComputerScienceStudent = true;
-  let isFirstNonCOAESStudent = true;
+  let isFirstAccountingStudent = true;
 
   for (const [collegeName, collegeInfo] of Object.entries(
     collegesAndDepartments
   )) {
     const collegeCode = collegeInfo.code;
 
-    for (const department of collegeInfo.departments) {
+    for (const [departmentName, deptCode] of Object.entries(
+      collegeInfo.departments
+    )) {
+      // Initialize counter for this department
+      if (!departmentCounters[deptCode]) {
+        departmentCounters[deptCode] = 0;
+      }
+
       // Create exactly 2 students per department
       for (let i = 0; i < 2; i++) {
-        studentCounter++;
+        departmentCounters[deptCode]++;
 
         // Default values
         let firstName = randomElement(firstNames);
@@ -279,15 +290,15 @@ async function generateStudents() {
         let enrollmentYear = 2022;
         let matricNo = generateMatricNo(
           enrollmentYear,
-          collegeCode,
-          studentCounter
+          deptCode,
+          departmentCounters[deptCode]
         );
         let email = generateEmail(firstName, lastName, matricNo);
 
         // Special case 1: First student in Computer Science department (COCCS)
         if (
-          department === "Computer Science" &&
-          collegeCode === "COCCS" &&
+          departmentName === "Computer Science" &&
+          deptCode === "CSC" &&
           isFirstComputerScienceStudent
         ) {
           firstName = "Muhammed";
@@ -297,18 +308,18 @@ async function generateStudents() {
           level = "400";
           isFirstComputerScienceStudent = false;
           console.log(
-            `   🎯 Creating special student: ${firstName} ${lastName} - ${email}`
+            `   🎯 Creating special student: ${firstName} ${lastName} - ${matricNo} (${email})`
           );
         }
-        // Special case 2: First student in COMSS (College of Management and Social Sciences)
-        else if (collegeCode === "COMSS" && isFirstNonCOAESStudent) {
+        // Special case 2: First student in Accounting (COMSS)
+        else if (deptCode === "ACC" && isFirstAccountingStudent) {
           firstName = "Mustapha";
           lastName = "Muhammed";
           email = "Mustapha.muhammed@bowen.edu.ng";
           level = randomElement(levels);
-          isFirstNonCOAESStudent = false;
+          isFirstAccountingStudent = false;
           console.log(
-            `   🎯 Creating special student: ${firstName} ${lastName} - ${email}`
+            `   🎯 Creating special student: ${firstName} ${lastName} - ${matricNo} (${email})`
           );
         }
 
@@ -317,7 +328,8 @@ async function generateStudents() {
           full_name: `${firstName} ${lastName}`,
           email: email,
           password_hash: defaultPasswordHash,
-          department: department,
+          department: departmentName,
+          department_code: deptCode,
           college: collegeName,
           level: level,
           first_login: true,
@@ -335,6 +347,19 @@ async function generateStudents() {
 
   console.log(`✅ Generated ${insertedStudents.length} students`);
   console.log(`   📧 Welcome emails will be sent after first password change`);
+  console.log(`\n   Sample Matric Numbers by Department:`);
+  
+  // Show some examples
+  const examples = [
+    { dept: "Computer Science", code: "CSC", matric: "BU22CSC0001" },
+    { dept: "Accounting", code: "ACC", matric: "BU22ACC0001" },
+    { dept: "Law", code: "LAW", matric: "BU22LAW0001" },
+    { dept: "Medicine & Surgery", code: "MED", matric: "BU22MED0001" },
+  ];
+  
+  examples.forEach((ex) => {
+    console.log(`   - ${ex.dept} (${ex.code}): ${ex.matric}`);
+  });
 
   return insertedStudents;
 }
@@ -360,10 +385,12 @@ async function seed() {
     console.log(
       `     • Muhammed Abiodun (BU22CSC1005) - muhammedabiodun42@gmail.com`
     );
-    console.log(`     • Mustapha Muhammed - Mustapha.muhammed@bowen.edu.ng`);
+    console.log(`     • Mustapha Muhammed (BU22ACC0002) - Mustapha.muhammed@bowen.edu.ng`);
     console.log(`   - Total students created: 86 (2 per department)`);
     console.log(`   - Default password for all students: 1234`);
     console.log(`   - All students must change password on first login`);
+    console.log(`   - Matric format: BU{Year}{DeptCode}{Number}`);
+    console.log(`     Example: BU22CSC0001 = 2022, Computer Science, Student #1`);
     console.log("\n🚀 You can now start the server with: npm start");
     console.log("=".repeat(50));
   } catch (error) {

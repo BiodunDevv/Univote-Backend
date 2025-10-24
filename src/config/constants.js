@@ -1,4 +1,86 @@
 module.exports = {
+  // College and Department mapping with codes
+  collegesAndDepartments: {
+    "College of Agriculture, Engineering and Science": {
+      code: "COAES",
+      departments: {
+        "Microbiology": "MIC",
+        "Pure & Applied Biology": "BIO",
+        "Biochemistry": "BCH",
+        "Industrial Chemistry": "CHM",
+        "Mathematics": "MTH",
+        "Statistics": "STA",
+        "Physics": "PHY",
+        "Bachelor of Agriculture (B.Agric.)": "AGR",
+        "Food Science and Technology": "FST",
+        "Electrical/Electronics Engineering": "EEE",
+        "Mechatronics Engineering": "MCT",
+        "Agricultural Extension & Rural Development": "AER",
+      },
+    },
+    "College of Management and Social Sciences": {
+      code: "COMSS",
+      departments: {
+        "Accounting": "ACC",
+        "Banking and Finance": "BNF",
+        "Business Administration": "BUS",
+        "Industrial Relations & Personnel Management": "IRP",
+        "Economics": "ECO",
+        "Sociology": "SOC",
+        "Political Science": "POL",
+        "International Relations": "INT",
+        "Political and Law": "PAL",
+      },
+    },
+    "College of Law": {
+      code: "COLAW",
+      departments: {
+        "Law (LL.B.)": "LAW",
+      },
+    },
+    "College of Liberal Studies": {
+      code: "COLBS",
+      departments: {
+        "Music": "MUS",
+        "Theatre Arts": "THA",
+        "English": "ENG",
+        "History & International Studies": "HIS",
+        "Religious Studies": "REL",
+      },
+    },
+    "College of Health Sciences": {
+      code: "COHES",
+      departments: {
+        "Anatomy": "ANA",
+        "Physiology": "PHS",
+        "Medicine & Surgery (MBBS)": "MED",
+        "Nursing Science": "NUR",
+        "Physiotherapy": "PHT",
+        "Public Health": "PHU",
+        "Medical Laboratory Science (BMLS)": "MLS",
+        "Nutrition & Dietetics": "NUT",
+      },
+    },
+    "College of Computing and Communication Studies": {
+      code: "COCCS",
+      departments: {
+        "Computer Science": "CSC",
+        "Mass Communication": "MAS",
+        "Communication Arts": "CMA",
+        "Cyber Security": "CYB",
+        "Software Engineering": "SEN",
+        "Information Technology": "IFT",
+      },
+    },
+    "College of Environmental Sciences": {
+      code: "COEVS",
+      departments: {
+        "Architecture": "ARC",
+      },
+    },
+  },
+
+  // Legacy format for backward compatibility (if needed)
   colleges: [
     "College of Agriculture, Engineering and Science",
     "College of Management and Social Sciences",
@@ -8,70 +90,6 @@ module.exports = {
     "College of Computing and Communication Studies",
     "College of Environmental Sciences",
   ],
-
-  departments: {
-    "College of Agriculture, Engineering and Science": [
-      "Agricultural Economics",
-      "Animal Production and Health",
-      "Crop Production and Soil Science",
-      "Chemical Engineering",
-      "Civil Engineering",
-      "Electrical and Electronics Engineering",
-      "Mechanical Engineering",
-      "Petroleum Engineering",
-      "Biochemistry",
-      "Chemistry",
-      "Industrial Chemistry",
-      "Computer Science",
-      "Mathematics",
-      "Microbiology",
-      "Physics with Electronics",
-    ],
-    "College of Management and Social Sciences": [
-      "Accounting",
-      "Business Administration",
-      "Economics",
-      "Banking and Finance",
-      "Entrepreneurship",
-      "Mass Communication",
-      "Political Science",
-      "International Relations",
-      "Sociology",
-      "Psychology",
-    ],
-    "College of Law": ["Common and Islamic Law"],
-    "College of Liberal Studies": [
-      "English Language",
-      "French",
-      "History and International Studies",
-      "Christian Religious Studies",
-      "Islamic Studies",
-      "Music",
-    ],
-    "College of Health Sciences": [
-      "Medicine and Surgery",
-      "Nursing Science",
-      "Public Health",
-      "Physiology",
-      "Anatomy",
-      "Pharmacology",
-    ],
-    "College of Computing and Communication Studies": [
-      "Computer Science",
-      "Software Engineering",
-      "Cyber Security",
-      "Information Technology",
-      "Data Science",
-      "Mass Communication",
-    ],
-    "College of Environmental Sciences": [
-      "Architecture",
-      "Estate Management",
-      "Quantity Surveying",
-      "Building Technology",
-      "Urban and Regional Planning",
-    ],
-  },
 
   levels: ["100", "200", "300", "400", "500", "600"],
 
