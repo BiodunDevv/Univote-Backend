@@ -81,4 +81,24 @@ router.post(
  */
 router.get("/me", authenticateStudent, authController.getProfile);
 
+/**
+ * @route   PATCH /api/auth/update-password
+ * @desc    Update password for logged-in students
+ * @access  Private (Student)
+ */
+router.patch(
+  "/update-password",
+  authenticateStudent,
+  authLimiter,
+  [
+    body("old_password").notEmpty().withMessage("Current password is required"),
+    body("new_password")
+      .isLength({ min: 6 })
+      .withMessage("New password must be at least 6 characters long"),
+    validate,
+  ],
+  auditLogger("update_password", "auth"),
+  authController.updatePassword
+);
+
 module.exports = router;

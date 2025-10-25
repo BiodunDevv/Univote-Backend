@@ -217,6 +217,49 @@
           "response": []
         },
         {
+          "name": "Update Password (Logged-in Student)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('student_token', jsonData.token);",
+                  "    pm.environment.set('student_token', jsonData.token);",
+                  "    console.log('Password updated! New token saved.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{student_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"old_password\": \"mySecurePassword123\",\n  \"new_password\": \"myNewSecurePassword456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/update-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "update-password"]
+            },
+            "description": "Update password for logged-in students. Requires current password and new password. Returns new token that invalidates all previous sessions."
+          },
+          "response": []
+        },
+        {
           "name": "Student Logout",
           "request": {
             "method": "POST",

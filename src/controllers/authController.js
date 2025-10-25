@@ -255,6 +255,84 @@ class AuthController {
       res.status(500).json({ error: "Failed to get profile" });
     }
   }
+
+  /**
+   * Update password (for logged-in students)
+   * PATCH /api/auth/update-password
+   */
+  async updatePassword(req, res) {
+    try {
+      const { old_password, new_password } = req.body;
+
+      // Validate input
+      if (!old_password || !new_password) {
+        return res.status(400).json({
+          error: "Both old password and new password are required",
+        });
+      }
+
+      if (new_password.length < 6) {
+        return res.status(400).json({
+          error: "New password must be at least 6 characters long",
+        });
+      }
+
+      // Get student
+      const student = await Student.findById(req.studentId);
+
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      // Verify old password
+      const isOldPasswordValid = await bcrypt.compare(
+        old_password,
+        student.password_hash
+      );
+
+      if (!isOldPasswordValid) {
+        return res.status(401).json({
+          error: "Current password is incorrect",
+        });
+      }
+
+      // Check if new password is same as old password
+      const isSamePassword = await bcrypt.compare(
+        new_password,
+        student.password_hash
+      );
+
+      if (isSamePassword) {
+        return res.status(400).json({
+          error: "New password cannot be the same as current password",
+        });
+      }
+
+      // Hash new password
+      const salt = await bcrypt.genSalt(
+        parseInt(process.env.BCRYPT_ROUNDS || 10)
+      );
+      const hashedPassword = await bcrypt.hash(new_password, salt);
+
+      // Update password
+      student.password_hash = hashedPassword;
+      await student.save();
+
+      // Generate new token (invalidates old sessions)
+      const newToken = generateStudentToken(student);
+      student.active_token = newToken;
+      student.is_logged_in = true;
+      await student.save();
+
+      res.json({
+        message: "Password updated successfully",
+        token: newToken,
+      });
+    } catch (error) {
+      console.error("Update password error:", error);
+      res.status(500).json({ error: "Failed to update password" });
+    }
+  }
 }
 
 module.exports = new AuthController();
