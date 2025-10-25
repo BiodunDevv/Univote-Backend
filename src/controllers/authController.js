@@ -314,19 +314,13 @@ class AuthController {
       );
       const hashedPassword = await bcrypt.hash(new_password, salt);
 
-      // Update password
+      // Update password (keep the same token to avoid logging out the user)
       student.password_hash = hashedPassword;
-      await student.save();
-
-      // Generate new token (invalidates old sessions)
-      const newToken = generateStudentToken(student);
-      student.active_token = newToken;
-      student.is_logged_in = true;
       await student.save();
 
       res.json({
         message: "Password updated successfully",
-        token: newToken,
+        // Don't return a new token - user stays logged in with their current session
       });
     } catch (error) {
       console.error("Update password error:", error);

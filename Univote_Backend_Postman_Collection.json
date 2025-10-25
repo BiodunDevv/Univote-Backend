@@ -224,10 +224,7 @@
               "script": {
                 "exec": [
                   "if (pm.response.code === 200) {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.collectionVariables.set('student_token', jsonData.token);",
-                  "    pm.environment.set('student_token', jsonData.token);",
-                  "    console.log('Password updated! New token saved.');",
+                  "    console.log('Password updated! User remains logged in with same token.');",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -255,7 +252,7 @@
               "host": ["{{base_url}}"],
               "path": ["auth", "update-password"]
             },
-            "description": "Update password for logged-in students. Requires current password and new password. Returns new token that invalidates all previous sessions."
+            "description": "Update password for logged-in students. Requires current password and new password. User stays logged in with their current session token."
           },
           "response": []
         },
