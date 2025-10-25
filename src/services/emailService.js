@@ -1,22 +1,15 @@
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 const handlebars = require("handlebars");
 const fs = require("fs").promises;
 const path = require("path");
 
 /**
- * Email Service for sending transactional emails
+ * Email Service for sending transactional emails using Resend
  */
 class EmailService {
   constructor() {
-    this.transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-
-    this.from = process.env.EMAIL_FROM || "Univote <noreply@univote.com>";
+    this.resend = new Resend(process.env.RESEND_API_KEY);
+    this.from = process.env.EMAIL_FROM || "Univote <onboarding@resend.dev>";
     this.templatesDir = path.join(__dirname, "../emails");
   }
 
@@ -51,17 +44,23 @@ class EmailService {
         year: new Date().getFullYear(),
       });
 
-      const mailOptions = {
+      const { data, error } = await this.resend.emails.send({
         from: this.from,
-        to: student.email,
+        to: [student.email],
         subject: "Welcome to Univote - Account Activated! 🎉",
         html,
-      };
+      });
 
-      await this.transporter.sendMail(mailOptions);
-      console.log(`✅ Welcome email sent to ${student.email}`);
+      if (error) {
+        console.error("Resend API error:", error);
+        throw error;
+      }
+
+      console.log(`✅ Welcome email sent to ${student.email} (ID: ${data.id})`);
+      return data;
     } catch (error) {
       console.error("Error sending welcome email:", error);
+      throw error;
     }
   }
 
@@ -80,17 +79,23 @@ class EmailService {
         year: new Date().getFullYear(),
       });
 
-      const mailOptions = {
+      const { data, error } = await this.resend.emails.send({
         from: this.from,
-        to: student.email,
+        to: [student.email],
         subject: "New Device Login Detected - Univote",
         html,
-      };
+      });
 
-      await this.transporter.sendMail(mailOptions);
-      console.log(`✅ New device alert sent to ${student.email}`);
+      if (error) {
+        console.error("Resend API error:", error);
+        throw error;
+      }
+
+      console.log(`✅ New device alert sent to ${student.email} (ID: ${data.id})`);
+      return data;
     } catch (error) {
       console.error("Error sending new device alert:", error);
+      throw error;
     }
   }
 
@@ -113,17 +118,23 @@ class EmailService {
         year: new Date().getFullYear(),
       });
 
-      const mailOptions = {
+      const { data, error } = await this.resend.emails.send({
         from: this.from,
-        to: student.email,
+        to: [student.email],
         subject: `Vote Confirmed - ${session.title}`,
         html,
-      };
+      });
 
-      await this.transporter.sendMail(mailOptions);
-      console.log(`✅ Vote confirmation sent to ${student.email}`);
+      if (error) {
+        console.error("Resend API error:", error);
+        throw error;
+      }
+
+      console.log(`✅ Vote confirmation sent to ${student.email} (ID: ${data.id})`);
+      return data;
     } catch (error) {
       console.error("Error sending vote confirmation:", error);
+      throw error;
     }
   }
 
@@ -142,17 +153,23 @@ class EmailService {
         year: new Date().getFullYear(),
       });
 
-      const mailOptions = {
+      const { data, error } = await this.resend.emails.send({
         from: this.from,
-        to: student.email,
+        to: [student.email],
         subject: `Results Available - ${session.title}`,
         html,
-      };
+      });
 
-      await this.transporter.sendMail(mailOptions);
-      console.log(`✅ Result announcement sent to ${student.email}`);
+      if (error) {
+        console.error("Resend API error:", error);
+        throw error;
+      }
+
+      console.log(`✅ Result announcement sent to ${student.email} (ID: ${data.id})`);
+      return data;
     } catch (error) {
       console.error("Error sending result announcement:", error);
+      throw error;
     }
   }
 
@@ -169,17 +186,23 @@ class EmailService {
         year: new Date().getFullYear(),
       });
 
-      const mailOptions = {
+      const { data, error } = await this.resend.emails.send({
         from: this.from,
-        to: student.email,
+        to: [student.email],
         subject: "Password Reset Request - Univote",
         html,
-      };
+      });
 
-      await this.transporter.sendMail(mailOptions);
-      console.log(`✅ Password reset email sent to ${student.email}`);
+      if (error) {
+        console.error("Resend API error:", error);
+        throw error;
+      }
+
+      console.log(`✅ Password reset email sent to ${student.email} (ID: ${data.id})`);
+      return data;
     } catch (error) {
       console.error("Error sending password reset:", error);
+      throw error;
     }
   }
 }
