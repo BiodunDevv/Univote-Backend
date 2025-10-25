@@ -91,7 +91,9 @@ class EmailService {
         throw error;
       }
 
-      console.log(`✅ New device alert sent to ${student.email} (ID: ${data.id})`);
+      console.log(
+        `✅ New device alert sent to ${student.email} (ID: ${data.id})`
+      );
       return data;
     } catch (error) {
       console.error("Error sending new device alert:", error);
@@ -130,7 +132,9 @@ class EmailService {
         throw error;
       }
 
-      console.log(`✅ Vote confirmation sent to ${student.email} (ID: ${data.id})`);
+      console.log(
+        `✅ Vote confirmation sent to ${student.email} (ID: ${data.id})`
+      );
       return data;
     } catch (error) {
       console.error("Error sending vote confirmation:", error);
@@ -165,7 +169,9 @@ class EmailService {
         throw error;
       }
 
-      console.log(`✅ Result announcement sent to ${student.email} (ID: ${data.id})`);
+      console.log(
+        `✅ Result announcement sent to ${student.email} (ID: ${data.id})`
+      );
       return data;
     } catch (error) {
       console.error("Error sending result announcement:", error);
@@ -198,7 +204,9 @@ class EmailService {
         throw error;
       }
 
-      console.log(`✅ Password reset email sent to ${student.email} (ID: ${data.id})`);
+      console.log(
+        `✅ Password reset email sent to ${student.email} (ID: ${data.id})`
+      );
       return data;
     } catch (error) {
       console.error("Error sending password reset:", error);

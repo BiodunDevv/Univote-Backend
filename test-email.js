@@ -18,19 +18,20 @@ async function testEmail() {
 
   try {
     console.log("📧 Sending test welcome email to:", testStudent.email);
-    
+
     const result = await emailService.sendWelcomeEmail(testStudent);
-    
+
     console.log("\n✅ Email sent successfully!");
     console.log("Email ID:", result.id);
     console.log("\n📬 Check your inbox:", testStudent.email);
-    
   } catch (error) {
     console.error("\n❌ Email failed to send:");
     console.error(error);
-    
+
     if (error.message && error.message.includes("API key")) {
-      console.log("\n⚠️  Make sure your RESEND_API_KEY is set correctly in .env");
+      console.log(
+        "\n⚠️  Make sure your RESEND_API_KEY is set correctly in .env"
+      );
     }
   }
 }
