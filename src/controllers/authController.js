@@ -277,17 +277,26 @@ class AuthController {
         });
       }
 
-      // Get student
-      const student = await Student.findById(req.studentId);
+      // Check if request is from admin or student
+      const isAdmin = req.adminId !== undefined;
+      let user;
 
-      if (!student) {
-        return res.status(404).json({ error: "Student not found" });
+      if (isAdmin) {
+        user = await Admin.findById(req.adminId);
+        if (!user) {
+          return res.status(404).json({ error: "Admin not found" });
+        }
+      } else {
+        user = await Student.findById(req.studentId);
+        if (!user) {
+          return res.status(404).json({ error: "Student not found" });
+        }
       }
 
       // Verify old password
       const isOldPasswordValid = await bcrypt.compare(
         old_password,
-        student.password_hash
+        user.password_hash
       );
 
       if (!isOldPasswordValid) {
@@ -299,7 +308,7 @@ class AuthController {
       // Check if new password is same as old password
       const isSamePassword = await bcrypt.compare(
         new_password,
-        student.password_hash
+        user.password_hash
       );
 
       if (isSamePassword) {
@@ -315,8 +324,8 @@ class AuthController {
       const hashedPassword = await bcrypt.hash(new_password, salt);
 
       // Update password (keep the same token to avoid logging out the user)
-      student.password_hash = hashedPassword;
-      await student.save();
+      user.password_hash = hashedPassword;
+      await user.save();
 
       res.json({
         message: "Password updated successfully",
@@ -325,6 +334,121 @@ class AuthController {
     } catch (error) {
       console.error("Update password error:", error);
       res.status(500).json({ error: "Failed to update password" });
+    }
+  }
+
+  /**
+   * Request admin password reset (forgot password)
+   * POST /api/auth/admin-forgot-password
+   */
+  async adminForgotPassword(req, res) {
+    try {
+      const { email } = req.body;
+
+      // Find admin
+      const admin = await Admin.findOne({ email: email.toLowerCase() });
+
+      // Always return success to prevent email enumeration
+      if (!admin || !admin.is_active) {
+        return res.json({
+          message:
+            "If an admin account exists with this email, a reset code has been sent.",
+        });
+      }
+
+      // Generate 6-digit code
+      const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+      // Hash the code before storing
+      const salt = await bcrypt.genSalt(10);
+      const hashedCode = await bcrypt.hash(resetCode, salt);
+
+      // Save reset code with 1 hour expiry
+      admin.reset_password_code = hashedCode;
+      admin.reset_password_expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await admin.save();
+
+      // Send email with reset code
+      await emailService.sendAdminPasswordReset(admin, resetCode);
+
+      res.json({
+        message:
+          "If an admin account exists with this email, a reset code has been sent.",
+      });
+    } catch (error) {
+      console.error("Admin forgot password error:", error);
+      res.status(500).json({ error: "Failed to process request" });
+    }
+  }
+
+  /**
+   * Reset admin password using code
+   * POST /api/auth/admin-reset-password
+   */
+  async adminResetPassword(req, res) {
+    try {
+      const { email, reset_code, new_password } = req.body;
+
+      // Validate input
+      if (!email || !reset_code || !new_password) {
+        return res.status(400).json({
+          error: "Email, reset code, and new password are required",
+        });
+      }
+
+      if (new_password.length < 8) {
+        return res.status(400).json({
+          error: "New password must be at least 8 characters long",
+        });
+      }
+
+      // Find admin
+      const admin = await Admin.findOne({ email: email.toLowerCase() });
+
+      if (!admin || !admin.is_active) {
+        return res.status(400).json({ error: "Invalid reset code or email" });
+      }
+
+      // Check if reset code exists and hasn't expired
+      if (!admin.reset_password_code || !admin.reset_password_expires) {
+        return res.status(400).json({ error: "Invalid reset code or email" });
+      }
+
+      if (new Date() > admin.reset_password_expires) {
+        return res.status(400).json({
+          error: "Reset code has expired. Please request a new one.",
+        });
+      }
+
+      // Verify reset code
+      const isCodeValid = await bcrypt.compare(
+        reset_code,
+        admin.reset_password_code
+      );
+
+      if (!isCodeValid) {
+        return res.status(400).json({ error: "Invalid reset code or email" });
+      }
+
+      // Hash new password
+      const salt = await bcrypt.genSalt(
+        parseInt(process.env.BCRYPT_ROUNDS || 10)
+      );
+      const hashedPassword = await bcrypt.hash(new_password, salt);
+
+      // Update password and clear reset fields
+      admin.password_hash = hashedPassword;
+      admin.reset_password_code = null;
+      admin.reset_password_expires = null;
+      await admin.save();
+
+      res.json({
+        message:
+          "Password reset successfully. You can now login with your new password.",
+      });
+    } catch (error) {
+      console.error("Admin reset password error:", error);
+      res.status(500).json({ error: "Failed to reset password" });
     }
   }
 }

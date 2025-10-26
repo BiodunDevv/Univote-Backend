@@ -1,0 +1,525 @@
+{
+  "info": {
+    "name": "Univote Admin API - Complete Collection",
+    "description": "Complete API collection for Univote Admin and Super Admin features",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Admin Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('adminToken', response.token);",
+                  "    pm.collectionVariables.set('adminId', response.admin.id);",
+                  "    console.log('Token saved:', response.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"louisdiaz43@gmail.com\",\n  \"password\": \"balikiss12\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "login"]
+            },
+            "description": "Login as admin or super admin. Returns JWT token and admin details."
+          },
+          "response": []
+        },
+        {
+          "name": "Admin Forgot Password",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"louisdiaz43@gmail.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/forgot-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "forgot-password"]
+            },
+            "description": "Send password reset code to admin email."
+          },
+          "response": []
+        },
+        {
+          "name": "Admin Reset Password",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"louisdiaz43@gmail.com\",\n  \"reset_code\": \"123456\",\n  \"new_password\": \"newPassword123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "reset-password"]
+            },
+            "description": "Reset password using email and reset code."
+          },
+          "response": []
+        },
+        {
+          "name": "Admin Update Password",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"balikiss12\",\n  \"new_password\": \"newPassword456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/update-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "update-password"]
+            },
+            "description": "Update password for authenticated admin. Requires current password."
+          },
+          "response": []
+        }
+      ],
+      "description": "Admin authentication endpoints"
+    },
+    {
+      "name": "Student Management",
+      "item": [
+        {
+          "name": "Upload Students (CSV)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"csv_data\": [\n    {\n      \"student_id\": \"2023001\",\n      \"email\": \"john.doe@student.edu\",\n      \"full_name\": \"John Doe\",\n      \"department\": \"Computer Science\"\n    },\n    {\n      \"student_id\": \"2023002\",\n      \"email\": \"jane.smith@student.edu\",\n      \"full_name\": \"Jane Smith\",\n      \"department\": \"Engineering\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/upload-students",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "upload-students"]
+            },
+            "description": "Upload multiple students via CSV data. Admin and Super Admin access."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Students",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/students?page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "students"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "department",
+                  "value": "Computer Science",
+                  "description": "Filter by department",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "John",
+                  "description": "Search by name or email",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all students with pagination and filters."
+          },
+          "response": []
+        }
+      ],
+      "description": "Student management endpoints"
+    },
+    {
+      "name": "Voting Session Management",
+      "item": [
+        {
+          "name": "Create Voting Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('sessionId', response.session.id);",
+                  "    console.log('Session ID saved:', response.session.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"2024 Student Union Election\",\n  \"description\": \"Annual election for student union representatives\",\n  \"start_time\": \"2024-12-20T09:00:00Z\",\n  \"end_time\": \"2024-12-20T17:00:00Z\",\n  \"location\": {\n    \"name\": \"Main Campus Hall\",\n    \"address\": \"123 University Ave\",\n    \"coordinates\": {\n      \"latitude\": 40.7128,\n      \"longitude\": -74.0060\n    }\n  },\n  \"categories\": [\n    {\n      \"name\": \"President\",\n      \"description\": \"Student Union President\",\n      \"max_votes\": 1\n    },\n    {\n      \"name\": \"Vice President\",\n      \"description\": \"Student Union Vice President\",\n      \"max_votes\": 1\n    }\n  ],\n  \"is_geofenced\": true,\n  \"geofence_radius\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/create-session",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "create-session"]
+            },
+            "description": "Create a new voting session with categories and location."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Voting Session",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Election Title\",\n  \"end_time\": \"2024-12-20T18:00:00Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/update-session/{{sessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "update-session", "{{sessionId}}"]
+            },
+            "description": "Update an existing voting session."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Voting Session",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/delete-session/{{sessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "delete-session", "{{sessionId}}"]
+            },
+            "description": "Delete a voting session."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Sessions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/sessions?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "sessions"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "description": "Filter by status: scheduled, active, completed, cancelled",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all voting sessions with pagination and filters."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Session Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/session-stats/{{sessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "session-stats", "{{sessionId}}"]
+            },
+            "description": "Get detailed statistics for a specific voting session."
+          },
+          "response": []
+        }
+      ],
+      "description": "Voting session management endpoints"
+    },
+    {
+      "name": "Admin Management (Super Admin Only)",
+      "item": [
+        {
+          "name": "Create Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    console.log('New Admin ID:', response.admin.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newadmin@univote.com\",\n  \"password\": \"securePassword123\",\n  \"full_name\": \"New Admin Name\",\n  \"role\": \"admin\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/create-admin",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "create-admin"]
+            },
+            "description": "Create a new admin or super admin. Only accessible by super admin."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Admins",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "admins"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "role",
+                  "value": "admin",
+                  "description": "Filter by role: admin or super_admin",
+                  "disabled": true
+                },
+                {
+                  "key": "is_active",
+                  "value": "true",
+                  "description": "Filter by active status: true or false",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all admins with pagination and filters. Super admin only."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Admin By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins/{{adminId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "admins", "{{adminId}}"]
+            },
+            "description": "Get details of a specific admin. Super admin only."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Admin",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Updated Admin Name\",\n  \"role\": \"super_admin\",\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins/{{adminId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "admins", "{{adminId}}"]
+            },
+            "description": "Update admin details (name, role, active status). Super admin only. Cannot deactivate own account."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Admin (Soft Delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins/{{adminId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "admins", "{{adminId}}"]
+            },
+            "description": "Deactivate an admin (soft delete). Super admin only. Cannot delete own account."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Admin (Permanent)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins/{{adminId}}?permanent=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "admins", "{{adminId}}"],
+              "query": [
+                {
+                  "key": "permanent",
+                  "value": "true",
+                  "description": "Permanently delete admin"
+                }
+              ]
+            },
+            "description": "Permanently delete an admin from database. Super admin only. Cannot delete own account."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Admin Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admin-stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "admin-stats"]
+            },
+            "description": "Get admin statistics including total, active, inactive counts and recent logins. Super admin only."
+          },
+          "response": []
+        }
+      ],
+      "description": "Admin management endpoints - Super Admin access only"
+    }
+  ]
+}

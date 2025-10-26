@@ -1,12 +1,9 @@
 const bcrypt = require("bcryptjs");
-const csv = require("csv-parser");
-const { Readable } = require("stream");
 const Student = require("../models/Student");
 const Admin = require("../models/Admin");
 const VotingSession = require("../models/VotingSession");
 const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
-const emailService = require("../services/emailService");
 const azureService = require("../services/azureService");
 const constants = require("../config/constants");
 const mongoose = require("mongoose");
@@ -15,21 +12,52 @@ class AdminController {
   /**
    * Upload students from CSV
    * POST /api/admin/upload-students
+   * Can be targeted to specific college/department/level or general upload
    */
   async uploadStudents(req, res) {
     try {
-      const { csv_data } = req.body; // Array of student objects from frontend
+      const { csv_data, target_college, target_department, target_level } =
+        req.body;
 
       if (!csv_data || !Array.isArray(csv_data)) {
         return res.status(400).json({ error: "Invalid CSV data format" });
       }
 
+      // Validate target college and department if specified
+      if (target_college || target_department) {
+        const College = require("../models/College");
+
+        if (target_college) {
+          const collegeDoc = await College.findOne({ name: target_college });
+          if (!collegeDoc) {
+            return res.status(400).json({
+              error: `College '${target_college}' not found`,
+            });
+          }
+
+          if (target_department) {
+            const deptExists = collegeDoc.departments.some(
+              (d) => d.name === target_department
+            );
+            if (!deptExists) {
+              return res.status(400).json({
+                error: `Department '${target_department}' does not exist in ${target_college}`,
+              });
+            }
+          }
+        }
+      }
+
       const results = {
         total: csv_data.length,
         created: 0,
-        updated: 0,
         failed: 0,
         errors: [],
+        target: {
+          college: target_college || "all",
+          department: target_department || "all",
+          level: target_level || "all",
+        },
       };
 
       // Hash default password once
@@ -43,8 +71,13 @@ class AdminController {
 
       for (const row of csv_data) {
         try {
-          const { matric_no, full_name, email, department, college, level } =
-            row;
+          // Use target values if not provided in CSV
+          const matric_no = row.matric_no;
+          const full_name = row.full_name;
+          const email = row.email;
+          const department = row.department || target_department;
+          const college = row.college || target_college;
+          const level = row.level || target_level;
 
           // Validate required fields
           if (
@@ -58,54 +91,138 @@ class AdminController {
             results.failed++;
             results.errors.push({
               matric_no: matric_no || "unknown",
-              error: "Missing required fields",
+              full_name: full_name || "unknown",
+              error:
+                "Missing required fields (matric_no, full_name, email, department, college, level)",
             });
             continue;
           }
 
-          // Check if student exists
+          // Validate college and department exist
+          const College = require("../models/College");
+          const collegeDoc = await College.findOne({ name: college });
+
+          if (!collegeDoc) {
+            results.failed++;
+            results.errors.push({
+              matric_no,
+              full_name,
+              error: `College '${college}' not found`,
+            });
+            continue;
+          }
+
+          const deptDoc = collegeDoc.departments.find(
+            (d) => d.name === department
+          );
+          if (!deptDoc) {
+            results.failed++;
+            results.errors.push({
+              matric_no,
+              full_name,
+              error: `Department '${department}' does not exist in ${college}`,
+            });
+            continue;
+          }
+
+          // Validate level format first
+          if (!["100", "200", "300", "400", "500", "600"].includes(level)) {
+            results.failed++;
+            results.errors.push({
+              matric_no,
+              full_name,
+              error: `Invalid level '${level}'. Must be one of: 100, 200, 300, 400, 500, 600`,
+            });
+            continue;
+          }
+
+          // Check if department has available levels configured
+          if (
+            !deptDoc.available_levels ||
+            deptDoc.available_levels.length === 0
+          ) {
+            results.failed++;
+            results.errors.push({
+              matric_no,
+              full_name,
+              error: `Department '${department}' in ${college} does not have available levels configured`,
+            });
+            continue;
+          }
+
+          // Debug: Log what we're checking
+          console.log(`Checking level ${level} for ${department}:`, {
+            availableLevels: deptDoc.available_levels,
+            includes: deptDoc.available_levels.includes(level),
+            levelType: typeof level,
+            availableTypes: deptDoc.available_levels.map((l) => typeof l),
+          });
+
+          // Validate level is within department's available levels
+          // Convert both to strings for comparison to avoid type mismatch
+          if (
+            !deptDoc.available_levels
+              .map((l) => String(l))
+              .includes(String(level))
+          ) {
+            const availableLevels = deptDoc.available_levels.sort(
+              (a, b) => parseInt(a) - parseInt(b)
+            );
+            const minLevel = availableLevels[0];
+            const maxLevel = availableLevels[availableLevels.length - 1];
+            results.failed++;
+            results.errors.push({
+              matric_no,
+              full_name,
+              error: `Level ${level} is NOT available in ${department} (${college}). Available levels: ${availableLevels.join(
+                ", "
+              )}. Highest level: ${maxLevel}`,
+            });
+            continue;
+          }
+
+          // Check if student already exists (by matric_no, email, or both)
           const existingStudent = await Student.findOne({
-            matric_no: matric_no.toUpperCase(),
+            $or: [
+              { matric_no: matric_no.toUpperCase() },
+              { email: email.toLowerCase() },
+            ],
           });
 
           if (existingStudent) {
-            // Update existing student
-            existingStudent.full_name = full_name;
-            existingStudent.email = email.toLowerCase();
-            existingStudent.department = department;
-            existingStudent.college = college;
-            existingStudent.level = level;
-            await existingStudent.save();
-            results.updated++;
-          } else {
-            // Create new student
-            const student = new Student({
-              matric_no: matric_no.toUpperCase(),
+            // Student already exists - return error with full details
+            results.failed++;
+            results.errors.push({
+              matric_no,
               full_name,
-              email: email.toLowerCase(),
-              password_hash: defaultPasswordHash,
-              department,
-              college,
-              level,
-              first_login: true,
+              error: `Student already exists: ${existingStudent.full_name} (${existingStudent.matric_no}) in ${existingStudent.department}, ${existingStudent.college}, Level ${existingStudent.level}. Cannot upload duplicate student.`,
             });
-
-            await student.save();
-            results.created++;
-
-            // Send welcome email asynchronously
-            emailService.sendWelcomeEmail(student).catch((err) => {
-              console.error(
-                `Failed to send welcome email to ${student.email}:`,
-                err
-              );
-            });
+            continue;
           }
+
+          // Create new student (only if not exists)
+          const student = new Student({
+            matric_no: matric_no.toUpperCase(),
+            full_name,
+            email: email.toLowerCase(),
+            password_hash: defaultPasswordHash,
+            department,
+            department_code: deptDoc.code,
+            college,
+            level,
+            first_login: true,
+          });
+
+          await student.save();
+          results.created++;
+
+          // Welcome email will be sent after first login and password change
         } catch (error) {
           console.error("Error processing student:", error);
           results.failed++;
           results.errors.push({
             matric_no: row.matric_no || "unknown",
+            full_name: row.full_name || "unknown",
             error: error.message,
           });
         }
@@ -146,9 +263,21 @@ class AdminController {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      // Create PersonGroup for this session
+      // Create PersonGroup for this session (optional - skip if not approved)
       const personGroupId = `session_${Date.now()}`;
-      await azureService.createPersonGroup(personGroupId, `Session: ${title}`);
+      try {
+        await azureService.createPersonGroup(
+          personGroupId,
+          `Session: ${title}`
+        );
+        console.log(`PersonGroup created: ${personGroupId}`);
+      } catch (azureError) {
+        console.warn(
+          "PersonGroup creation skipped (Feature not approved):",
+          azureError.message
+        );
+        // Continue without PersonGroup - facial recognition won't be available but session can still be created
+      }
 
       // Create session
       const session = new VotingSession({
@@ -301,6 +430,110 @@ class AdminController {
   }
 
   /**
+   * Update a candidate
+   * PATCH /api/admin/candidates/:id
+   */
+  async updateCandidate(req, res) {
+    try {
+      const { id } = req.params;
+      const { name, position, photo_url, bio, manifesto } = req.body;
+
+      const candidate = await Candidate.findById(id);
+
+      if (!candidate) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      // Update fields
+      if (name !== undefined) candidate.name = name;
+      if (position !== undefined) candidate.position = position;
+      if (photo_url !== undefined) candidate.photo_url = photo_url;
+      if (bio !== undefined) candidate.bio = bio;
+      if (manifesto !== undefined) candidate.manifesto = manifesto;
+
+      await candidate.save();
+
+      res.json({
+        message: "Candidate updated successfully",
+        candidate: {
+          id: candidate._id,
+          name: candidate.name,
+          position: candidate.position,
+          photo_url: candidate.photo_url,
+          bio: candidate.bio,
+          manifesto: candidate.manifesto,
+          vote_count: candidate.vote_count,
+          session_id: candidate.session_id,
+        },
+      });
+    } catch (error) {
+      console.error("Update candidate error:", error);
+      res.status(500).json({ error: "Failed to update candidate" });
+    }
+  }
+
+  /**
+   * Delete a candidate
+   * DELETE /api/admin/candidates/:id
+   */
+  async deleteCandidate(req, res) {
+    try {
+      const { id } = req.params;
+
+      const candidate = await Candidate.findById(id);
+
+      if (!candidate) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      const sessionId = candidate.session_id;
+
+      // Delete the candidate
+      await Candidate.findByIdAndDelete(id);
+
+      // Remove candidate reference from session
+      await VotingSession.findByIdAndUpdate(sessionId, {
+        $pull: { candidates: id },
+      });
+
+      res.json({
+        message: "Candidate deleted successfully",
+        deleted_candidate: {
+          id: candidate._id,
+          name: candidate.name,
+          position: candidate.position,
+        },
+      });
+    } catch (error) {
+      console.error("Delete candidate error:", error);
+      res.status(500).json({ error: "Failed to delete candidate" });
+    }
+  }
+
+  /**
+   * Get candidate by ID
+   * GET /api/admin/candidates/:id
+   */
+  async getCandidateById(req, res) {
+    try {
+      const { id } = req.params;
+
+      const candidate = await Candidate.findById(id)
+        .populate("session_id", "title start_time end_time status")
+        .lean();
+
+      if (!candidate) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      res.json({ candidate });
+    } catch (error) {
+      console.error("Get candidate by ID error:", error);
+      res.status(500).json({ error: "Failed to get candidate" });
+    }
+  }
+
+  /**
    * Remove students by department (single or bulk)
    * DELETE /api/admin/remove-department
    */
@@ -436,30 +669,527 @@ class AdminController {
    */
   async getStudents(req, res) {
     try {
-      const { college, department, level, page = 1, limit = 50 } = req.query;
+      const {
+        college,
+        department,
+        level,
+        search,
+        page = 1,
+        limit = 50,
+      } = req.query;
 
       const filter = {};
+
+      // College filter is now required or can be omitted for all
       if (college) filter.college = college;
       if (department) filter.department = department;
       if (level) filter.level = level;
 
-      const students = await Student.find(filter)
-        .select("-password_hash -active_token")
-        .limit(limit * 1)
-        .skip((page - 1) * limit)
-        .sort({ matric_no: 1 });
+      // Search by name, email, or matric number using text index
+      if (search) {
+        filter.$text = { $search: search };
+      }
 
-      const count = await Student.countDocuments(filter);
+      const [students, count] = await Promise.all([
+        Student.find(filter)
+          .select("-password_hash -active_token")
+          .limit(limit * 1)
+          .skip((page - 1) * limit)
+          .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
+          .lean(),
+        Student.countDocuments(filter),
+      ]);
 
       res.json({
         students,
         total: count,
         page: parseInt(page),
         pages: Math.ceil(count / limit),
+        filter: {
+          college: college || "all",
+          department: department || "all",
+          level: level || "all",
+        },
       });
     } catch (error) {
       console.error("Get students error:", error);
       res.status(500).json({ error: "Failed to get students" });
+    }
+  }
+
+  /**
+   * Get students by college
+   * GET /api/admin/colleges/:collegeId/students
+   */
+  async getStudentsByCollege(req, res) {
+    try {
+      const { collegeId } = req.params;
+      const { department, level, search, page = 1, limit = 50 } = req.query;
+
+      // First, get the college to get its name
+      const College = require("../models/College");
+      const college = await College.findById(collegeId).lean();
+
+      if (!college) {
+        return res.status(404).json({ error: "College not found" });
+      }
+
+      const filter = { college: college.name };
+
+      if (department) filter.department = department;
+      if (level) filter.level = level;
+
+      // Search using text index
+      if (search) {
+        filter.$text = { $search: search };
+      }
+
+      const [students, total, departmentBreakdown] = await Promise.all([
+        Student.find(filter)
+          .select("-password_hash -active_token")
+          .limit(limit * 1)
+          .skip((page - 1) * limit)
+          .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
+          .lean(),
+        Student.countDocuments(filter),
+        Student.aggregate([
+          { $match: { college: college.name } },
+          {
+            $group: {
+              _id: "$department",
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { count: -1 } },
+        ]),
+      ]);
+
+      res.json({
+        college: {
+          id: college._id,
+          name: college.name,
+          code: college.code,
+        },
+        students,
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / limit),
+        department_breakdown: departmentBreakdown.map((d) => ({
+          department: d._id,
+          count: d.count,
+        })),
+      });
+    } catch (error) {
+      console.error("Get students by college error:", error);
+      res.status(500).json({ error: "Failed to get students" });
+    }
+  }
+
+  /**
+   * Get students by department
+   * GET /api/admin/colleges/:collegeId/departments/:departmentId/students
+   */
+  async getStudentsByDepartment(req, res) {
+    try {
+      const { collegeId, departmentId } = req.params;
+      const { level, search, page = 1, limit = 50 } = req.query;
+
+      // Get college and department
+      const College = require("../models/College");
+      const college = await College.findById(collegeId).lean();
+
+      if (!college) {
+        return res.status(404).json({ error: "College not found" });
+      }
+
+      const department = college.departments.find(
+        (d) => d._id.toString() === departmentId
+      );
+
+      if (!department) {
+        return res.status(404).json({ error: "Department not found" });
+      }
+
+      const filter = {
+        college: college.name,
+        department: department.name,
+      };
+
+      if (level) filter.level = level;
+
+      // Search using text index
+      if (search) {
+        filter.$text = { $search: search };
+      }
+
+      const [students, total, levelBreakdown] = await Promise.all([
+        Student.find(filter)
+          .select("-password_hash -active_token")
+          .limit(limit * 1)
+          .skip((page - 1) * limit)
+          .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
+          .lean(),
+        Student.countDocuments(filter),
+        Student.aggregate([
+          {
+            $match: {
+              college: college.name,
+              department: department.name,
+            },
+          },
+          {
+            $group: {
+              _id: "$level",
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: 1 } },
+        ]),
+      ]);
+
+      res.json({
+        college: {
+          id: college._id,
+          name: college.name,
+          code: college.code,
+        },
+        department: {
+          id: department._id,
+          name: department.name,
+          code: department.code,
+        },
+        students,
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / limit),
+        level_breakdown: levelBreakdown.map((l) => ({
+          level: l._id,
+          count: l.count,
+        })),
+      });
+    } catch (error) {
+      console.error("Get students by department error:", error);
+      res.status(500).json({ error: "Failed to get students" });
+    }
+  }
+
+  /**
+   * Get single student by ID
+   * GET /api/admin/students/:id
+   */
+  async getStudentById(req, res) {
+    try {
+      const { id } = req.params;
+
+      const student = await Student.findById(id)
+        .select("-password_hash -active_token")
+        .lean();
+
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      // Get voting history
+      const votes = await Vote.find({ student_id: id })
+        .populate("session_id", "title start_time end_time")
+        .select("session_id voted_at status")
+        .lean();
+
+      res.json({
+        student,
+        voting_history: votes,
+      });
+    } catch (error) {
+      console.error("Get student by ID error:", error);
+      res.status(500).json({ error: "Failed to get student" });
+    }
+  }
+
+  /**
+   * Update student
+   * PATCH /api/admin/students/:id
+   */
+  async updateStudent(req, res) {
+    try {
+      const { id } = req.params;
+      const { full_name, email, department, college, level, is_active } =
+        req.body;
+
+      const student = await Student.findById(id);
+
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      // Validate college and department if changing
+      if (college || department || level) {
+        const College = require("../models/College");
+        const collegeDoc = await College.findOne({
+          name: college || student.college,
+        });
+
+        if (!collegeDoc) {
+          return res.status(400).json({ error: "Invalid college" });
+        }
+
+        const targetDepartment = department || student.department;
+        const deptDoc = collegeDoc.departments.find(
+          (d) => d.name === targetDepartment
+        );
+
+        if (!deptDoc) {
+          return res.status(400).json({
+            error: `Department '${targetDepartment}' does not exist in ${collegeDoc.name}`,
+          });
+        }
+
+        // Validate level is within department's available levels
+        if (level) {
+          if (
+            !deptDoc.available_levels ||
+            deptDoc.available_levels.length === 0
+          ) {
+            return res.status(400).json({
+              error: `Department '${targetDepartment}' does not have available levels configured`,
+            });
+          }
+
+          if (!deptDoc.available_levels.includes(level)) {
+            const minLevel = Math.min(
+              ...deptDoc.available_levels.map((l) => parseInt(l))
+            );
+            const maxLevel = Math.max(
+              ...deptDoc.available_levels.map((l) => parseInt(l))
+            );
+            return res.status(400).json({
+              error: `Level ${level} is not offered by ${targetDepartment}. Available levels: ${deptDoc.available_levels.join(
+                ", "
+              )} (${minLevel}-${maxLevel})`,
+            });
+          }
+        }
+      }
+
+      // Update fields
+      if (full_name !== undefined) student.full_name = full_name;
+      if (email !== undefined) student.email = email.toLowerCase();
+      if (department !== undefined) {
+        student.department = department;
+        // If department is changing, get the department code
+        if (college || department) {
+          const College = require("../models/College");
+          const collegeDoc = await College.findOne({
+            name: college || student.college,
+          });
+          const deptDoc = collegeDoc.departments.find(
+            (d) => d.name === department
+          );
+          if (deptDoc) {
+            student.department_code = deptDoc.code;
+          }
+        }
+      }
+      if (college !== undefined) student.college = college;
+      if (level !== undefined) student.level = level;
+      if (is_active !== undefined) student.is_active = is_active;
+
+      await student.save();
+
+      res.json({
+        message: "Student updated successfully",
+        student: {
+          id: student._id,
+          matric_no: student.matric_no,
+          full_name: student.full_name,
+          email: student.email,
+          college: student.college,
+          department: student.department,
+          level: student.level,
+          is_active: student.is_active,
+        },
+      });
+    } catch (error) {
+      console.error("Update student error:", error);
+      res.status(500).json({ error: "Failed to update student" });
+    }
+  }
+
+  /**
+   * Delete student
+   * DELETE /api/admin/students/:id
+   * Default: Permanent deletion (removes from database and all votes)
+   * Use ?soft=true for soft delete (deactivate only)
+   */
+  async deleteStudent(req, res) {
+    try {
+      const { id } = req.params;
+      const { soft = "false" } = req.query;
+
+      const student = await Student.findById(id);
+
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      if (soft === "true") {
+        // Soft delete (deactivate)
+        student.is_active = false;
+        await student.save();
+
+        res.json({
+          message: "Student deactivated successfully",
+          student: {
+            id: student._id,
+            matric_no: student.matric_no,
+            is_active: false,
+          },
+        });
+      } else {
+        // Permanent deletion - also delete votes
+        await Vote.deleteMany({ student_id: id });
+        await Student.findByIdAndDelete(id);
+
+        res.json({
+          message: "Student permanently deleted",
+          deleted_student: {
+            id: student._id,
+            matric_no: student.matric_no,
+            name: student.full_name,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Delete student error:", error);
+      res.status(500).json({ error: "Failed to delete student" });
+    }
+  }
+
+  /**
+   * Bulk update students
+   * PATCH /api/admin/students/bulk-update
+   */
+  async bulkUpdateStudents(req, res) {
+    try {
+      const { student_ids, updates } = req.body;
+
+      if (
+        !student_ids ||
+        !Array.isArray(student_ids) ||
+        student_ids.length === 0
+      ) {
+        return res.status(400).json({ error: "student_ids array is required" });
+      }
+
+      if (!updates || Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: "updates object is required" });
+      }
+
+      // Validate allowed fields
+      const allowedFields = ["level", "is_active", "college", "department"];
+      const updateFields = {};
+
+      Object.keys(updates).forEach((key) => {
+        if (allowedFields.includes(key)) {
+          updateFields[key] = updates[key];
+        }
+      });
+
+      if (Object.keys(updateFields).length === 0) {
+        return res.status(400).json({
+          error: "No valid update fields provided",
+          allowed_fields: allowedFields,
+        });
+      }
+
+      const result = await Student.updateMany(
+        { _id: { $in: student_ids } },
+        { $set: updateFields }
+      );
+
+      res.json({
+        message: "Students updated successfully",
+        updated_count: result.modifiedCount,
+        matched_count: result.matchedCount,
+      });
+    } catch (error) {
+      console.error("Bulk update students error:", error);
+      res.status(500).json({ error: "Failed to bulk update students" });
+    }
+  }
+
+  /**
+   * Get student statistics by college
+   * GET /api/admin/colleges/:collegeId/students/statistics
+   */
+  async getStudentStatisticsByCollege(req, res) {
+    try {
+      const { collegeId } = req.params;
+
+      // Get college
+      const College = require("../models/College");
+      const college = await College.findById(collegeId)
+        .select("name code")
+        .lean();
+
+      if (!college) {
+        return res.status(404).json({ error: "College not found" });
+      }
+
+      // Run all queries in parallel for speed
+      const [totalStudents, activeStudents, departmentStats, levelStats] =
+        await Promise.all([
+          Student.countDocuments({ college: college.name }),
+          Student.countDocuments({ college: college.name, is_active: true }),
+          Student.aggregate([
+            { $match: { college: college.name } },
+            {
+              $group: {
+                _id: "$department",
+                total: { $sum: 1 },
+                active: {
+                  $sum: { $cond: [{ $eq: ["$is_active", true] }, 1, 0] },
+                },
+              },
+            },
+            { $sort: { total: -1 } },
+          ]),
+          Student.aggregate([
+            { $match: { college: college.name } },
+            {
+              $group: {
+                _id: "$level",
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { _id: 1 } },
+          ]),
+        ]);
+
+      res.json({
+        college: {
+          id: college._id,
+          name: college.name,
+          code: college.code,
+        },
+        statistics: {
+          total_students: totalStudents,
+          active_students: activeStudents,
+          inactive_students: totalStudents - activeStudents,
+          departments: departmentStats.map((d) => ({
+            name: d._id,
+            total: d.total,
+            active: d.active,
+            inactive: d.total - d.active,
+          })),
+          levels: levelStats.map((l) => ({
+            level: l._id,
+            count: l.count,
+          })),
+        },
+      });
+    } catch (error) {
+      console.error("Get student statistics by college error:", error);
+      res.status(500).json({ error: "Failed to get statistics" });
     }
   }
 
@@ -470,13 +1200,130 @@ class AdminController {
   async getSessions(req, res) {
     try {
       const sessions = await VotingSession.find({})
-        .populate("candidates")
-        .sort({ createdAt: -1 });
+        .populate("candidates", "name position photo_url vote_count")
+        .sort({ createdAt: -1 })
+        .lean();
 
       res.json({ sessions });
     } catch (error) {
       console.error("Get sessions error:", error);
       res.status(500).json({ error: "Failed to get sessions" });
+    }
+  }
+
+  /**
+   * Get single session by ID
+   * GET /api/admin/sessions/:id
+   */
+  async getSessionById(req, res) {
+    try {
+      const { id } = req.params;
+
+      const session = await VotingSession.findById(id)
+        .populate("candidates", "name position photo_url bio manifesto")
+        .lean();
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Get vote statistics for this session - run in parallel
+      const [
+        totalVotes,
+        duplicateAttempts,
+        rejectedVotes,
+        eligibleStudents,
+        votesByCandidate,
+      ] = await Promise.all([
+        Vote.countDocuments({ session_id: id, status: "valid" }),
+        Vote.countDocuments({ session_id: id, status: "duplicate" }),
+        Vote.countDocuments({ session_id: id, status: "rejected" }),
+        (async () => {
+          const eligibilityFilter = { is_active: true };
+
+          if (session.eligible_college) {
+            eligibilityFilter.college = session.eligible_college;
+          }
+
+          // Convert department IDs to department names
+          if (
+            session.eligible_departments &&
+            session.eligible_departments.length > 0
+          ) {
+            const College = require("../models/College");
+            const colleges = await College.find({})
+              .select("departments")
+              .lean();
+            const departmentNames = [];
+
+            colleges.forEach((college) => {
+              college.departments.forEach((dept) => {
+                if (
+                  session.eligible_departments.includes(dept._id.toString())
+                ) {
+                  departmentNames.push(dept.name);
+                }
+              });
+            });
+
+            if (departmentNames.length > 0) {
+              eligibilityFilter.department = { $in: departmentNames };
+            }
+          }
+
+          if (session.eligible_levels && session.eligible_levels.length > 0) {
+            eligibilityFilter.level = { $in: session.eligible_levels };
+          }
+
+          return await Student.countDocuments(eligibilityFilter);
+        })(),
+        Vote.aggregate([
+          {
+            $match: {
+              session_id: new mongoose.Types.ObjectId(id),
+              status: "valid",
+            },
+          },
+          { $unwind: "$votes" },
+          {
+            $group: {
+              _id: "$votes.candidate_id",
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+      ]);
+
+      // Add vote counts to candidates
+      const candidatesWithVotes = session.candidates.map((candidate) => {
+        const voteData = votesByCandidate.find(
+          (v) => v._id.toString() === candidate._id.toString()
+        );
+        return {
+          ...candidate,
+          vote_count: voteData ? voteData.count : 0,
+        };
+      });
+
+      res.json({
+        session: {
+          ...session,
+          candidates: candidatesWithVotes,
+        },
+        stats: {
+          eligible_students: eligibleStudents,
+          total_votes: totalVotes,
+          duplicate_attempts: duplicateAttempts,
+          rejected_votes: rejectedVotes,
+          turnout_percentage:
+            eligibleStudents > 0
+              ? ((totalVotes / eligibleStudents) * 100).toFixed(2)
+              : 0,
+        },
+      });
+    } catch (error) {
+      console.error("Get session by ID error:", error);
+      res.status(500).json({ error: "Failed to get session" });
     }
   }
 
@@ -488,35 +1335,60 @@ class AdminController {
     try {
       const { id } = req.params;
 
-      const session = await VotingSession.findById(id).populate("candidates");
+      const session = await VotingSession.findById(id)
+        .populate("candidates", "name position photo_url")
+        .lean();
+
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      // Get vote counts
-      const totalVotes = await Vote.countDocuments({
-        session_id: id,
-        status: "valid",
-      });
-      const duplicateAttempts = await Vote.countDocuments({
-        session_id: id,
-        status: "duplicate",
-      });
-      const rejectedVotes = await Vote.countDocuments({
-        session_id: id,
-        status: "rejected",
-      });
+      // Run all stat queries in parallel
+      const [totalVotes, duplicateAttempts, rejectedVotes, eligibleStudents] =
+        await Promise.all([
+          Vote.countDocuments({ session_id: id, status: "valid" }),
+          Vote.countDocuments({ session_id: id, status: "duplicate" }),
+          Vote.countDocuments({ session_id: id, status: "rejected" }),
+          (async () => {
+            const eligibilityFilter = { is_active: true };
 
-      // Get eligible student count
-      const eligibilityFilter = {};
-      if (session.eligible_college)
-        eligibilityFilter.college = session.eligible_college;
-      if (session.eligible_departments)
-        eligibilityFilter.department = { $in: session.eligible_departments };
-      if (session.eligible_levels)
-        eligibilityFilter.level = { $in: session.eligible_levels };
+            if (session.eligible_college) {
+              eligibilityFilter.college = session.eligible_college;
+            }
 
-      const eligibleStudents = await Student.countDocuments(eligibilityFilter);
+            // Convert department IDs to department names
+            if (
+              session.eligible_departments &&
+              session.eligible_departments.length > 0
+            ) {
+              const College = require("../models/College");
+              const colleges = await College.find({})
+                .select("departments")
+                .lean();
+              const departmentNames = [];
+
+              colleges.forEach((college) => {
+                college.departments.forEach((dept) => {
+                  if (
+                    session.eligible_departments.includes(dept._id.toString())
+                  ) {
+                    departmentNames.push(dept.name);
+                  }
+                });
+              });
+
+              if (departmentNames.length > 0) {
+                eligibilityFilter.department = { $in: departmentNames };
+              }
+            }
+
+            if (session.eligible_levels && session.eligible_levels.length > 0) {
+              eligibilityFilter.level = { $in: session.eligible_levels };
+            }
+
+            return await Student.countDocuments(eligibilityFilter);
+          })(),
+        ]);
 
       res.json({
         session: {
@@ -539,6 +1411,193 @@ class AdminController {
     } catch (error) {
       console.error("Get session stats error:", error);
       res.status(500).json({ error: "Failed to get session stats" });
+    }
+  }
+
+  /**
+   * Get all admins (Super Admin only)
+   * GET /api/admin/admins
+   * Excludes the requesting admin from results
+   */
+  async getAllAdmins(req, res) {
+    try {
+      const { page = 1, limit = 20, role, is_active } = req.query;
+
+      const filter = { _id: { $ne: req.adminId } }; // Exclude requesting admin
+      if (role) filter.role = role;
+      if (is_active !== undefined) filter.is_active = is_active === "true";
+
+      const [admins, total] = await Promise.all([
+        Admin.find(filter)
+          .select("-password_hash -reset_password_code")
+          .limit(limit * 1)
+          .skip((page - 1) * limit)
+          .sort({ createdAt: -1 })
+          .lean(),
+        Admin.countDocuments(filter),
+      ]);
+
+      res.json({
+        admins,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(total / limit),
+        },
+      });
+    } catch (error) {
+      console.error("Get all admins error:", error);
+      res.status(500).json({ error: "Failed to fetch admins" });
+    }
+  }
+
+  /**
+   * Get single admin by ID (Super Admin only)
+   * GET /api/admin/admins/:id
+   */
+  async getAdminById(req, res) {
+    try {
+      const { id } = req.params;
+
+      const admin = await Admin.findById(id).select(
+        "-password_hash -reset_password_code"
+      );
+
+      if (!admin) {
+        return res.status(404).json({ error: "Admin not found" });
+      }
+
+      res.json({ admin });
+    } catch (error) {
+      console.error("Get admin by ID error:", error);
+      res.status(500).json({ error: "Failed to fetch admin" });
+    }
+  }
+
+  /**
+   * Update admin (Super Admin only)
+   * PATCH /api/admin/admins/:id
+   */
+  async updateAdmin(req, res) {
+    try {
+      const { id } = req.params;
+      const { full_name, role, is_active } = req.body;
+
+      const admin = await Admin.findById(id);
+
+      if (!admin) {
+        return res.status(404).json({ error: "Admin not found" });
+      }
+
+      // Prevent super admin from deactivating themselves
+      if (req.adminId.toString() === id && is_active === false) {
+        return res
+          .status(400)
+          .json({ error: "Cannot deactivate your own account" });
+      }
+
+      // Update fields
+      if (full_name) admin.full_name = full_name;
+      if (role && ["admin", "super_admin"].includes(role)) admin.role = role;
+      if (is_active !== undefined) admin.is_active = is_active;
+
+      await admin.save();
+
+      res.json({
+        message: "Admin updated successfully",
+        admin: {
+          id: admin._id,
+          email: admin.email,
+          full_name: admin.full_name,
+          role: admin.role,
+          is_active: admin.is_active,
+          updated_at: admin.updatedAt,
+        },
+      });
+    } catch (error) {
+      console.error("Update admin error:", error);
+      res.status(500).json({ error: "Failed to update admin" });
+    }
+  }
+
+  /**
+   * Delete/Deactivate admin (Super Admin only)
+   * DELETE /api/admin/admins/:id
+   */
+  async deleteAdmin(req, res) {
+    try {
+      const { id } = req.params;
+      const { permanent = false } = req.query;
+
+      const admin = await Admin.findById(id);
+
+      if (!admin) {
+        return res.status(404).json({ error: "Admin not found" });
+      }
+
+      // Prevent super admin from deleting themselves
+      if (req.adminId.toString() === id) {
+        return res
+          .status(400)
+          .json({ error: "Cannot delete your own account" });
+      }
+
+      if (permanent === "true") {
+        // Permanent deletion
+        await Admin.findByIdAndDelete(id);
+        res.json({ message: "Admin permanently deleted" });
+      } else {
+        // Soft delete (deactivate)
+        admin.is_active = false;
+        await admin.save();
+        res.json({ message: "Admin deactivated successfully" });
+      }
+    } catch (error) {
+      console.error("Delete admin error:", error);
+      res.status(500).json({ error: "Failed to delete admin" });
+    }
+  }
+
+  /**
+   * Get admin statistics (Super Admin only)
+   * GET /api/admin/admin-stats
+   */
+  async getAdminStats(req, res) {
+    try {
+      const [
+        totalAdmins,
+        activeAdmins,
+        superAdmins,
+        regularAdmins,
+        inactiveAdmins,
+        recentLogins,
+      ] = await Promise.all([
+        Admin.countDocuments(),
+        Admin.countDocuments({ is_active: true }),
+        Admin.countDocuments({ role: "super_admin" }),
+        Admin.countDocuments({ role: "admin" }),
+        Admin.countDocuments({ is_active: false }),
+        Admin.find({ last_login_at: { $ne: null } })
+          .select("email full_name role last_login_at")
+          .sort({ last_login_at: -1 })
+          .limit(10)
+          .lean(),
+      ]);
+
+      res.json({
+        statistics: {
+          total: totalAdmins,
+          active: activeAdmins,
+          inactive: inactiveAdmins,
+          super_admins: superAdmins,
+          regular_admins: regularAdmins,
+        },
+        recent_logins: recentLogins,
+      });
+    } catch (error) {
+      console.error("Get admin stats error:", error);
+      res.status(500).json({ error: "Failed to fetch admin statistics" });
     }
   }
 }

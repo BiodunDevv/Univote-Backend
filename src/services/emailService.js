@@ -182,6 +182,34 @@ class EmailService {
       console.error("Error sending password reset:", error);
     }
   }
+
+  /**
+   * Send admin password reset email with code
+   * @param {Object} admin - Admin object
+   * @param {string} resetCode - 6-digit reset code
+   */
+  async sendAdminPasswordReset(admin, resetCode) {
+    try {
+      const html = await this.compileTemplate("admin_password_reset", {
+        full_name: admin.full_name,
+        reset_code: resetCode,
+        year: new Date().getFullYear(),
+      });
+
+      const mailOptions = {
+        from: this.from,
+        to: admin.email,
+        subject: "🔐 Admin Password Reset Code - Univote",
+        html,
+      };
+
+      await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Admin password reset email sent to ${admin.email}`);
+    } catch (error) {
+      console.error("Error sending admin password reset:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new EmailService();

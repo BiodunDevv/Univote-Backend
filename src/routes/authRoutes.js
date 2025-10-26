@@ -5,6 +5,7 @@ const authController = require("../controllers/authController");
 const {
   authenticateStudent,
   authenticateForPasswordChange,
+  authenticateStudentOrAdmin,
 } = require("../middleware/auth");
 const { authLimiter } = require("../middleware/rateLimiter");
 const validate = require("../middleware/validator");
@@ -83,12 +84,12 @@ router.get("/me", authenticateStudent, authController.getProfile);
 
 /**
  * @route   PATCH /api/auth/update-password
- * @desc    Update password for logged-in students
- * @access  Private (Student)
+ * @desc    Update password for logged-in students or admins
+ * @access  Private (Student or Admin)
  */
 router.patch(
   "/update-password",
-  authenticateStudent,
+  authenticateStudentOrAdmin,
   authLimiter,
   [
     body("old_password").notEmpty().withMessage("Current password is required"),
@@ -99,6 +100,41 @@ router.patch(
   ],
   auditLogger("update_password", "auth"),
   authController.updatePassword
+);
+
+/**
+ * @route   POST /api/auth/admin-forgot-password
+ * @desc    Request admin password reset code
+ * @access  Public
+ */
+router.post(
+  "/admin-forgot-password",
+  authLimiter,
+  [body("email").isEmail().withMessage("Valid email is required"), validate],
+  auditLogger("admin_forgot_password", "auth"),
+  authController.adminForgotPassword
+);
+
+/**
+ * @route   POST /api/auth/admin-reset-password
+ * @desc    Reset admin password using code
+ * @access  Public
+ */
+router.post(
+  "/admin-reset-password",
+  authLimiter,
+  [
+    body("email").isEmail().withMessage("Valid email is required"),
+    body("reset_code")
+      .isLength({ min: 6, max: 6 })
+      .withMessage("Reset code must be 6 digits"),
+    body("new_password")
+      .isLength({ min: 8 })
+      .withMessage("New password must be at least 8 characters long"),
+    validate,
+  ],
+  auditLogger("admin_reset_password", "auth"),
+  authController.adminResetPassword
 );
 
 module.exports = router;

@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const Student = require("../src/models/Student");
 const Admin = require("../src/models/Admin");
+const College = require("../src/models/College");
 const VotingSession = require("../src/models/VotingSession");
 const Candidate = require("../src/models/Candidate");
 const Vote = require("../src/models/Vote");
@@ -88,6 +89,72 @@ const collegesAndDepartments = {
     },
   },
 };
+
+// Academic staff names for Deans and HODs
+const deanNames = [
+  {
+    name: "Prof. Adeyemi Olanrewaju",
+    email: "a.olanrewaju@bowenuniversity.edu.ng",
+  },
+  { name: "Prof. Chioma Nwosu", email: "c.nwosu@bowenuniversity.edu.ng" },
+  {
+    name: "Prof. Ibrahim Suleiman",
+    email: "i.suleiman@bowenuniversity.edu.ng",
+  },
+  { name: "Prof. Grace Adebisi", email: "g.adebisi@bowenuniversity.edu.ng" },
+  { name: "Prof. Oluwaseun Bakare", email: "o.bakare@bowenuniversity.edu.ng" },
+  {
+    name: "Prof. Funmilayo Ogundele",
+    email: "f.ogundele@bowenuniversity.edu.ng",
+  },
+  { name: "Prof. Mohammed Aliyu", email: "m.aliyu@bowenuniversity.edu.ng" },
+];
+
+const hodNames = [
+  { name: "Dr. Adebayo Johnson", email: "a.johnson@bowenuniversity.edu.ng" },
+  { name: "Dr. Chinwe Okafor", email: "c.okafor@bowenuniversity.edu.ng" },
+  { name: "Dr. Emmanuel Adeleke", email: "e.adeleke@bowenuniversity.edu.ng" },
+  { name: "Dr. Fatima Abubakar", email: "f.abubakar@bowenuniversity.edu.ng" },
+  { name: "Dr. Ibrahim Yusuf", email: "i.yusuf@bowenuniversity.edu.ng" },
+  { name: "Dr. Jennifer Okoro", email: "j.okoro@bowenuniversity.edu.ng" },
+  { name: "Dr. Kunle Ogunleye", email: "k.ogunleye@bowenuniversity.edu.ng" },
+  { name: "Dr. Loveth Nnamdi", email: "l.nnamdi@bowenuniversity.edu.ng" },
+  { name: "Dr. Muhammad Hassan", email: "m.hassan@bowenuniversity.edu.ng" },
+  { name: "Dr. Ngozi Eze", email: "n.eze@bowenuniversity.edu.ng" },
+  { name: "Dr. Oluwatobi Adeyemi", email: "o.adeyemi@bowenuniversity.edu.ng" },
+  { name: "Dr. Peace Okonkwo", email: "p.okonkwo@bowenuniversity.edu.ng" },
+  { name: "Dr. Samuel Adewale", email: "s.adewale@bowenuniversity.edu.ng" },
+  { name: "Dr. Temitope Olaniyi", email: "t.olaniyi@bowenuniversity.edu.ng" },
+  { name: "Dr. Uche Nwankwo", email: "u.nwankwo@bowenuniversity.edu.ng" },
+  { name: "Dr. Victoria Obi", email: "v.obi@bowenuniversity.edu.ng" },
+  { name: "Dr. Williams Akande", email: "w.akande@bowenuniversity.edu.ng" },
+  { name: "Dr. Yetunde Balogun", email: "y.balogun@bowenuniversity.edu.ng" },
+  { name: "Dr. Zainab Ahmed", email: "z.ahmed@bowenuniversity.edu.ng" },
+  { name: "Dr. Blessing Okoli", email: "b.okoli@bowenuniversity.edu.ng" },
+  { name: "Dr. Chinedu Onyema", email: "c.onyema@bowenuniversity.edu.ng" },
+  { name: "Dr. Daniel Oladele", email: "d.oladele@bowenuniversity.edu.ng" },
+  { name: "Dr. Esther Ogunbiyi", email: "e.ogunbiyi@bowenuniversity.edu.ng" },
+  { name: "Dr. Felix Adekunle", email: "f.adekunle@bowenuniversity.edu.ng" },
+  { name: "Dr. Grace Olayinka", email: "g.olayinka@bowenuniversity.edu.ng" },
+  { name: "Dr. Hassan Bello", email: "h.bello@bowenuniversity.edu.ng" },
+  { name: "Dr. Ifeoma Chukwuma", email: "i.chukwuma@bowenuniversity.edu.ng" },
+  { name: "Dr. Joshua Idowu", email: "j.idowu@bowenuniversity.edu.ng" },
+  { name: "Dr. Kemi Afolabi", email: "k.afolabi@bowenuniversity.edu.ng" },
+  { name: "Dr. Lateef Abdullahi", email: "l.abdullahi@bowenuniversity.edu.ng" },
+  { name: "Dr. Mercy Udoh", email: "m.udoh@bowenuniversity.edu.ng" },
+  { name: "Dr. Nathaniel Okafor", email: "n.okafor@bowenuniversity.edu.ng" },
+  { name: "Dr. Onyeka Ezeh", email: "o.ezeh@bowenuniversity.edu.ng" },
+  { name: "Dr. Peter Ogundipe", email: "p.ogundipe@bowenuniversity.edu.ng" },
+  { name: "Dr. Queen Onyeji", email: "q.onyeji@bowenuniversity.edu.ng" },
+  { name: "Dr. Rachel Adeniyi", email: "r.adeniyi@bowenuniversity.edu.ng" },
+  { name: "Dr. Stephen Ogunlana", email: "s.ogunlana@bowenuniversity.edu.ng" },
+  { name: "Dr. Tunde Olawale", email: "t.olawale@bowenuniversity.edu.ng" },
+  { name: "Dr. Uzoma Iwuoha", email: "u.iwuoha@bowenuniversity.edu.ng" },
+  { name: "Dr. Vincent Adegoke", email: "v.adegoke@bowenuniversity.edu.ng" },
+  { name: "Dr. Wuraola Adesina", email: "w.adesina@bowenuniversity.edu.ng" },
+  { name: "Dr. Xavier Okonkwo", email: "x.okonkwo@bowenuniversity.edu.ng" },
+  { name: "Dr. Yemi Oluwaseun", email: "y.oluwaseun@bowenuniversity.edu.ng" },
+];
 
 // Student names for realistic data
 const firstNames = [
@@ -218,12 +285,96 @@ async function clearDatabase() {
 
   await Student.deleteMany({});
   await Admin.deleteMany({});
+  await College.deleteMany({});
   await VotingSession.deleteMany({});
   await Candidate.deleteMany({});
   await Vote.deleteMany({});
   await AuditLog.deleteMany({});
 
   console.log("✅ Database cleared");
+}
+
+/**
+ * Create colleges and departments
+ */
+async function seedColleges() {
+  console.log("\n🏛️  Creating colleges and departments...");
+
+  const collegeDocuments = [];
+  let hodIndex = 0; // Track HOD assignment
+  let deanIndex = 0; // Track Dean assignment
+
+  for (const [collegeName, collegeInfo] of Object.entries(
+    collegesAndDepartments
+  )) {
+    const departments = [];
+
+    for (const [deptName, deptCode] of Object.entries(
+      collegeInfo.departments
+    )) {
+      // Determine available levels based on department
+      let availableLevels = ["100", "200", "300", "400"];
+
+      // Medicine, Law, Architecture typically have more years
+      if (
+        deptName.includes("Medicine") ||
+        deptName.includes("MBBS") ||
+        deptName.includes("Law") ||
+        deptName.includes("Architecture")
+      ) {
+        availableLevels = ["100", "200", "300", "400", "500", "600"];
+      } else if (
+        (deptName.includes("Engineering") &&
+          !deptName.includes("Software Engineering")) ||
+        deptName.includes("Pharmacy")
+      ) {
+        availableLevels = ["100", "200", "300", "400", "500"];
+      }
+      // Software Engineering stays at 4 years (default)
+
+      // Assign HOD to department
+      const hod = hodNames[hodIndex % hodNames.length];
+      hodIndex++;
+
+      departments.push({
+        name: deptName,
+        code: deptCode,
+        description: `Department of ${deptName}`,
+        hod_name: hod.name,
+        hod_email: hod.email,
+        available_levels: availableLevels,
+        is_active: true,
+      });
+    }
+
+    // Assign Dean to college
+    const dean = deanNames[deanIndex % deanNames.length];
+    deanIndex++;
+
+    collegeDocuments.push({
+      name: collegeName,
+      code: collegeInfo.code,
+      description: `${collegeName} at Bowen University`,
+      dean_name: dean.name,
+      dean_email: dean.email,
+      departments: departments,
+      is_active: true,
+    });
+  }
+
+  await College.insertMany(collegeDocuments);
+
+  console.log(
+    `✅ Created ${collegeDocuments.length} colleges with departments`
+  );
+
+  // Log summary with Dean and HOD info
+  for (const college of collegeDocuments) {
+    console.log(
+      `   - ${college.name} (${college.code}): ${college.departments.length} departments`
+    );
+    console.log(`     Dean: ${college.dean_name}`);
+  }
 }
 
 /**
@@ -238,7 +389,7 @@ async function createAdmin() {
   const admin = new Admin({
     email: "louisdiaz43@gmail.com",
     password_hash: passwordHash,
-    full_name: "Super Administrator",
+    full_name: "Biodun Administrator",
     role: "super_admin",
   });
 
@@ -259,12 +410,28 @@ async function generateStudents() {
   const defaultPasswordHash = await bcrypt.hash("1234", salt);
 
   const students = [];
-  const levels = ["100", "200", "300", "400"];
+  const levels = ["100", "200", "300", "400", "500", "600"];
 
   // Track department counters for unique matric numbers per department
   const departmentCounters = {};
   let isFirstComputerScienceStudent = true;
   let isFirstAccountingStudent = true;
+
+  // Fetch all colleges with departments to get available_levels
+  const colleges = await College.find({});
+  const departmentLevelsMap = {};
+
+  // Build a map of department code to available levels
+  colleges.forEach((college) => {
+    college.departments.forEach((dept) => {
+      departmentLevelsMap[dept.code] = dept.available_levels || [
+        "100",
+        "200",
+        "300",
+        "400",
+      ];
+    });
+  });
 
   for (const [collegeName, collegeInfo] of Object.entries(
     collegesAndDepartments
@@ -279,14 +446,17 @@ async function generateStudents() {
         departmentCounters[deptCode] = 0;
       }
 
-      // Create exactly 2 students per department
-      for (let i = 0; i < 2; i++) {
+      // Get available levels for this department
+      const departmentAvailableLevels = departmentLevelsMap[deptCode] || levels;
+
+      // Create exactly 1 student per department
+      for (let i = 0; i < 1; i++) {
         departmentCounters[deptCode]++;
 
         // Default values
         let firstName = randomElement(firstNames);
         let lastName = randomElement(lastNames);
-        let level = randomElement(levels);
+        let level = randomElement(departmentAvailableLevels); // Use department-specific levels
         let enrollmentYear = 2022;
         let matricNo = generateMatricNo(
           enrollmentYear,
@@ -305,7 +475,10 @@ async function generateStudents() {
           lastName = "Abiodun";
           matricNo = "BU22CSC1005";
           email = "muhammedabiodun42@gmail.com";
-          level = "400";
+          // Ensure level is valid for this department
+          level = departmentAvailableLevels.includes("400")
+            ? "400"
+            : randomElement(departmentAvailableLevels);
           isFirstComputerScienceStudent = false;
           console.log(
             `   🎯 Creating special student: ${firstName} ${lastName} - ${matricNo} (${email})`
@@ -316,7 +489,7 @@ async function generateStudents() {
           firstName = "Mustapha";
           lastName = "Muhammed";
           email = "Mustapha.muhammed@bowen.edu.ng";
-          level = randomElement(levels);
+          level = randomElement(departmentAvailableLevels); // Use department-specific levels
           isFirstAccountingStudent = false;
           console.log(
             `   🎯 Creating special student: ${firstName} ${lastName} - ${matricNo} (${email})`
@@ -374,6 +547,7 @@ async function seed() {
   try {
     await connectDB();
     await clearDatabase();
+    await seedColleges();
     await createAdmin();
     await generateStudents();
 

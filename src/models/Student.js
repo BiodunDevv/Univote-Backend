@@ -73,13 +73,22 @@ const studentSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    is_active: {
+      type: Boolean,
+      default: true,
+    },
   },
   {
     timestamps: true,
   }
 );
 
-// Index for faster queries (matric_no and email already indexed via unique: true)
+// Compound indexes for faster queries (matric_no and email already indexed via unique: true)
 studentSchema.index({ department: 1, college: 1, level: 1 });
+studentSchema.index({ college: 1, is_active: 1 });
+studentSchema.index({ department: 1, is_active: 1 });
+studentSchema.index({ level: 1, is_active: 1 });
+studentSchema.index({ is_active: 1, college: 1, department: 1, level: 1 }); // For eligibility queries
+studentSchema.index({ full_name: "text", email: "text", matric_no: "text" }); // For text search
 
 module.exports = mongoose.model("Student", studentSchema);

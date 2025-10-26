@@ -3,6 +3,7 @@ const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
 const Student = require("../models/Student");
 const emailService = require("../services/emailService");
+const mongoose = require("mongoose");
 
 class ResultController {
   /**
@@ -14,33 +15,87 @@ class ResultController {
       const { session_id } = req.params;
       const studentId = req.studentId;
 
-      const session = await VotingSession.findById(session_id);
+      const [session, student] = await Promise.all([
+        VotingSession.findById(session_id)
+          .populate("candidates", "name position photo_url bio manifesto")
+          .lean(),
+        Student.findById(studentId).select("college department level").lean(),
+      ]);
 
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      // Update session status
-      await session.updateStatus();
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
 
       // Check if results are available
       // Results available if: session ended OR admin made results public
-      if (session.status !== "ended" && !session.results_public) {
+      const now = new Date();
+      const sessionEnded = now > session.end_time;
+
+      if (!sessionEnded && !session.results_public) {
         return res.status(403).json({
           error: "Results are not yet available",
           message: "Results will be available after the voting session ends",
         });
       }
 
+      // Check eligibility
+      let isEligible = true;
+      if (
+        session.eligible_college &&
+        session.eligible_college !== student.college
+      ) {
+        isEligible = false;
+      }
+      if (
+        session.eligible_departments &&
+        session.eligible_departments.length > 0
+      ) {
+        // Convert department IDs to names
+        const College = require("../models/College");
+        const colleges = await College.find({});
+        const departmentNames = [];
+
+        colleges.forEach((college) => {
+          college.departments.forEach((dept) => {
+            if (session.eligible_departments.includes(dept._id.toString())) {
+              departmentNames.push(dept.name);
+            }
+          });
+        });
+
+        if (!departmentNames.includes(student.department)) {
+          isEligible = false;
+        }
+      }
+      if (session.eligible_levels && session.eligible_levels.length > 0) {
+        if (!session.eligible_levels.includes(student.level)) {
+          isEligible = false;
+        }
+      }
+
       // Check if student voted in this session
-      const student = await Student.findById(studentId);
       const hasVoted = student.has_voted_sessions.includes(session_id);
 
-      // Get all candidates with their vote counts
-      const candidates = await Candidate.find({ session_id }).sort({
-        position: 1,
-        vote_count: -1,
-      });
+      // Get vote breakdown by candidate using aggregation
+      const votesByCandidate = await Vote.aggregate([
+        {
+          $match: {
+            session_id: new mongoose.Types.ObjectId(session_id),
+            status: "valid",
+          },
+        },
+        { $unwind: "$votes" },
+        {
+          $group: {
+            _id: "$votes.candidate_id",
+            count: { $sum: 1 },
+          },
+        },
+      ]);
 
       // Calculate total valid votes
       const totalVotes = await Vote.countDocuments({
@@ -48,8 +103,28 @@ class ResultController {
         status: "valid",
       });
 
+      // Add vote counts to candidates
+      const candidatesWithVotes = session.candidates.map((candidate) => {
+        const voteData = votesByCandidate.find(
+          (v) => v._id.toString() === candidate._id.toString()
+        );
+        const voteCount = voteData ? voteData.count : 0;
+        const percentage =
+          totalVotes > 0 ? ((voteCount / totalVotes) * 100).toFixed(2) : 0;
+
+        return {
+          id: candidate._id,
+          name: candidate.name,
+          position: candidate.position,
+          photo_url: candidate.photo_url,
+          bio: candidate.bio,
+          vote_count: voteCount,
+          percentage: parseFloat(percentage),
+        };
+      });
+
       // Group results by position
-      const resultsByPosition = candidates.reduce((acc, candidate) => {
+      const resultsByPosition = candidatesWithVotes.reduce((acc, candidate) => {
         if (!acc[candidate.position]) {
           acc[candidate.position] = {
             position: candidate.position,
@@ -58,19 +133,7 @@ class ResultController {
           };
         }
 
-        const percentage =
-          totalVotes > 0
-            ? ((candidate.vote_count / totalVotes) * 100).toFixed(2)
-            : 0;
-
-        acc[candidate.position].candidates.push({
-          id: candidate._id,
-          name: candidate.name,
-          photo_url: candidate.photo_url,
-          vote_count: candidate.vote_count,
-          percentage: parseFloat(percentage),
-        });
-
+        acc[candidate.position].candidates.push(candidate);
         acc[candidate.position].total_votes += candidate.vote_count;
 
         return acc;
@@ -84,6 +147,8 @@ class ResultController {
         position.candidates.forEach((c) => {
           c.is_winner = c.vote_count === maxVotes && maxVotes > 0;
         });
+        // Sort candidates by vote count descending
+        position.candidates.sort((a, b) => b.vote_count - a.vote_count);
       });
 
       res.json({
@@ -94,7 +159,9 @@ class ResultController {
           status: session.status,
           start_time: session.start_time,
           end_time: session.end_time,
+          results_public: session.results_public,
         },
+        is_eligible: isEligible,
         has_voted: hasVoted,
         total_valid_votes: totalVotes,
         results: Object.values(resultsByPosition),
@@ -107,7 +174,7 @@ class ResultController {
 
   /**
    * Publish results (Admin only)
-   * POST /api/results/:session_id/publish
+   * POST /api/admin/results/:session_id/publish
    */
   async publishResults(req, res) {
     try {
@@ -119,23 +186,64 @@ class ResultController {
         return res.status(404).json({ error: "Session not found" });
       }
 
+      // Update session status
+      await session.updateStatus();
+
       // Make results public
       session.results_public = true;
       await session.save();
 
-      // Get all students who voted in this session
+      // Get eligibility filter for students
+      const eligibilityFilter = { is_active: true };
+
+      if (session.eligible_college) {
+        eligibilityFilter.college = session.eligible_college;
+      }
+
+      // Convert department IDs to department names
+      if (
+        session.eligible_departments &&
+        session.eligible_departments.length > 0
+      ) {
+        const College = require("../models/College");
+        const colleges = await College.find({});
+        const departmentNames = [];
+
+        colleges.forEach((college) => {
+          college.departments.forEach((dept) => {
+            if (session.eligible_departments.includes(dept._id.toString())) {
+              departmentNames.push(dept.name);
+            }
+          });
+        });
+
+        if (departmentNames.length > 0) {
+          eligibilityFilter.department = { $in: departmentNames };
+        }
+      }
+
+      if (session.eligible_levels && session.eligible_levels.length > 0) {
+        eligibilityFilter.level = { $in: session.eligible_levels };
+      }
+
+      // Get all eligible students who voted in this session
       const studentsWhoVoted = await Student.find({
+        ...eligibilityFilter,
         has_voted_sessions: session_id,
       });
 
-      // Send result announcement emails
+      // Send result announcement emails in the background
       const resultsUrl = `${
         process.env.FRONTEND_URL || "http://localhost:3000"
       }/results/${session_id}`;
 
+      let emailsSent = 0;
       for (const student of studentsWhoVoted) {
         emailService
           .sendResultAnnouncement(student, session, resultsUrl)
+          .then(() => {
+            emailsSent++;
+          })
           .catch((err) => {
             console.error(
               `Failed to send result announcement to ${student.email}:`,
@@ -146,7 +254,14 @@ class ResultController {
 
       res.json({
         message: "Results published successfully",
-        notification_sent_to: studentsWhoVoted.length,
+        session: {
+          id: session._id,
+          title: session.title,
+          results_public: true,
+        },
+        eligible_students: await Student.countDocuments(eligibilityFilter),
+        students_who_voted: studentsWhoVoted.length,
+        notification_queued_to: studentsWhoVoted.length,
       });
     } catch (error) {
       console.error("Publish results error:", error);
@@ -156,27 +271,103 @@ class ResultController {
 
   /**
    * Get overall statistics (Admin only)
-   * GET /api/results/stats/overview
+   * GET /api/admin/results/stats/overview
    */
   async getOverallStats(req, res) {
     try {
       const totalSessions = await VotingSession.countDocuments();
+      const upcomingSessions = await VotingSession.countDocuments({
+        status: "upcoming",
+      });
       const activeSessions = await VotingSession.countDocuments({
         status: "active",
       });
       const endedSessions = await VotingSession.countDocuments({
         status: "ended",
       });
-      const totalStudents = await Student.countDocuments();
+      const totalStudents = await Student.countDocuments({ is_active: true });
       const totalVotes = await Vote.countDocuments({ status: "valid" });
+      const duplicateAttempts = await Vote.countDocuments({
+        status: "duplicate",
+      });
+      const rejectedVotes = await Vote.countDocuments({ status: "rejected" });
+
+      // Get sessions with published results
+      const publishedResults = await VotingSession.countDocuments({
+        results_public: true,
+      });
+
+      // Calculate average turnout
+      const sessionsWithVotes = await VotingSession.find({
+        status: "ended",
+      });
+
+      let totalTurnout = 0;
+      let sessionsWithTurnout = 0;
+
+      for (const session of sessionsWithVotes) {
+        const eligibilityFilter = { is_active: true };
+
+        if (session.eligible_college) {
+          eligibilityFilter.college = session.eligible_college;
+        }
+
+        if (
+          session.eligible_departments &&
+          session.eligible_departments.length > 0
+        ) {
+          const College = require("../models/College");
+          const colleges = await College.find({});
+          const departmentNames = [];
+
+          colleges.forEach((college) => {
+            college.departments.forEach((dept) => {
+              if (session.eligible_departments.includes(dept._id.toString())) {
+                departmentNames.push(dept.name);
+              }
+            });
+          });
+
+          if (departmentNames.length > 0) {
+            eligibilityFilter.department = { $in: departmentNames };
+          }
+        }
+
+        if (session.eligible_levels && session.eligible_levels.length > 0) {
+          eligibilityFilter.level = { $in: session.eligible_levels };
+        }
+
+        const eligibleStudents = await Student.countDocuments(
+          eligibilityFilter
+        );
+        const sessionVotes = await Vote.countDocuments({
+          session_id: session._id,
+          status: "valid",
+        });
+
+        if (eligibleStudents > 0) {
+          totalTurnout += (sessionVotes / eligibleStudents) * 100;
+          sessionsWithTurnout++;
+        }
+      }
+
+      const averageTurnout =
+        sessionsWithTurnout > 0
+          ? (totalTurnout / sessionsWithTurnout).toFixed(2)
+          : 0;
 
       res.json({
         overview: {
           total_sessions: totalSessions,
+          upcoming_sessions: upcomingSessions,
           active_sessions: activeSessions,
           ended_sessions: endedSessions,
+          published_results: publishedResults,
           total_students: totalStudents,
           total_votes_cast: totalVotes,
+          duplicate_attempts: duplicateAttempts,
+          rejected_votes: rejectedVotes,
+          average_turnout_percentage: parseFloat(averageTurnout),
         },
       });
     } catch (error) {

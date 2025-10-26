@@ -170,6 +170,97 @@ class SessionController {
       res.status(500).json({ error: "Failed to get session" });
     }
   }
+
+  /**
+   * Get session by ID (alias for getSession)
+   * GET /api/sessions/:id
+   */
+  async getSessionById(req, res) {
+    try {
+      const { id } = req.params;
+      const studentId = req.studentId;
+
+      const session = await VotingSession.findById(id).populate("candidates");
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Update session status
+      await session.updateStatus();
+
+      const student = await Student.findById(studentId);
+
+      // Check eligibility
+      let eligible = true;
+      let eligibilityReason = null;
+
+      if (
+        session.eligible_college &&
+        session.eligible_college !== student.college
+      ) {
+        eligible = false;
+        eligibilityReason = "College not eligible";
+      }
+
+      if (
+        session.eligible_departments &&
+        session.eligible_departments.length > 0
+      ) {
+        if (!session.eligible_departments.includes(student.department)) {
+          eligible = false;
+          eligibilityReason = "Department not eligible";
+        }
+      }
+
+      if (session.eligible_levels && session.eligible_levels.length > 0) {
+        if (!session.eligible_levels.includes(student.level)) {
+          eligible = false;
+          eligibilityReason = "Level not eligible";
+        }
+      }
+
+      // Group candidates by position/category
+      const candidatesByPosition = session.candidates.reduce(
+        (acc, candidate) => {
+          if (!acc[candidate.position]) {
+            acc[candidate.position] = [];
+          }
+          acc[candidate.position].push({
+            id: candidate._id,
+            name: candidate.name,
+            photo_url: candidate.photo_url,
+            bio: candidate.bio,
+            manifesto: candidate.manifesto,
+            vote_count: candidate.vote_count,
+          });
+          return acc;
+        },
+        {}
+      );
+
+      res.json({
+        session: {
+          id: session._id,
+          title: session.title,
+          description: session.description,
+          start_time: session.start_time,
+          end_time: session.end_time,
+          status: session.status,
+          categories: session.categories,
+          location: session.location,
+          is_off_campus_allowed: session.is_off_campus_allowed,
+          eligible,
+          eligibility_reason: eligibilityReason,
+          has_voted: student.has_voted_sessions.includes(session._id),
+          candidates_by_position: candidatesByPosition,
+        },
+      });
+    } catch (error) {
+      console.error("Get session by ID error:", error);
+      res.status(500).json({ error: "Failed to get session" });
+    }
+  }
 }
 
 module.exports = new SessionController();

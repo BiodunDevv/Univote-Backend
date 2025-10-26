@@ -31,6 +31,14 @@ const adminSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    reset_password_code: {
+      type: String,
+      default: null,
+    },
+    reset_password_expires: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

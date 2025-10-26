@@ -12,6 +12,7 @@ const swaggerDocument = YAML.load(path.join(__dirname, "..", "swagger.yaml"));
 // Import routes
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const collegeRoutes = require("./routes/collegeRoutes");
 const sessionRoutes = require("./routes/sessionRoutes");
 const voteRoutes = require("./routes/voteRoutes");
 const resultRoutes = require("./routes/resultRoutes");
@@ -56,6 +57,7 @@ app.get("/", (req, res) => {
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/admin", collegeRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/vote", voteRoutes);
 app.use("/api/results", resultRoutes);

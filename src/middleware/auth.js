@@ -168,9 +168,71 @@ const authenticateForPasswordChange = async (req, res, next) => {
   }
 };
 
+/**
+ * Middleware to authenticate both students and admins for password update
+ */
+const authenticateStudentOrAdmin = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "No token provided" });
+    }
+
+    const token = authHeader.substring(7);
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // Check if it's a student
+      if (decoded.type === "student") {
+        const student = await Student.findById(decoded.id);
+        if (!student) {
+          return res.status(401).json({ error: "Student not found" });
+        }
+
+        // Check active token for students
+        if (student.active_token && student.active_token !== token) {
+          return res.status(401).json({
+            error:
+              "Session expired. You have been logged in from another device.",
+          });
+        }
+
+        req.studentId = student._id;
+        req.student = student;
+        return next();
+      }
+
+      // Check if it's an admin
+      if (decoded.type === "admin") {
+        const admin = await Admin.findById(decoded.id);
+        if (!admin || !admin.is_active) {
+          return res.status(401).json({ error: "Admin not found or inactive" });
+        }
+
+        req.adminId = admin._id;
+        req.admin = admin;
+        return next();
+      }
+
+      return res.status(403).json({ error: "Invalid token type" });
+    } catch (jwtError) {
+      if (jwtError.name === "TokenExpiredError") {
+        return res.status(401).json({ error: "Token expired" });
+      }
+      return res.status(401).json({ error: "Invalid token" });
+    }
+  } catch (error) {
+    console.error("Authentication error:", error);
+    res.status(500).json({ error: "Authentication failed" });
+  }
+};
+
 module.exports = {
   authenticateStudent,
   authenticateAdmin,
   requireSuperAdmin,
   authenticateForPasswordChange,
+  authenticateStudentOrAdmin,
 };

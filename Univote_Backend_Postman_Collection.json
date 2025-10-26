@@ -252,7 +252,53 @@
               "host": ["{{base_url}}"],
               "path": ["auth", "update-password"]
             },
-            "description": "Update password for logged-in students. Requires current password and new password. User stays logged in with their current session token."
+            "description": "Update password for logged-in students or admins. Requires current password and new password. User stays logged in with their current session token."
+          },
+          "response": []
+        },
+        {
+          "name": "Admin Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"louisdiaz43@gmail.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/admin-forgot-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "admin-forgot-password"]
+            },
+            "description": "Request password reset code for admin account. A 6-digit code will be sent to the admin's email address. Code expires in 1 hour."
+          },
+          "response": []
+        },
+        {
+          "name": "Admin Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"louisdiaz43@gmail.com\",\n  \"reset_code\": \"123456\",\n  \"new_password\": \"newSecurePassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/admin-reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "admin-reset-password"]
+            },
+            "description": "Reset admin password using the 6-digit code received via email. Requires email, reset code, and new password (min 8 characters)."
           },
           "response": []
         },
