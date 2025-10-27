@@ -23,4 +23,28 @@ router.get(
  */
 router.get("/:id", authenticateStudent, sessionController.getSession);
 
+/**
+ * @route   GET /api/sessions/:id/live-results
+ * @desc    Get live results for a session (optimized for high traffic)
+ * @access  Private (Student)
+ */
+router.get(
+  "/:id/live-results",
+  authenticateStudent,
+  apiLimiter,
+  sessionController.getLiveResults
+);
+
+/**
+ * @route   GET /api/candidates/:id
+ * @desc    Get candidate details by ID
+ * @access  Private (Student)
+ */
+router.get(
+  "/candidates/:id",
+  authenticateStudent,
+  apiLimiter,
+  sessionController.getCandidateById
+);
+
 module.exports = router;

@@ -1,5 +1,6 @@
 const VotingSession = require("../models/VotingSession");
 const Student = require("../models/Student");
+const Candidate = require("../models/Candidate");
 
 class SessionController {
   /**
@@ -328,6 +329,195 @@ class SessionController {
     } catch (error) {
       console.error("Get session by ID error:", error);
       res.status(500).json({ error: "Failed to get session" });
+    }
+  }
+
+  /**
+   * Get candidate details by ID
+   * GET /api/candidates/:id
+   */
+  async getCandidateById(req, res) {
+    try {
+      const { id } = req.params;
+
+      const candidate = await Candidate.findById(id)
+        .populate("session_id", "title description start_time end_time status")
+        .lean();
+
+      if (!candidate) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      // Get session details to check status
+      const session = candidate.session_id;
+
+      // Update session status calculation
+      const now = new Date();
+      let sessionStatus = session.status;
+      if (now < session.start_time) {
+        sessionStatus = "upcoming";
+      } else if (now >= session.start_time && now <= session.end_time) {
+        sessionStatus = "active";
+      } else {
+        sessionStatus = "ended";
+      }
+
+      // Return full candidate details
+      res.json({
+        candidate: {
+          id: candidate._id,
+          name: candidate.name,
+          position: candidate.position,
+          photo_url: candidate.photo_url,
+          bio: candidate.bio,
+          manifesto: candidate.manifesto,
+          vote_count: candidate.vote_count,
+          session: {
+            id: session._id,
+            title: session.title,
+            description: session.description,
+            start_time: session.start_time,
+            end_time: session.end_time,
+            status: sessionStatus,
+          },
+          created_at: candidate.createdAt,
+          updated_at: candidate.updatedAt,
+        },
+      });
+    } catch (error) {
+      console.error("Get candidate by ID error:", error);
+      res.status(500).json({ error: "Failed to get candidate details" });
+    }
+  }
+
+  /**
+   * Get live results for a session (Optimized for high traffic)
+   * GET /api/sessions/:id/live-results
+   */
+  async getLiveResults(req, res) {
+    try {
+      const { id } = req.params;
+      const Vote = require("../models/Vote");
+      const mongoose = require("mongoose");
+
+      // Parallel queries for maximum performance
+      const [session, votesByCandidate, totalVotes] = await Promise.all([
+        VotingSession.findById(id)
+          .select("title description start_time end_time status results_public")
+          .lean(),
+        
+        // Efficient aggregation for vote counts
+        Vote.aggregate([
+          {
+            $match: {
+              session_id: new mongoose.Types.ObjectId(id),
+              status: "valid",
+            },
+          },
+          { $unwind: "$votes" },
+          {
+            $group: {
+              _id: "$votes.candidate_id",
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+        
+        // Count total valid votes
+        Vote.countDocuments({
+          session_id: id,
+          status: "valid",
+        }),
+      ]);
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Update session status
+      const now = new Date();
+      if (now < session.start_time) {
+        session.status = "upcoming";
+      } else if (now >= session.start_time && now <= session.end_time) {
+        session.status = "active";
+      } else {
+        session.status = "ended";
+      }
+
+      // Get candidates with minimal data for performance
+      const candidates = await Candidate.find({ session_id: id })
+        .select("name position photo_url")
+        .lean();
+
+      // Add vote counts to candidates
+      const candidatesWithVotes = candidates.map((candidate) => {
+        const voteData = votesByCandidate.find(
+          (v) => v._id.toString() === candidate._id.toString()
+        );
+        const voteCount = voteData ? voteData.count : 0;
+        const percentage =
+          totalVotes > 0 ? ((voteCount / totalVotes) * 100).toFixed(2) : 0;
+
+        return {
+          id: candidate._id,
+          name: candidate.name,
+          position: candidate.position,
+          photo_url: candidate.photo_url,
+          vote_count: voteCount,
+          percentage: parseFloat(percentage),
+        };
+      });
+
+      // Group by position
+      const resultsByPosition = candidatesWithVotes.reduce((acc, candidate) => {
+        if (!acc[candidate.position]) {
+          acc[candidate.position] = {
+            position: candidate.position,
+            total_votes: 0,
+            candidates: [],
+          };
+        }
+
+        acc[candidate.position].candidates.push(candidate);
+        acc[candidate.position].total_votes += candidate.vote_count;
+
+        return acc;
+      }, {});
+
+      // Sort candidates by vote count within each position
+      Object.values(resultsByPosition).forEach((position) => {
+        const maxVotes = Math.max(
+          ...position.candidates.map((c) => c.vote_count)
+        );
+        position.candidates.forEach((c) => {
+          c.is_leading = c.vote_count === maxVotes && maxVotes > 0;
+        });
+        position.candidates.sort((a, b) => b.vote_count - a.vote_count);
+      });
+
+      // Cache control headers for performance
+      res.set({
+        'Cache-Control': 'public, max-age=30', // Cache for 30 seconds
+        'ETag': `"${id}-${totalVotes}"`, // ETag based on session and vote count
+      });
+
+      res.json({
+        session: {
+          id: session._id,
+          title: session.title,
+          description: session.description,
+          status: session.status,
+          start_time: session.start_time,
+          end_time: session.end_time,
+          is_live: session.status === "active",
+        },
+        total_votes: totalVotes,
+        last_updated: new Date().toISOString(),
+        results: Object.values(resultsByPosition),
+      });
+    } catch (error) {
+      console.error("Get live results error:", error);
+      res.status(500).json({ error: "Failed to get live results" });
     }
   }
 }

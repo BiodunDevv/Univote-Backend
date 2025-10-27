@@ -1,5 +1,4 @@
 const VotingSession = require("../models/VotingSession");
-const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
 const Student = require("../models/Student");
 const emailService = require("../services/emailService");
