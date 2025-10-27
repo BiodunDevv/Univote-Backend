@@ -16,6 +16,7 @@ const collegeRoutes = require("./routes/collegeRoutes");
 const sessionRoutes = require("./routes/sessionRoutes");
 const voteRoutes = require("./routes/voteRoutes");
 const resultRoutes = require("./routes/resultRoutes");
+const healthRoutes = require("./routes/healthRoutes");
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.get("/", (req, res) => {
 });
 
 // API Routes
+app.use("/api/health", healthRoutes); // Keep-alive health check endpoint
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin", collegeRoutes);
@@ -85,6 +87,24 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
+  
+  // Initialize keep-alive service for production (Render)
+  if (process.env.NODE_ENV === "production") {
+    const KeepAlive = require("./utils/keepAlive");
+    const serverUrl = process.env.SERVER_URL || `http://localhost:${PORT}`;
+    
+    // Create keep-alive instance (pings every 14 minutes)
+    const keepAlive = new KeepAlive(
+      `${serverUrl}/api/health/ping`,
+      14 * 60 * 1000
+    );
+    
+    // Start the keep-alive service
+    keepAlive.start();
+    
+    console.log("✓ Keep-alive service started");
+    console.log(`  Pinging: ${serverUrl}/api/health/ping every 14 minutes`);
+  }
 });
 
 module.exports = app;
