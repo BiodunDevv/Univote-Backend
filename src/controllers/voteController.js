@@ -80,12 +80,10 @@ class VoteController {
         student.college !== session.eligible_college
       ) {
         await mongoSession.abortTransaction();
-        return res
-          .status(403)
-          .json({
-            error:
-              "You are not eligible for this voting session (college mismatch)",
-          });
+        return res.status(403).json({
+          error:
+            "You are not eligible for this voting session (college mismatch)",
+        });
       }
 
       // Check department eligibility (convert IDs to names)
@@ -107,24 +105,20 @@ class VoteController {
 
         if (!departmentNames.includes(student.department)) {
           await mongoSession.abortTransaction();
-          return res
-            .status(403)
-            .json({
-              error:
-                "You are not eligible for this voting session (department mismatch)",
-            });
+          return res.status(403).json({
+            error:
+              "You are not eligible for this voting session (department mismatch)",
+          });
         }
       }
 
       if (session.eligible_levels && session.eligible_levels.length > 0) {
         if (!session.eligible_levels.includes(student.level)) {
           await mongoSession.abortTransaction();
-          return res
-            .status(403)
-            .json({
-              error:
-                "You are not eligible for this voting session (level mismatch)",
-            });
+          return res.status(403).json({
+            error:
+              "You are not eligible for this voting session (level mismatch)",
+          });
         }
       }
 
