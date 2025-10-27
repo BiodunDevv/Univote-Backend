@@ -88,11 +88,24 @@ class VoteController {
           });
       }
 
+      // Check department eligibility (convert IDs to names)
       if (
         session.eligible_departments &&
         session.eligible_departments.length > 0
       ) {
-        if (!session.eligible_departments.includes(student.department)) {
+        const College = require("../models/College");
+        const colleges = await College.find({}).select("departments").lean();
+        const departmentNames = [];
+
+        colleges.forEach((college) => {
+          college.departments.forEach((dept) => {
+            if (session.eligible_departments.includes(dept._id.toString())) {
+              departmentNames.push(dept.name);
+            }
+          });
+        });
+
+        if (!departmentNames.includes(student.department)) {
           await mongoSession.abortTransaction();
           return res
             .status(403)

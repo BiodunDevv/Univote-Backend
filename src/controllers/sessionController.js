@@ -11,7 +11,7 @@ class SessionController {
       const studentId = req.studentId;
       const { status } = req.query;
 
-      const student = await Student.findById(studentId);
+      const student = await Student.findById(studentId).lean();
       if (!student) {
         return res.status(404).json({ error: "Student not found" });
       }
@@ -26,53 +26,74 @@ class SessionController {
 
       // Get all sessions
       let sessions = await VotingSession.find(filter)
-        .populate("candidates")
-        .sort({ start_time: -1 });
+        .populate("candidates", "name position photo_url bio manifesto")
+        .sort({ start_time: -1 })
+        .lean();
 
-      // Update status for each session
+      // Filter eligible sessions (with department ID to name conversion)
+      const eligibleSessions = [];
+
       for (const session of sessions) {
-        await session.updateStatus();
-      }
+        // Update session status (calculate based on dates)
+        const now = new Date();
+        if (now < session.start_time) {
+          session.status = "upcoming";
+        } else if (now >= session.start_time && now <= session.end_time) {
+          session.status = "active";
+        } else {
+          session.status = "ended";
+        }
 
-      // Filter eligible sessions
-      const eligibleSessions = sessions.filter((session) => {
         // Check college eligibility
         if (
           session.eligible_college &&
           session.eligible_college !== student.college
         ) {
-          return false;
+          continue; // Skip this session
         }
 
-        // Check department eligibility
+        // Check department eligibility (convert IDs to names)
         if (
           session.eligible_departments &&
           session.eligible_departments.length > 0
         ) {
-          if (!session.eligible_departments.includes(student.department)) {
-            return false;
+          const College = require("../models/College");
+          const colleges = await College.find({}).select("departments").lean();
+          const departmentNames = [];
+
+          colleges.forEach((college) => {
+            college.departments.forEach((dept) => {
+              if (session.eligible_departments.includes(dept._id.toString())) {
+                departmentNames.push(dept.name);
+              }
+            });
+          });
+
+          // Check if student's department is in the eligible list
+          if (!departmentNames.includes(student.department)) {
+            continue; // Skip this session
           }
         }
 
         // Check level eligibility
         if (session.eligible_levels && session.eligible_levels.length > 0) {
           if (!session.eligible_levels.includes(student.level)) {
-            return false;
+            continue; // Skip this session
           }
         }
 
-        return true;
-      });
-
-      // Add has_voted flag
-      const sessionsWithVoteStatus = eligibleSessions.map((session) => ({
-        ...session.toObject(),
-        has_voted: student.has_voted_sessions.includes(session._id),
-        candidate_count: session.candidates.length,
-      }));
+        // Session is eligible - add has_voted flag
+        eligibleSessions.push({
+          ...session,
+          has_voted: student.has_voted_sessions.some(
+            (votedId) => votedId.toString() === session._id.toString()
+          ),
+          candidate_count: session.candidates.length,
+        });
+      }
 
       res.json({
-        sessions: sessionsWithVoteStatus,
+        sessions: eligibleSessions,
       });
     } catch (error) {
       console.error("List sessions error:", error);
@@ -89,16 +110,25 @@ class SessionController {
       const { id } = req.params;
       const studentId = req.studentId;
 
-      const session = await VotingSession.findById(id).populate("candidates");
+      const session = await VotingSession.findById(id)
+        .populate("candidates", "name position photo_url bio manifesto")
+        .lean();
 
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      // Update session status
-      await session.updateStatus();
+      // Update status calculation
+      const now = new Date();
+      if (now < session.start_time) {
+        session.status = "upcoming";
+      } else if (now >= session.start_time && now <= session.end_time) {
+        session.status = "active";
+      } else {
+        session.status = "ended";
+      }
 
-      const student = await Student.findById(studentId);
+      const student = await Student.findById(studentId).lean();
 
       // Check eligibility
       let eligible = true;
@@ -112,11 +142,24 @@ class SessionController {
         eligibilityReason = "College not eligible";
       }
 
+      // Check department eligibility (convert IDs to names)
       if (
         session.eligible_departments &&
         session.eligible_departments.length > 0
       ) {
-        if (!session.eligible_departments.includes(student.department)) {
+        const College = require("../models/College");
+        const colleges = await College.find({}).select("departments").lean();
+        const departmentNames = [];
+
+        colleges.forEach((college) => {
+          college.departments.forEach((dept) => {
+            if (session.eligible_departments.includes(dept._id.toString())) {
+              departmentNames.push(dept.name);
+            }
+          });
+        });
+
+        if (!departmentNames.includes(student.department)) {
           eligible = false;
           eligibilityReason = "Department not eligible";
         }
@@ -161,7 +204,9 @@ class SessionController {
           is_off_campus_allowed: session.is_off_campus_allowed,
           eligible,
           eligibility_reason: eligibilityReason,
-          has_voted: student.has_voted_sessions.includes(session._id),
+          has_voted: student.has_voted_sessions.some(
+            (votedId) => votedId.toString() === session._id.toString()
+          ),
           candidates_by_position: candidatesByPosition,
         },
       });
@@ -180,16 +225,25 @@ class SessionController {
       const { id } = req.params;
       const studentId = req.studentId;
 
-      const session = await VotingSession.findById(id).populate("candidates");
+      const session = await VotingSession.findById(id)
+        .populate("candidates", "name position photo_url bio manifesto")
+        .lean();
 
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      // Update session status
-      await session.updateStatus();
+      // Update status calculation
+      const now = new Date();
+      if (now < session.start_time) {
+        session.status = "upcoming";
+      } else if (now >= session.start_time && now <= session.end_time) {
+        session.status = "active";
+      } else {
+        session.status = "ended";
+      }
 
-      const student = await Student.findById(studentId);
+      const student = await Student.findById(studentId).lean();
 
       // Check eligibility
       let eligible = true;
@@ -203,11 +257,24 @@ class SessionController {
         eligibilityReason = "College not eligible";
       }
 
+      // Check department eligibility (convert IDs to names)
       if (
         session.eligible_departments &&
         session.eligible_departments.length > 0
       ) {
-        if (!session.eligible_departments.includes(student.department)) {
+        const College = require("../models/College");
+        const colleges = await College.find({}).select("departments").lean();
+        const departmentNames = [];
+
+        colleges.forEach((college) => {
+          college.departments.forEach((dept) => {
+            if (session.eligible_departments.includes(dept._id.toString())) {
+              departmentNames.push(dept.name);
+            }
+          });
+        });
+
+        if (!departmentNames.includes(student.department)) {
           eligible = false;
           eligibilityReason = "Department not eligible";
         }
@@ -252,7 +319,9 @@ class SessionController {
           is_off_campus_allowed: session.is_off_campus_allowed,
           eligible,
           eligibility_reason: eligibilityReason,
-          has_voted: student.has_voted_sessions.includes(session._id),
+          has_voted: student.has_voted_sessions.some(
+            (votedId) => votedId.toString() === session._id.toString()
+          ),
           candidates_by_position: candidatesByPosition,
         },
       });
