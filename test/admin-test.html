@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Test - Univote</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+          "Segoe UI", Helvetica, Arial, sans-serif;
+        background: #fafafa;
+        min-height: 100vh;
+        color: #1d1d1f;
+        line-height: 1.47059;
+        font-weight: 400;
+        letter-spacing: -0.022em;
+      }
+
+      .header {
+        background: #ffffff;
+        border-bottom: 1px solid #e5e5e5;
+        padding: 16px 0;
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      }
+
+      .header-content {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .logo {
+        font-size: 20px;
+        font-weight: 600;
+        color: #1d1d1f;
+      }
+
+      .back-link {
+        color: #06c;
+        text-decoration: none;
+        font-size: 14px;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 40px 24px 60px;
+      }
+
+      h1 {
+        font-size: 48px;
+        font-weight: 600;
+        color: #1d1d1f;
+        margin-bottom: 12px;
+        text-align: center;
+      }
+
+      .subtitle {
+        text-align: center;
+        font-size: 19px;
+        color: #6e6e73;
+        margin-bottom: 48px;
+      }
+
+      .test-section {
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 18px;
+        padding: 40px;
+        margin-bottom: 24px;
+      }
+
+      .test-section h2 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #1d1d1f;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e5e5e5;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #1d1d1f;
+        font-size: 14px;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 12px 16px;
+        border: 1px solid #d2d2d7;
+        border-radius: 12px;
+        font-size: 15px;
+        font-family: inherit;
+        transition: all 0.2s;
+        background: #ffffff;
+        color: #1d1d1f;
+      }
+
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #1d1d1f;
+        box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.04);
+      }
+
+      button {
+        background: #1d1d1f;
+        color: #ffffff;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-right: 8px;
+        margin-top: 8px;
+        font-family: inherit;
+      }
+
+      button:hover {
+        background: #424245;
+      }
+
+      .btn-secondary {
+        background: #ffffff;
+        color: #1d1d1f;
+        border: 1px solid #d2d2d7;
+      }
+
+      .btn-secondary:hover {
+        background: #f5f5f7;
+      }
+
+      .response-box {
+        background: #f5f5f7;
+        border: 1px solid #e5e5e5;
+        padding: 20px;
+        border-radius: 12px;
+        margin-top: 16px;
+        font-family: "SF Mono", Monaco, monospace;
+        font-size: 13px;
+        max-height: 500px;
+        overflow-y: auto;
+      }
+
+      .response-box pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        margin: 0;
+        color: #1d1d1f;
+      }
+
+      .success {
+        background: #f0f9ff;
+      }
+
+      .error {
+        background: #fff5f5;
+      }
+
+      .info-box {
+        background: #f5f5f7;
+        border: 1px solid #e5e5e5;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+      }
+
+      .grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+
+      @media (max-width: 768px) {
+        .grid-2 {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="header-content">
+        <div class="logo">Univote</div>
+        <a href="index.html" class="back-link">← Back to Test Suite</a>
+      </div>
+    </div>
+
+    <div class="container">
+      <h1>Admin Panel Test</h1>
+      <p class="subtitle">
+        Comprehensive testing for all administrative endpoints
+      </p>
+
+      <!-- Configuration -->
+      <div class="test-section">
+        <h2>Configuration</h2>
+        <div class="form-group">
+          <label>API Base URL</label>
+          <input
+            type="text"
+            id="apiBaseUrl"
+            value="http://localhost:5000/api"
+            placeholder="http://localhost:5000/api"
+          />
+        </div>
+        <div class="form-group">
+          <label>Admin Token (from admin login)</label>
+          <input
+            type="text"
+            id="adminToken"
+            placeholder="Paste your admin JWT token here"
+          />
+          <button onclick="saveToken()" style="margin-top: 12px">
+            Save Token
+          </button>
+          <button onclick="loadStoredToken()" class="btn-secondary">
+            Load Stored Token
+          </button>
+        </div>
+        <div
+          id="tokenStatus"
+          class="info-box"
+          style="display: none; margin-top: 16px"
+        >
+          <strong>Token Status:</strong> <span id="tokenStatusText"></span>
+        </div>
+      </div>
+
+      <!-- Admin Login -->
+      <div class="test-section">
+        <h2>1. Admin Login</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> POST /api/auth/admin-login<br />
+          <strong>Purpose:</strong> Authenticate admin user and get JWT token
+        </div>
+        <form id="adminLoginForm">
+          <div class="form-group">
+            <label>Email</label>
+            <input
+              type="email"
+              id="adminEmail"
+              placeholder="admin@univote.com"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input
+              type="password"
+              id="adminPassword"
+              placeholder="Admin password"
+              required
+            />
+          </div>
+          <button type="submit">Login as Admin</button>
+          <button
+            type="button"
+            onclick="fillSampleAdmin()"
+            class="btn-secondary"
+          >
+            Fill Sample Data
+          </button>
+        </form>
+        <div id="adminLoginResponse" class="response-box" style="display: none">
+          <pre id="adminLoginResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Upload Students -->
+      <div class="test-section">
+        <h2>2. Upload Students from CSV</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> POST /api/admin/upload-students<br />
+          <strong>Purpose:</strong> Bulk upload students with CSV data<br />
+          <strong>Auth:</strong> Admin JWT token required
+        </div>
+        <form id="uploadStudentsForm">
+          <div class="form-group">
+            <label>Target College (optional)</label>
+            <input
+              type="text"
+              id="targetCollege"
+              placeholder="e.g., Engineering"
+            />
+          </div>
+          <div class="form-group">
+            <label>Target Department (optional)</label>
+            <input
+              type="text"
+              id="targetDepartment"
+              placeholder="e.g., Computer Science"
+            />
+          </div>
+          <div class="form-group">
+            <label>Target Level (optional)</label>
+            <select id="targetLevel">
+              <option value="">All Levels</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+              <option value="300">300</option>
+              <option value="400">400</option>
+              <option value="500">500</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>CSV Data (JSON Array)</label>
+            <textarea
+              id="csvData"
+              placeholder='[{"matric_no": "ENG/2020/001", "full_name": "John Doe", "email": "john@uni.edu", "department": "Computer Science", "college": "Engineering", "level": "400"}]'
+              required
+            ></textarea>
+          </div>
+          <button type="submit">Upload Students</button>
+          <button type="button" onclick="fillSampleCSV()" class="btn-secondary">
+            Fill Sample CSV
+          </button>
+        </form>
+        <div
+          id="uploadStudentsResponse"
+          class="response-box"
+          style="display: none"
+        >
+          <pre id="uploadStudentsResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Create Voting Session -->
+      <div class="test-section">
+        <h2>3. Create Voting Session</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> POST /api/admin/create-session<br />
+          <strong>Purpose:</strong> Create a new voting session with categories
+          and eligible voters
+        </div>
+        <form id="createSessionForm">
+          <div class="grid-2">
+            <div class="form-group">
+              <label>Title</label>
+              <input
+                type="text"
+                id="sessionTitle"
+                placeholder="Student Union Election 2025"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <input
+                type="text"
+                id="sessionDescription"
+                placeholder="Annual election for student representatives"
+              />
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>Start Time</label>
+              <input type="datetime-local" id="sessionStartTime" required />
+            </div>
+            <div class="form-group">
+              <label>End Time</label>
+              <input type="datetime-local" id="sessionEndTime" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Categories (JSON Array)</label>
+            <textarea
+              id="sessionCategories"
+              placeholder='[{"name": "President", "max_choices": 1}, {"name": "Vice President", "max_choices": 1}]'
+              required
+            ></textarea>
+          </div>
+          <div class="form-group">
+            <label>Eligible Voters Filter (JSON)</label>
+            <textarea
+              id="sessionEligibleVoters"
+              placeholder='{"colleges": ["Engineering"], "levels": ["400", "500"]}'
+            ></textarea>
+          </div>
+          <div class="form-group">
+            <label>Location (JSON)</label>
+            <textarea
+              id="sessionLocation"
+              placeholder='{"name": "Main Campus", "address": "University Road", "coordinates": {"lat": 9.082, "lng": 8.675}, "radius": 1000}'
+              required
+            ></textarea>
+          </div>
+          <button type="submit">Create Session</button>
+          <button
+            type="button"
+            onclick="fillSampleSession()"
+            class="btn-secondary"
+          >
+            Fill Sample Data
+          </button>
+        </form>
+        <div
+          id="createSessionResponse"
+          class="response-box"
+          style="display: none"
+        >
+          <pre id="createSessionResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Get All Sessions -->
+      <div class="test-section">
+        <h2>4. Get All Voting Sessions</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> GET /api/admin/sessions<br />
+          <strong>Purpose:</strong> Retrieve all voting sessions with filters
+        </div>
+        <div class="form-group">
+          <label>Status Filter (optional)</label>
+          <select id="sessionsStatusFilter">
+            <option value="">All</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="active">Active</option>
+            <option value="ended">Ended</option>
+          </select>
+        </div>
+        <button onclick="getAllSessions()">Get Sessions</button>
+        <div
+          id="getSessionsResponse"
+          class="response-box"
+          style="display: none"
+        >
+          <pre id="getSessionsResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Get Session by ID -->
+      <div class="test-section">
+        <h2>5. Get Session Details</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> GET /api/admin/sessions/:id<br />
+          <strong>Purpose:</strong> Get detailed information about a specific
+          session
+        </div>
+        <div class="form-group">
+          <label>Session ID</label>
+          <input type="text" id="getSessionId" placeholder="Session ID" />
+        </div>
+        <button onclick="getSessionById()">Get Session Details</button>
+        <div
+          id="getSessionByIdResponse"
+          class="response-box"
+          style="display: none"
+        >
+          <pre id="getSessionByIdResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Update Session -->
+      <div class="test-section">
+        <h2>6. Update Voting Session</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> PATCH /api/admin/update-session/:id<br />
+          <strong>Purpose:</strong> Update session details (not allowed for
+          active/ended sessions)
+        </div>
+        <form id="updateSessionForm">
+          <div class="form-group">
+            <label>Session ID</label>
+            <input
+              type="text"
+              id="updateSessionId"
+              placeholder="Session ID"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label>Update Data (JSON)</label>
+            <textarea
+              id="updateSessionData"
+              placeholder='{"title": "Updated Title", "description": "Updated description"}'
+            ></textarea>
+          </div>
+          <button type="submit">Update Session</button>
+        </form>
+        <div
+          id="updateSessionResponse"
+          class="response-box"
+          style="display: none"
+        >
+          <pre id="updateSessionResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Delete Session -->
+      <div class="test-section">
+        <h2>7. Delete Voting Session</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> DELETE /api/admin/delete-session/:id<br />
+          <strong>Purpose:</strong> Delete a voting session
+        </div>
+        <div class="form-group">
+          <label>Session ID</label>
+          <input type="text" id="deleteSessionId" placeholder="Session ID" />
+        </div>
+        <button onclick="deleteSession()">Delete Session</button>
+        <div
+          id="deleteSessionResponse"
+          class="response-box"
+          style="display: none"
+        >
+          <pre id="deleteSessionResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Get All Students -->
+      <div class="test-section">
+        <h2>8. Get All Students</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> GET /api/admin/students<br />
+          <strong>Purpose:</strong> Get all students with pagination and filters
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Page</label>
+            <input type="number" id="studentsPage" value="1" min="1" />
+          </div>
+          <div class="form-group">
+            <label>Limit</label>
+            <input
+              type="number"
+              id="studentsLimit"
+              value="10"
+              min="1"
+              max="100"
+            />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>College Filter</label>
+          <input
+            type="text"
+            id="studentsCollege"
+            placeholder="e.g., Engineering"
+          />
+        </div>
+        <div class="form-group">
+          <label>Department Filter</label>
+          <input
+            type="text"
+            id="studentsDepartment"
+            placeholder="e.g., Computer Science"
+          />
+        </div>
+        <button onclick="getAllStudents()">Get Students</button>
+        <div
+          id="getStudentsResponse"
+          class="response-box"
+          style="display: none"
+        >
+          <pre id="getStudentsResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Get Student by ID -->
+      <div class="test-section">
+        <h2>9. Get Student Details</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> GET /api/admin/students/:id<br />
+          <strong>Purpose:</strong> Get detailed information about a specific
+          student
+        </div>
+        <div class="form-group">
+          <label>Student ID</label>
+          <input type="text" id="getStudentId" placeholder="Student ID" />
+        </div>
+        <button onclick="getStudentById()">Get Student Details</button>
+        <div
+          id="getStudentByIdResponse"
+          class="response-box"
+          style="display: none"
+        >
+          <pre id="getStudentByIdResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Update Student -->
+      <div class="test-section">
+        <h2>10. Update Student</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> PATCH /api/admin/students/:id<br />
+          <strong>Purpose:</strong> Update student information
+        </div>
+        <form id="updateStudentForm">
+          <div class="form-group">
+            <label>Student ID</label>
+            <input
+              type="text"
+              id="updateStudentId"
+              placeholder="Student ID"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label>Update Data (JSON)</label>
+            <textarea
+              id="updateStudentData"
+              placeholder='{"full_name": "Updated Name", "email": "newemail@uni.edu", "is_active": true}'
+            ></textarea>
+          </div>
+          <button type="submit">Update Student</button>
+        </form>
+        <div
+          id="updateStudentResponse"
+          class="response-box"
+          style="display: none"
+        >
+          <pre id="updateStudentResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Delete Student -->
+      <div class="test-section">
+        <h2>11. Delete Student</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> DELETE /api/admin/students/:id<br />
+          <strong>Purpose:</strong> Delete or deactivate a student
+        </div>
+        <div class="form-group">
+          <label>Student ID</label>
+          <input type="text" id="deleteStudentId" placeholder="Student ID" />
+        </div>
+        <button onclick="deleteStudent()">Delete Student</button>
+        <div
+          id="deleteStudentResponse"
+          class="response-box"
+          style="display: none"
+        >
+          <pre id="deleteStudentResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Session Statistics -->
+      <div class="test-section">
+        <h2>12. Get Session Statistics</h2>
+        <div class="info-box">
+          <strong>Endpoint:</strong> GET /api/admin/session-stats/:id<br />
+          <strong>Purpose:</strong> Get detailed statistics for a voting session
+        </div>
+        <div class="form-group">
+          <label>Session ID</label>
+          <input type="text" id="sessionStatsId" placeholder="Session ID" />
+        </div>
+        <button onclick="getSessionStats()">Get Statistics</button>
+        <div
+          id="sessionStatsResponse"
+          class="response-box"
+          style="display: none"
+        >
+          <pre id="sessionStatsResponseContent"></pre>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function getApiUrl() {
+        return document.getElementById("apiBaseUrl").value;
+      }
+
+      function getAdminToken() {
+        const token = document.getElementById("adminToken").value;
+        if (!token) {
+          const stored = localStorage.getItem("adminToken");
+          if (stored) {
+            document.getElementById("adminToken").value = stored;
+            return stored;
+          }
+          alert("❌ Please provide an admin token first!");
+          return null;
+        }
+        return token;
+      }
+
+      function saveToken() {
+        const token = document.getElementById("adminToken").value;
+        if (token) {
+          localStorage.setItem("adminToken", token);
+          showTokenStatus("Token saved successfully!", false);
+        } else {
+          alert("Please enter a token first");
+        }
+      }
+
+      function loadStoredToken() {
+        const token = localStorage.getItem("adminToken");
+        if (token) {
+          document.getElementById("adminToken").value = token;
+          showTokenStatus("Token loaded from storage", false);
+        } else {
+          showTokenStatus("No stored token found", true);
+        }
+      }
+
+      function showTokenStatus(message, isError) {
+        const statusDiv = document.getElementById("tokenStatus");
+        const statusText = document.getElementById("tokenStatusText");
+        statusDiv.style.display = "block";
+        statusDiv.className = "info-box " + (isError ? "error" : "success");
+        statusText.textContent = message;
+      }
+
+      function showResponse(elementId, data, isError) {
+        const responseBox = document.getElementById(elementId);
+        const responseContent = document.getElementById(elementId + "Content");
+        responseBox.style.display = "block";
+        responseBox.className =
+          "response-box " + (isError ? "error" : "success");
+        responseContent.textContent = JSON.stringify(data, null, 2);
+      }
+
+      function fillSampleAdmin() {
+        document.getElementById("adminEmail").value = "louisdiaz43@gmail.com";
+        document.getElementById("adminPassword").value = "balikiss12";
+      }
+
+      function fillSampleCSV() {
+        const sampleData = [
+          {
+            matric_no: "ENG/2020/001",
+            full_name: "John Doe",
+            email: "john.doe@university.edu",
+            department: "Computer Science",
+            college: "Engineering",
+            level: "400",
+          },
+          {
+            matric_no: "ENG/2020/002",
+            full_name: "Jane Smith",
+            email: "jane.smith@university.edu",
+            department: "Computer Science",
+            college: "Engineering",
+            level: "400",
+          },
+        ];
+        document.getElementById("csvData").value = JSON.stringify(
+          sampleData,
+          null,
+          2
+        );
+      }
+
+      function fillSampleSession() {
+        const now = new Date();
+        const startTime = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Tomorrow
+        const endTime = new Date(startTime.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days later
+
+        document.getElementById("sessionTitle").value =
+          "Student Union Election 2025";
+        document.getElementById("sessionDescription").value =
+          "Annual election for student representatives";
+        document.getElementById("sessionStartTime").value = startTime
+          .toISOString()
+          .slice(0, 16);
+        document.getElementById("sessionEndTime").value = endTime
+          .toISOString()
+          .slice(0, 16);
+
+        const categories = [
+          { name: "President", max_choices: 1 },
+          { name: "Vice President", max_choices: 1 },
+          { name: "General Secretary", max_choices: 1 },
+        ];
+        document.getElementById("sessionCategories").value = JSON.stringify(
+          categories,
+          null,
+          2
+        );
+
+        const eligibleVoters = {
+          colleges: ["Engineering"],
+          levels: ["400", "500"],
+        };
+        document.getElementById("sessionEligibleVoters").value = JSON.stringify(
+          eligibleVoters,
+          null,
+          2
+        );
+
+        const location = {
+          name: "Main Campus",
+          address: "University Road, Kaduna",
+          coordinates: { lat: 9.082, lng: 8.675 },
+          radius: 1000,
+        };
+        document.getElementById("sessionLocation").value = JSON.stringify(
+          location,
+          null,
+          2
+        );
+      }
+
+      // Admin Login
+      document
+        .getElementById("adminLoginForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const data = {
+            email: document.getElementById("adminEmail").value,
+            password: document.getElementById("adminPassword").value,
+          };
+
+          try {
+            const response = await fetch(`${getApiUrl()}/auth/admin-login`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data),
+            });
+
+            const result = await response.json();
+            showResponse("adminLoginResponse", result, !response.ok);
+
+            if (response.ok && result.token) {
+              document.getElementById("adminToken").value = result.token;
+              saveToken();
+              alert("✅ Login successful! Token saved automatically.");
+            }
+          } catch (error) {
+            showResponse("adminLoginResponse", { error: error.message }, true);
+          }
+        });
+
+      // Upload Students
+      document
+        .getElementById("uploadStudentsForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const token = getAdminToken();
+          if (!token) return;
+
+          try {
+            const csvData = JSON.parse(
+              document.getElementById("csvData").value
+            );
+            const data = {
+              csv_data: csvData,
+              target_college:
+                document.getElementById("targetCollege").value || undefined,
+              target_department:
+                document.getElementById("targetDepartment").value || undefined,
+              target_level:
+                document.getElementById("targetLevel").value || undefined,
+            };
+
+            const response = await fetch(
+              `${getApiUrl()}/admin/upload-students`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(data),
+              }
+            );
+
+            const result = await response.json();
+            showResponse("uploadStudentsResponse", result, !response.ok);
+          } catch (error) {
+            showResponse(
+              "uploadStudentsResponse",
+              { error: error.message },
+              true
+            );
+          }
+        });
+
+      // Create Session
+      document
+        .getElementById("createSessionForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const token = getAdminToken();
+          if (!token) return;
+
+          try {
+            const data = {
+              title: document.getElementById("sessionTitle").value,
+              description: document.getElementById("sessionDescription").value,
+              start_time: document.getElementById("sessionStartTime").value,
+              end_time: document.getElementById("sessionEndTime").value,
+              categories: JSON.parse(
+                document.getElementById("sessionCategories").value
+              ),
+              eligible_voters: JSON.parse(
+                document.getElementById("sessionEligibleVoters").value || "{}"
+              ),
+              location: JSON.parse(
+                document.getElementById("sessionLocation").value
+              ),
+            };
+
+            const response = await fetch(
+              `${getApiUrl()}/admin/create-session`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(data),
+              }
+            );
+
+            const result = await response.json();
+            showResponse("createSessionResponse", result, !response.ok);
+          } catch (error) {
+            showResponse(
+              "createSessionResponse",
+              { error: error.message },
+              true
+            );
+          }
+        });
+
+      // Get All Sessions
+      async function getAllSessions() {
+        const token = getAdminToken();
+        if (!token) return;
+
+        try {
+          const status = document.getElementById("sessionsStatusFilter").value;
+          const url = status
+            ? `${getApiUrl()}/admin/sessions?status=${status}`
+            : `${getApiUrl()}/admin/sessions`;
+
+          const response = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          const result = await response.json();
+          showResponse("getSessionsResponse", result, !response.ok);
+        } catch (error) {
+          showResponse("getSessionsResponse", { error: error.message }, true);
+        }
+      }
+
+      // Get Session by ID
+      async function getSessionById() {
+        const token = getAdminToken();
+        if (!token) return;
+
+        const sessionId = document.getElementById("getSessionId").value;
+        if (!sessionId) {
+          alert("Please enter a session ID");
+          return;
+        }
+
+        try {
+          const response = await fetch(
+            `${getApiUrl()}/admin/sessions/${sessionId}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+
+          const result = await response.json();
+          showResponse("getSessionByIdResponse", result, !response.ok);
+        } catch (error) {
+          showResponse(
+            "getSessionByIdResponse",
+            { error: error.message },
+            true
+          );
+        }
+      }
+
+      // Update Session
+      document
+        .getElementById("updateSessionForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const token = getAdminToken();
+          if (!token) return;
+
+          try {
+            const sessionId = document.getElementById("updateSessionId").value;
+            const updateData = JSON.parse(
+              document.getElementById("updateSessionData").value
+            );
+
+            const response = await fetch(
+              `${getApiUrl()}/admin/update-session/${sessionId}`,
+              {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(updateData),
+              }
+            );
+
+            const result = await response.json();
+            showResponse("updateSessionResponse", result, !response.ok);
+          } catch (error) {
+            showResponse(
+              "updateSessionResponse",
+              { error: error.message },
+              true
+            );
+          }
+        });
+
+      // Delete Session
+      async function deleteSession() {
+        const token = getAdminToken();
+        if (!token) return;
+
+        const sessionId = document.getElementById("deleteSessionId").value;
+        if (!sessionId) {
+          alert("Please enter a session ID");
+          return;
+        }
+
+        if (!confirm("Are you sure you want to delete this session?")) return;
+
+        try {
+          const response = await fetch(
+            `${getApiUrl()}/admin/delete-session/${sessionId}`,
+            {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+
+          const result = await response.json();
+          showResponse("deleteSessionResponse", result, !response.ok);
+        } catch (error) {
+          showResponse("deleteSessionResponse", { error: error.message }, true);
+        }
+      }
+
+      // Get All Students
+      async function getAllStudents() {
+        const token = getAdminToken();
+        if (!token) return;
+
+        try {
+          const page = document.getElementById("studentsPage").value;
+          const limit = document.getElementById("studentsLimit").value;
+          const college = document.getElementById("studentsCollege").value;
+          const department =
+            document.getElementById("studentsDepartment").value;
+
+          let url = `${getApiUrl()}/admin/students?page=${page}&limit=${limit}`;
+          if (college) url += `&college=${encodeURIComponent(college)}`;
+          if (department)
+            url += `&department=${encodeURIComponent(department)}`;
+
+          const response = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          const result = await response.json();
+          showResponse("getStudentsResponse", result, !response.ok);
+        } catch (error) {
+          showResponse("getStudentsResponse", { error: error.message }, true);
+        }
+      }
+
+      // Get Student by ID
+      async function getStudentById() {
+        const token = getAdminToken();
+        if (!token) return;
+
+        const studentId = document.getElementById("getStudentId").value;
+        if (!studentId) {
+          alert("Please enter a student ID");
+          return;
+        }
+
+        try {
+          const response = await fetch(
+            `${getApiUrl()}/admin/students/${studentId}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+
+          const result = await response.json();
+          showResponse("getStudentByIdResponse", result, !response.ok);
+        } catch (error) {
+          showResponse(
+            "getStudentByIdResponse",
+            { error: error.message },
+            true
+          );
+        }
+      }
+
+      // Update Student
+      document
+        .getElementById("updateStudentForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const token = getAdminToken();
+          if (!token) return;
+
+          try {
+            const studentId = document.getElementById("updateStudentId").value;
+            const updateData = JSON.parse(
+              document.getElementById("updateStudentData").value
+            );
+
+            const response = await fetch(
+              `${getApiUrl()}/admin/students/${studentId}`,
+              {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(updateData),
+              }
+            );
+
+            const result = await response.json();
+            showResponse("updateStudentResponse", result, !response.ok);
+          } catch (error) {
+            showResponse(
+              "updateStudentResponse",
+              { error: error.message },
+              true
+            );
+          }
+        });
+
+      // Delete Student
+      async function deleteStudent() {
+        const token = getAdminToken();
+        if (!token) return;
+
+        const studentId = document.getElementById("deleteStudentId").value;
+        if (!studentId) {
+          alert("Please enter a student ID");
+          return;
+        }
+
+        if (!confirm("Are you sure you want to delete this student?")) return;
+
+        try {
+          const response = await fetch(
+            `${getApiUrl()}/admin/students/${studentId}`,
+            {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+
+          const result = await response.json();
+          showResponse("deleteStudentResponse", result, !response.ok);
+        } catch (error) {
+          showResponse("deleteStudentResponse", { error: error.message }, true);
+        }
+      }
+
+      // Get Session Statistics
+      async function getSessionStats() {
+        const token = getAdminToken();
+        if (!token) return;
+
+        const sessionId = document.getElementById("sessionStatsId").value;
+        if (!sessionId) {
+          alert("Please enter a session ID");
+          return;
+        }
+
+        try {
+          const response = await fetch(
+            `${getApiUrl()}/admin/session-stats/${sessionId}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+
+          const result = await response.json();
+          showResponse("sessionStatsResponse", result, !response.ok);
+        } catch (error) {
+          showResponse("sessionStatsResponse", { error: error.message }, true);
+        }
+      }
+
+      // Auto-load stored token on page load
+      window.addEventListener("load", () => {
+        const stored = localStorage.getItem("adminToken");
+        if (stored) {
+          document.getElementById("adminToken").value = stored;
+        }
+      });
+    </script>
+  </body>
+</html>

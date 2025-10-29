@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voting System Test - Univote</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+          "Segoe UI", Helvetica, Arial, sans-serif;
+        background: #fafafa;
+        min-height: 100vh;
+        color: #1d1d1f;
+        line-height: 1.47059;
+        font-weight: 400;
+        letter-spacing: -0.022em;
+      }
+
+      /* Header */
+      .header {
+        background: #ffffff;
+        border-bottom: 1px solid #e5e5e5;
+        padding: 16px 0;
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      }
+
+      .header-content {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .logo {
+        font-size: 20px;
+        font-weight: 600;
+        color: #1d1d1f;
+        letter-spacing: -0.5px;
+      }
+
+      .back-link {
+        color: #06c;
+        text-decoration: none;
+        font-size: 14px;
+        transition: opacity 0.2s;
+      }
+
+      .back-link:hover {
+        opacity: 0.7;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 40px 24px 60px;
+      }
+
+      h1 {
+        font-size: 48px;
+        font-weight: 600;
+        color: #1d1d1f;
+        margin-bottom: 12px;
+        letter-spacing: -0.015em;
+        text-align: center;
+      }
+
+      .subtitle {
+        text-align: center;
+        font-size: 19px;
+        color: #6e6e73;
+        margin-bottom: 48px;
+      }
+
+      .test-section {
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 18px;
+        padding: 40px;
+        margin-bottom: 24px;
+        transition: border-color 0.2s;
+      }
+
+      .test-section:hover {
+        border-color: #d2d2d7;
+      }
+
+      .test-section h2 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #1d1d1f;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e5e5e5;
+        letter-spacing: -0.015em;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #1d1d1f;
+        font-size: 14px;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 12px 16px;
+        border: 1px solid #d2d2d7;
+        border-radius: 12px;
+        font-size: 15px;
+        font-family: inherit;
+        transition: all 0.2s;
+        background: #ffffff;
+        color: #1d1d1f;
+      }
+
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #1d1d1f;
+        box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.04);
+      }
+
+      input:disabled {
+        background: #f5f5f7;
+        cursor: not-allowed;
+      }
+
+      button {
+        background: #1d1d1f;
+        color: #ffffff;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-right: 8px;
+        margin-top: 8px;
+        font-family: inherit;
+        letter-spacing: -0.016em;
+      }
+
+      button:hover {
+        background: #424245;
+      }
+
+      button:active {
+        transform: scale(0.98);
+      }
+
+      .btn-secondary {
+        background: #ffffff;
+        color: #1d1d1f;
+        border: 1px solid #d2d2d7;
+      }
+
+      .btn-secondary:hover {
+        background: #f5f5f7;
+        border-color: #b8b8bd;
+      }
+
+      .btn-danger {
+        background: #1d1d1f;
+        border: 1px solid #d2d2d7;
+      }
+
+      .btn-danger:hover {
+        background: #424245;
+      }
+
+      .btn-info {
+        background: #ffffff;
+        color: #1d1d1f;
+        border: 1px solid #d2d2d7;
+      }
+
+      .btn-info:hover {
+        background: #f5f5f7;
+      }
+
+      .response-box {
+        background: #f5f5f7;
+        border: 1px solid #e5e5e5;
+        padding: 20px;
+        border-radius: 12px;
+        margin-top: 16px;
+        font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas,
+          "Courier New", monospace;
+        font-size: 13px;
+        max-height: 500px;
+        overflow-y: auto;
+      }
+
+      .response-box pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        margin: 0;
+        color: #1d1d1f;
+      }
+
+      .success {
+        background: #f0f9ff;
+        border-color: #1d1d1f;
+      }
+
+      .error {
+        background: #fff5f5;
+        border-color: #1d1d1f;
+      }
+
+      .info-box {
+        background: #f5f5f7;
+        border: 1px solid #e5e5e5;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+      }
+
+      .info-box strong {
+        color: #1d1d1f;
+        font-weight: 600;
+      }
+
+      .config-section {
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+
+      .config-section h3 {
+        color: #1d1d1f;
+        font-weight: 600;
+        margin-bottom: 16px;
+        font-size: 19px;
+        color: #856404;
+        margin-bottom: 10px;
+      }
+
+      .stored-data {
+        background: #e3f2fd;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 15px;
+      }
+
+      .stored-data h3 {
+        color: #1565c0;
+        margin-bottom: 10px;
+        font-size: 16px;
+      }
+
+      .data-item {
+        background: white;
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 5px;
+        border-left: 3px solid #2196f3;
+      }
+
+      .choice-container {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        border: 2px solid #e0e0e0;
+      }
+
+      .choice-container h4 {
+        color: #11998e;
+        margin-bottom: 10px;
+      }
+
+      .remove-choice {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 5px 15px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 12px;
+        margin-top: 10px;
+      }
+
+      .image-preview {
+        margin-top: 15px;
+        border: 2px dashed #11998e;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+      }
+
+      .image-preview img {
+        max-width: 300px;
+        max-height: 300px;
+        border-radius: 8px;
+        margin-top: 10px;
+      }
+
+      .sessions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+      }
+
+      .session-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        padding: 20px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .session-card:hover {
+        border-color: #11998e;
+        transform: translateY(-5px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      }
+
+      .session-card.selected {
+        border-color: #11998e;
+        background: #e7f9f7;
+      }
+
+      .session-card h3 {
+        color: #11998e;
+        margin-bottom: 10px;
+      }
+
+      .session-status {
+        display: inline-block;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 10px;
+      }
+
+      .status-active {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .status-upcoming {
+        background: #cce5ff;
+        color: #004085;
+      }
+
+      .status-ended {
+        background: #f8d7da;
+        color: #721c24;
+      }
+
+      .warning-box {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 15px 0;
+        color: #856404;
+      }
+
+      .candidates-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 15px;
+        margin-top: 15px;
+      }
+
+      .candidate-card {
+        background: #f8f9fa;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+      }
+
+      .candidate-card img {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        object-fit: cover;
+        margin-bottom: 10px;
+      }
+
+      .candidate-card h4 {
+        color: #333;
+        margin-bottom: 5px;
+      }
+
+      .candidate-card p {
+        color: #6e6e73;
+        font-size: 14px;
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        h1 {
+          font-size: 36px;
+        }
+
+        .subtitle {
+          font-size: 17px;
+        }
+
+        .test-section {
+          padding: 24px;
+        }
+
+        .container {
+          padding: 24px 16px;
+        }
+
+        .candidates-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Header -->
+    <div class="header">
+      <div class="header-content">
+        <div class="logo">Univote</div>
+        <a href="index.html" class="back-link">← Back to Test Suite</a>
+      </div>
+    </div>
+
+    <div class="container">
+      <h1>Voting System Test</h1>
+      <p class="subtitle">
+        Complete workflow testing for voting sessions and results
+      </p>
+
+      <!-- Configuration Section -->
+      <div class="test-section">
+        <h2>Configuration</h2>
+        <div class="config-section">
+          <h3>API Base URL</h3>
+          <div class="form-group">
+            <input
+              type="text"
+              id="apiBaseUrl"
+              value="http://localhost:5000/api"
+              placeholder="http://localhost:5000/api"
+            />
+          </div>
+        </div>
+
+        <div class="stored-data" id="storedData">
+          <h3>📦 Authentication Status</h3>
+          <div id="authStatus">Not logged in</div>
+          <button
+            onclick="loadFromLocalStorage()"
+            class="btn-secondary"
+            style="margin-top: 10px"
+          >
+            Load Saved Token
+          </button>
+          <button
+            onclick="clearAuth()"
+            class="btn-danger"
+            style="margin-top: 10px"
+          >
+            Clear Auth
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Login Section -->
+      <div class="test-section">
+        <h2>🔑 Quick Login</h2>
+        <div class="info-box">
+          <strong>Note:</strong> You need to be logged in to vote. Use this
+          quick login or use the full auth test page.
+        </div>
+
+        <form id="quickLoginForm">
+          <div class="form-group">
+            <label for="quickMatric">Matric Number:</label>
+            <input
+              type="text"
+              id="quickMatric"
+              placeholder="e.g., ENG/2020/001"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="quickPassword">Password:</label>
+            <input
+              type="password"
+              id="quickPassword"
+              placeholder="Enter password"
+              required
+            />
+          </div>
+
+          <button type="submit">🔑 Login</button>
+          <button
+            type="button"
+            onclick="fillSampleLogin()"
+            class="btn-secondary"
+          >
+            Fill Sample
+          </button>
+        </form>
+
+        <div id="loginResponse" class="response-box" style="display: none">
+          <pre id="loginResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Get Active Sessions -->
+      <div class="test-section">
+        <h2>1. Get Active Sessions</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> GET /api/sessions<br />
+          <strong>Purpose:</strong> Fetch all active voting sessions for the
+          student
+        </div>
+
+        <button onclick="getActiveSessions()">📋 Get Active Sessions</button>
+
+        <div id="sessionsResponse" class="response-box" style="display: none">
+          <pre id="sessionsResponseContent"></pre>
+        </div>
+
+        <div id="sessionsDisplay" style="margin-top: 20px"></div>
+      </div>
+
+      <!-- Get Session Details & Candidates -->
+      <div class="test-section">
+        <h2>2. Get Session Details & Candidates</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> GET /api/sessions/:id<br />
+          <strong>Purpose:</strong> Get full session details including
+          candidates
+        </div>
+
+        <div class="form-group">
+          <label for="sessionIdDetail">Session ID:</label>
+          <input
+            type="text"
+            id="sessionIdDetail"
+            placeholder="Session ID from active sessions"
+          />
+        </div>
+
+        <button onclick="getSessionDetails()">🔍 Get Details</button>
+        <button onclick="useSelectedSession('detail')" class="btn-secondary">
+          Use Selected Session
+        </button>
+
+        <div id="detailResponse" class="response-box" style="display: none">
+          <pre id="detailResponseContent"></pre>
+        </div>
+
+        <div id="candidatesDisplay" style="margin-top: 20px"></div>
+      </div>
+
+      <!-- Submit Vote (Session-Based) -->
+      <div class="test-section">
+        <h2>3. Submit Vote (Session-Based - Multiple Candidates)</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> POST /api/vote<br />
+          <strong>Purpose:</strong> Submit votes for multiple positions in a
+          session<br />
+          <strong>⚠️ Important:</strong> This is session-based voting - select
+          multiple candidates and submit once!
+        </div>
+
+        <div class="warning-box">
+          <strong>⚠️ Session-Based Voting:</strong><br />
+          • Select candidates for ALL positions you want to vote for<br />
+          • Capture ONE photo for the entire session<br />
+          • Submit ALL votes together in a single request<br />
+          • You can only vote ONCE per session
+        </div>
+
+        <form id="voteForm">
+          <div class="form-group">
+            <label for="voteSessionId">Session ID:</label>
+            <input
+              type="text"
+              id="voteSessionId"
+              placeholder="Session ID"
+              required
+            />
+            <button
+              type="button"
+              onclick="useSelectedSession('vote')"
+              class="btn-secondary"
+            >
+              Use Selected
+            </button>
+          </div>
+
+          <div class="form-group">
+            <label
+              >Choices (Add multiple candidates for different positions):</label
+            >
+            <div id="choicesContainer"></div>
+            <button type="button" onclick="addChoice()" class="btn-info">
+              ➕ Add Candidate Choice
+            </button>
+          </div>
+
+          <div class="form-group">
+            <label for="voteImage">Student Photo (Base64 or URL):</label>
+            <textarea
+              id="voteImage"
+              placeholder="Paste base64 image or URL"
+              required
+            ></textarea>
+            <input
+              type="file"
+              id="imageFile"
+              accept="image/*"
+              style="margin-top: 10px"
+            />
+            <button
+              type="button"
+              onclick="convertImageToBase64()"
+              class="btn-info"
+            >
+              📷 Convert Image to Base64
+            </button>
+          </div>
+
+          <div id="imagePreview" class="image-preview" style="display: none">
+            <h4>Image Preview:</h4>
+            <img id="previewImg" src="" alt="Preview" />
+          </div>
+
+          <div class="form-group">
+            <label for="voteLat">Latitude:</label>
+            <input
+              type="number"
+              step="0.000001"
+              id="voteLat"
+              placeholder="e.g., 9.0820"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="voteLng">Longitude:</label>
+            <input
+              type="number"
+              step="0.000001"
+              id="voteLng"
+              placeholder="e.g., 8.6753"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="voteDevice">Device ID (optional):</label>
+            <input
+              type="text"
+              id="voteDevice"
+              placeholder="e.g., device-12345"
+            />
+          </div>
+
+          <button type="submit">🗳️ Submit Vote</button>
+          <button
+            type="button"
+            onclick="fillSampleVote()"
+            class="btn-secondary"
+          >
+            Fill Sample Data
+          </button>
+          <button type="button" onclick="getCurrentLocation()" class="btn-info">
+            📍 Get My Location
+          </button>
+        </form>
+
+        <div id="voteResponse" class="response-box" style="display: none">
+          <pre id="voteResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Get Voting History -->
+      <div class="test-section">
+        <h2>4. Get My Voting History</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> GET /api/sessions/my-votes<br />
+          <strong>Purpose:</strong> View all sessions the student has voted in
+        </div>
+
+        <button onclick="getVotingHistory()">📜 Get My Voting History</button>
+
+        <div id="historyResponse" class="response-box" style="display: none">
+          <pre id="historyResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Get Live Results -->
+      <div class="test-section">
+        <h2>5. Get Live Results</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> GET
+          /api/sessions/:id/live-results<br />
+          <strong>Purpose:</strong> View real-time voting results (if session
+          allows)
+        </div>
+
+        <div class="form-group">
+          <label for="liveResultsSessionId">Session ID:</label>
+          <input
+            type="text"
+            id="liveResultsSessionId"
+            placeholder="Session ID"
+          />
+        </div>
+
+        <button onclick="getLiveResults()">📊 Get Live Results</button>
+        <button onclick="useSelectedSession('live')" class="btn-secondary">
+          Use Selected Session
+        </button>
+
+        <div id="liveResponse" class="response-box" style="display: none">
+          <pre id="liveResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Get Final Results -->
+      <div class="test-section">
+        <h2>6. Get Final Results</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> GET /api/results/:session_id<br />
+          <strong>Purpose:</strong> View final results after session ends
+        </div>
+
+        <div class="form-group">
+          <label for="finalResultsSessionId">Session ID:</label>
+          <input
+            type="text"
+            id="finalResultsSessionId"
+            placeholder="Session ID"
+          />
+        </div>
+
+        <button onclick="getFinalResults()">🏆 Get Final Results</button>
+        <button onclick="useSelectedSession('final')" class="btn-secondary">
+          Use Selected Session
+        </button>
+
+        <div id="finalResponse" class="response-box" style="display: none">
+          <pre id="finalResponseContent"></pre>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let selectedSessionId = null;
+      let choiceCount = 0;
+
+      // Get API URL
+      function getApiUrl() {
+        return document.getElementById("apiBaseUrl").value.trim();
+      }
+
+      // Get stored token
+      function getToken() {
+        return localStorage.getItem("studentToken");
+      }
+
+      // Display auth status
+      function displayAuthStatus() {
+        const token = getToken();
+        const studentData = localStorage.getItem("studentData");
+        const container = document.getElementById("authStatus");
+
+        if (!token) {
+          container.innerHTML =
+            '<p style="color: #dc3545;">❌ Not logged in</p>';
+          return;
+        }
+
+        if (studentData) {
+          const data = JSON.parse(studentData);
+          container.innerHTML = `
+                    <div class="data-item">✅ Logged in as: <strong>${data.full_name}</strong></div>
+                    <div class="data-item">📧 Email: ${data.email}</div>
+                    <div class="data-item">🎓 ${data.department}, Level ${data.level}</div>
+                `;
+        } else {
+          container.innerHTML =
+            '<div class="data-item">✅ Token found (no user data)</div>';
+        }
+      }
+
+      // Load from localStorage
+      function loadFromLocalStorage() {
+        displayAuthStatus();
+        alert("✅ Authentication data loaded!");
+      }
+
+      // Clear auth
+      function clearAuth() {
+        if (confirm("Clear authentication data?")) {
+          localStorage.removeItem("studentToken");
+          localStorage.removeItem("studentData");
+          displayAuthStatus();
+          alert("✅ Auth cleared!");
+        }
+      }
+
+      // Show response
+      function showResponse(elementId, data, isError = false) {
+        const responseBox = document.getElementById(elementId);
+        const responseContent = document.getElementById(elementId + "Content");
+
+        responseBox.style.display = "block";
+        responseBox.className = isError
+          ? "response-box error"
+          : "response-box success";
+        responseContent.textContent = JSON.stringify(data, null, 2);
+      }
+
+      // Fill sample login
+      function fillSampleLogin() {
+        document.getElementById("quickMatric").value = "BU22CSC1005";
+        document.getElementById("quickPassword").value = "balikiss12";
+      }
+
+      // Quick Login
+      document
+        .getElementById("quickLoginForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const data = {
+            matric_no: document.getElementById("quickMatric").value.trim(),
+            password: document.getElementById("quickPassword").value,
+          };
+
+          try {
+            const response = await fetch(`${getApiUrl()}/auth/login`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data),
+            });
+
+            const result = await response.json();
+            showResponse("loginResponse", result, !response.ok);
+
+            if (response.ok && result.token) {
+              localStorage.setItem("studentToken", result.token);
+              localStorage.setItem(
+                "studentData",
+                JSON.stringify(result.student)
+              );
+              displayAuthStatus();
+              alert("✅ Login successful!");
+            }
+          } catch (error) {
+            showResponse("loginResponse", { error: error.message }, true);
+          }
+        });
+
+      // Get Active Sessions
+      async function getActiveSessions() {
+        const token = getToken();
+        if (!token) {
+          alert("❌ Please login first!");
+          return;
+        }
+
+        try {
+          const response = await fetch(`${getApiUrl()}/sessions`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          const result = await response.json();
+          showResponse("sessionsResponse", result, !response.ok);
+
+          if (response.ok && result.sessions) {
+            displaySessions(result.sessions);
+          }
+        } catch (error) {
+          showResponse("sessionsResponse", { error: error.message }, true);
+        }
+      }
+
+      // Display sessions
+      function displaySessions(sessions) {
+        const container = document.getElementById("sessionsDisplay");
+
+        if (sessions.length === 0) {
+          container.innerHTML =
+            '<p style="color: #666;">No active sessions found</p>';
+          return;
+        }
+
+        let html =
+          '<h3 style="margin-top: 20px; color: #11998e;">Active Sessions (Click to select):</h3><div class="sessions-grid">';
+
+        sessions.forEach((session) => {
+          const statusClass =
+            session.status === "active"
+              ? "status-active"
+              : session.status === "upcoming"
+              ? "status-upcoming"
+              : "status-ended";
+
+          // Use _id if id doesn't exist
+          const sessionId = session._id || session.id;
+
+          html += `
+                    <div class="session-card" onclick="selectSession('${sessionId}', '${
+            session.title
+          }')">
+                        <span class="session-status ${statusClass}">${session.status.toUpperCase()}</span>
+                        <h3>${session.title}</h3>
+                        <p><strong>Start:</strong> ${new Date(
+                          session.start_time
+                        ).toLocaleString()}</p>
+                        <p><strong>End:</strong> ${new Date(
+                          session.end_time
+                        ).toLocaleString()}</p>
+                        <p><strong>Positions:</strong> ${
+                          session.categories
+                            ? session.categories.join(", ")
+                            : "N/A"
+                        }</p>
+                        <p><strong>Eligible:</strong> ✅ Yes</p>
+                        <p><strong>Has Voted:</strong> ${
+                          session.has_voted ? "✅ Yes" : "❌ No"
+                        }</p>
+                    </div>
+                `;
+        });
+
+        html += "</div>";
+        container.innerHTML = html;
+      }
+
+      // Select session
+      function selectSession(sessionId, title) {
+        selectedSessionId = sessionId;
+
+        // Update visual selection
+        document.querySelectorAll(".session-card").forEach((card) => {
+          card.classList.remove("selected");
+        });
+        event.currentTarget.classList.add("selected");
+
+        alert(`✅ Selected: ${title}\nID: ${sessionId}`);
+      }
+
+      // Use selected session
+      function useSelectedSession(type) {
+        if (!selectedSessionId) {
+          alert("❌ Please select a session first!");
+          return;
+        }
+
+        if (type === "detail") {
+          document.getElementById("sessionIdDetail").value = selectedSessionId;
+        } else if (type === "vote") {
+          document.getElementById("voteSessionId").value = selectedSessionId;
+        } else if (type === "live") {
+          document.getElementById("liveResultsSessionId").value =
+            selectedSessionId;
+        } else if (type === "final") {
+          document.getElementById("finalResultsSessionId").value =
+            selectedSessionId;
+        }
+
+        alert(`✅ Session ID filled for ${type}`);
+      }
+
+      // Get Session Details
+      async function getSessionDetails() {
+        const token = getToken();
+        const sessionId = document
+          .getElementById("sessionIdDetail")
+          .value.trim();
+
+        if (!token) {
+          alert("❌ Please login first!");
+          return;
+        }
+
+        if (!sessionId) {
+          alert("❌ Please enter a session ID!");
+          return;
+        }
+
+        try {
+          const response = await fetch(`${getApiUrl()}/sessions/${sessionId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          const result = await response.json();
+          showResponse("detailResponse", result, !response.ok);
+
+          if (response.ok && result.session && result.session.candidates) {
+            displayCandidates(result.session.candidates);
+          }
+        } catch (error) {
+          showResponse("detailResponse", { error: error.message }, true);
+        }
+      }
+
+      // Display candidates
+      function displayCandidates(candidates) {
+        const container = document.getElementById("candidatesDisplay");
+
+        if (candidates.length === 0) {
+          container.innerHTML =
+            '<p style="color: #666;">No candidates found</p>';
+          return;
+        }
+
+        let html =
+          '<h3 style="margin-top: 20px; color: #11998e;">Candidates:</h3><div class="candidates-grid">';
+
+        candidates.forEach((candidate) => {
+          // Use _id or id for compatibility
+          const candidateId = candidate._id || candidate.id;
+          
+          html += `
+                    <div class="candidate-card">
+                        ${
+                          candidate.photo_url
+                            ? `<img src="${candidate.photo_url}" alt="${candidate.name}">`
+                            : '<div style="width:80px;height:80px;background:#ddd;border-radius:50%;margin:0 auto 10px;"></div>'
+                        }
+                        <h4>${candidate.name}</h4>
+                        <p><strong>${candidate.position}</strong></p>
+                        <p style="font-size: 12px; color: #999;">ID: ${candidateId}</p>
+                        <button onclick="addChoiceWithData('${candidateId}', '${candidate.position}')" class="btn-info" style="margin-top: 10px; padding: 5px 15px; font-size: 12px;">✅ Add to Vote</button>
+                    </div>
+                `;
+        });
+
+        html += "</div>";
+        container.innerHTML = html;
+      }
+
+      // Add choice
+      function addChoice() {
+        choiceCount++;
+        const container = document.getElementById("choicesContainer");
+
+        const choiceDiv = document.createElement("div");
+        choiceDiv.className = "choice-container";
+        choiceDiv.id = `choice-${choiceCount}`;
+        choiceDiv.innerHTML = `
+                <h4>Choice #${choiceCount}</h4>
+                <div class="form-group">
+                    <label>Candidate ID:</label>
+                    <input type="text" id="candidateId-${choiceCount}" placeholder="Candidate ID" required>
+                </div>
+                <div class="form-group">
+                    <label>Position/Category:</label>
+                    <input type="text" id="category-${choiceCount}" placeholder="e.g., President, Vice President" required>
+                </div>
+                <button type="button" class="remove-choice" onclick="removeChoice(${choiceCount})">❌ Remove</button>
+            `;
+
+        container.appendChild(choiceDiv);
+      }
+
+      // Add choice with data
+      function addChoiceWithData(candidateId, position) {
+        choiceCount++;
+        const container = document.getElementById("choicesContainer");
+
+        const choiceDiv = document.createElement("div");
+        choiceDiv.className = "choice-container";
+        choiceDiv.id = `choice-${choiceCount}`;
+        choiceDiv.innerHTML = `
+                <h4>Choice #${choiceCount}</h4>
+                <div class="form-group">
+                    <label>Candidate ID:</label>
+                    <input type="text" id="candidateId-${choiceCount}" value="${candidateId}" required>
+                </div>
+                <div class="form-group">
+                    <label>Position/Category:</label>
+                    <input type="text" id="category-${choiceCount}" value="${position}" required>
+                </div>
+                <button type="button" class="remove-choice" onclick="removeChoice(${choiceCount})">❌ Remove</button>
+            `;
+
+        container.appendChild(choiceDiv);
+        alert(`✅ Added candidate to vote choices!`);
+      }
+
+      // Remove choice
+      function removeChoice(id) {
+        const element = document.getElementById(`choice-${id}`);
+        if (element) {
+          element.remove();
+        }
+      }
+
+      // Convert image to base64
+      function convertImageToBase64() {
+        const fileInput = document.getElementById("imageFile");
+        const file = fileInput.files[0];
+
+        if (!file) {
+          alert("❌ Please select an image file first!");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const base64 = e.target.result;
+          document.getElementById("voteImage").value = base64;
+
+          // Show preview
+          document.getElementById("imagePreview").style.display = "block";
+          document.getElementById("previewImg").src = base64;
+
+          alert("✅ Image converted to base64!");
+        };
+        reader.readAsDataURL(file);
+      }
+
+      // Get current location
+      function getCurrentLocation() {
+        if (!navigator.geolocation) {
+          alert("❌ Geolocation is not supported by your browser");
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            document.getElementById("voteLat").value = position.coords.latitude;
+            document.getElementById("voteLng").value =
+              position.coords.longitude;
+            alert(
+              `✅ Location obtained:\nLat: ${position.coords.latitude}\nLng: ${position.coords.longitude}`
+            );
+          },
+          (error) => {
+            alert(`❌ Error getting location: ${error.message}`);
+          }
+        );
+      }
+
+      // Fill sample vote
+      function fillSampleVote() {
+        // Add sample choices
+        if (choiceCount === 0) {
+          addChoice();
+        }
+
+        // Fill with sample data
+        document.getElementById("voteLat").value = "9.0820";
+        document.getElementById("voteLng").value = "8.6753";
+        document.getElementById("voteDevice").value =
+          "test-device-" + Date.now();
+        document.getElementById("voteImage").value =
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+        alert("✅ Sample data filled! Add candidate IDs manually.");
+      }
+
+      // Submit Vote
+      document
+        .getElementById("voteForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const token = getToken();
+          if (!token) {
+            alert("❌ Please login first!");
+            return;
+          }
+
+          // Collect choices
+          const choices = [];
+          for (let i = 1; i <= choiceCount; i++) {
+            const candidateIdInput = document.getElementById(
+              `candidateId-${i}`
+            );
+            const categoryInput = document.getElementById(`category-${i}`);
+
+            if (candidateIdInput && categoryInput) {
+              choices.push({
+                candidate_id: candidateIdInput.value.trim(),
+                category: categoryInput.value.trim(),
+              });
+            }
+          }
+
+          if (choices.length === 0) {
+            alert("❌ Please add at least one candidate choice!");
+            return;
+          }
+
+          const data = {
+            session_id: document.getElementById("voteSessionId").value.trim(),
+            choices: choices,
+            image_url: document.getElementById("voteImage").value.trim(),
+            lat: parseFloat(document.getElementById("voteLat").value),
+            lng: parseFloat(document.getElementById("voteLng").value),
+            device_id:
+              document.getElementById("voteDevice").value.trim() || undefined,
+          };
+
+          try {
+            const response = await fetch(`${getApiUrl()}/vote`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(data),
+            });
+
+            const result = await response.json();
+            showResponse("voteResponse", result, !response.ok);
+
+            if (response.ok) {
+              alert("✅ Vote submitted successfully!");
+            }
+          } catch (error) {
+            showResponse("voteResponse", { error: error.message }, true);
+          }
+        });
+
+      // Get Voting History
+      async function getVotingHistory() {
+        const token = getToken();
+        if (!token) {
+          alert("❌ Please login first!");
+          return;
+        }
+
+        try {
+          const response = await fetch(`${getApiUrl()}/sessions/my-votes`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          const result = await response.json();
+          showResponse("historyResponse", result, !response.ok);
+        } catch (error) {
+          showResponse("historyResponse", { error: error.message }, true);
+        }
+      }
+
+      // Get Live Results
+      async function getLiveResults() {
+        const token = getToken();
+        const sessionId = document
+          .getElementById("liveResultsSessionId")
+          .value.trim();
+
+        if (!token) {
+          alert("❌ Please login first!");
+          return;
+        }
+
+        if (!sessionId) {
+          alert("❌ Please enter a session ID!");
+          return;
+        }
+
+        try {
+          const response = await fetch(
+            `${getApiUrl()}/sessions/${sessionId}/live-results`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+
+          const result = await response.json();
+          showResponse("liveResponse", result, !response.ok);
+        } catch (error) {
+          showResponse("liveResponse", { error: error.message }, true);
+        }
+      }
+
+      // Get Final Results
+      async function getFinalResults() {
+        const token = getToken();
+        const sessionId = document
+          .getElementById("finalResultsSessionId")
+          .value.trim();
+
+        if (!token) {
+          alert("❌ Please login first!");
+          return;
+        }
+
+        if (!sessionId) {
+          alert("❌ Please enter a session ID!");
+          return;
+        }
+
+        try {
+          const response = await fetch(`${getApiUrl()}/results/${sessionId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          const result = await response.json();
+          showResponse("finalResponse", result, !response.ok);
+        } catch (error) {
+          showResponse("finalResponse", { error: error.message }, true);
+        }
+      }
+
+      // Initialize
+      displayAuthStatus();
+      addChoice(); // Add first choice by default
+    </script>
+  </body>
+</html>

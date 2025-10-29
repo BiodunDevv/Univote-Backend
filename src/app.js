@@ -20,8 +20,16 @@ const healthRoutes = require("./routes/healthRoutes");
 
 const app = express();
 
-// Connect to MongoDB
-connectDB();
+// Connect to MongoDB (async)
+connectDB()
+  .then(() => {
+    // Start session scheduler only after DB is connected
+    const sessionScheduler = require("./utils/sessionScheduler");
+    sessionScheduler.start();
+  })
+  .catch((err) => {
+    console.error("Failed to connect to MongoDB, scheduler not started:", err);
+  });
 
 // Middleware
 app.use(cors());
@@ -87,21 +95,23 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
-  
+
+  // Session scheduler is started after MongoDB connects (see line 24)
+
   // Initialize keep-alive service for production (Render)
   if (process.env.NODE_ENV === "production") {
     const KeepAlive = require("./utils/keepAlive");
     const serverUrl = process.env.SERVER_URL || `http://localhost:${PORT}`;
-    
+
     // Create keep-alive instance (pings every 14 minutes)
     const keepAlive = new KeepAlive(
       `${serverUrl}/api/health/ping`,
       14 * 60 * 1000
     );
-    
+
     // Start the keep-alive service
     keepAlive.start();
-    
+
     console.log("✓ Keep-alive service started");
     console.log(`  Pinging: ${serverUrl}/api/health/ping every 14 minutes`);
   }

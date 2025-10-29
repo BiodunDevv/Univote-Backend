@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Authentication Test - Univote</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+          "Segoe UI", Helvetica, Arial, sans-serif;
+        background: #fafafa;
+        min-height: 100vh;
+        color: #1d1d1f;
+        line-height: 1.47059;
+        font-weight: 400;
+        letter-spacing: -0.022em;
+      }
+
+      /* Header */
+      .header {
+        background: #ffffff;
+        border-bottom: 1px solid #e5e5e5;
+        padding: 16px 0;
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      }
+
+      .header-content {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .logo {
+        font-size: 20px;
+        font-weight: 600;
+        color: #1d1d1f;
+        letter-spacing: -0.5px;
+      }
+
+      .back-link {
+        color: #06c;
+        text-decoration: none;
+        font-size: 14px;
+        transition: opacity 0.2s;
+      }
+
+      .back-link:hover {
+        opacity: 0.7;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 40px 24px 60px;
+      }
+
+      h1 {
+        font-size: 48px;
+        font-weight: 600;
+        color: #1d1d1f;
+        margin-bottom: 12px;
+        letter-spacing: -0.015em;
+        text-align: center;
+      }
+
+      .subtitle {
+        text-align: center;
+        font-size: 19px;
+        color: #6e6e73;
+        margin-bottom: 48px;
+      }
+
+      .test-section {
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 18px;
+        padding: 40px;
+        margin-bottom: 24px;
+        transition: border-color 0.2s;
+      }
+
+      .test-section:hover {
+        border-color: #d2d2d7;
+      }
+
+      .test-section h2 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #1d1d1f;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e5e5e5;
+        letter-spacing: -0.015em;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #1d1d1f;
+        font-size: 14px;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 12px 16px;
+        border: 1px solid #d2d2d7;
+        border-radius: 12px;
+        font-size: 15px;
+        font-family: inherit;
+        transition: all 0.2s;
+        background: #ffffff;
+        color: #1d1d1f;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #1d1d1f;
+        box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.04);
+      }
+
+      input:disabled {
+        background: #f5f5f7;
+        cursor: not-allowed;
+      }
+
+      button {
+        background: #1d1d1f;
+        color: #ffffff;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-right: 8px;
+        margin-top: 8px;
+        font-family: inherit;
+        letter-spacing: -0.016em;
+      }
+
+      button:hover {
+        background: #424245;
+      }
+
+      button:active {
+        transform: scale(0.98);
+      }
+
+      .btn-secondary {
+        background: #ffffff;
+        color: #1d1d1f;
+        border: 1px solid #d2d2d7;
+      }
+
+      .btn-secondary:hover {
+        background: #f5f5f7;
+        border-color: #b8b8bd;
+      }
+
+      .btn-danger {
+        background: #1d1d1f;
+        border: 1px solid #d2d2d7;
+      }
+
+      .btn-danger:hover {
+        background: #424245;
+      }
+
+      .response-box {
+        background: #f5f5f7;
+        border: 1px solid #e5e5e5;
+        padding: 20px;
+        border-radius: 12px;
+        margin-top: 16px;
+        font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas,
+          "Courier New", monospace;
+        font-size: 13px;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .response-box pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        margin: 0;
+        color: #1d1d1f;
+      }
+
+      .success {
+        background: #f0f9ff;
+        border-color: #1d1d1f;
+      }
+
+      .error {
+        background: #fff5f5;
+        border-color: #1d1d1f;
+      }
+
+      .info-box {
+        background: #f5f5f7;
+        border: 1px solid #e5e5e5;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+      }
+
+      .info-box strong {
+        color: #1d1d1f;
+        font-weight: 600;
+      }
+
+      .config-section {
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+
+      .config-section h3 {
+        color: #1d1d1f;
+        font-weight: 600;
+        margin-bottom: 16px;
+        font-size: 19px;
+      }
+
+      .stored-data {
+        background: #f5f5f7;
+        border: 1px solid #e5e5e5;
+        padding: 20px;
+        border-radius: 12px;
+        margin-top: 16px;
+      }
+
+      .stored-data h3 {
+        color: #1d1d1f;
+        font-weight: 600;
+        margin-bottom: 16px;
+        font-size: 19px;
+        font-size: 16px;
+      }
+
+      .data-item {
+        background: white;
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 5px;
+        border-left: 3px solid #2196f3;
+      }
+
+      .btn-group {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .status-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 16px;
+        font-size: 11px;
+        font-weight: 500;
+        margin-left: 8px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+      }
+
+      .status-success {
+        background: #1d1d1f;
+        color: #ffffff;
+      }
+
+      .status-error {
+        background: #f5f5f7;
+        color: #1d1d1f;
+        border: 1px solid #d2d2d7;
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        h1 {
+          font-size: 36px;
+        }
+
+        .subtitle {
+          font-size: 17px;
+        }
+
+        .test-section {
+          padding: 24px;
+        }
+
+        .container {
+          padding: 24px 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Header -->
+    <div class="header">
+      <div class="header-content">
+        <div class="logo">Univote</div>
+        <a href="index.html" class="back-link">← Back to Test Suite</a>
+      </div>
+    </div>
+
+    <div class="container">
+      <h1>Authentication Test</h1>
+      <p class="subtitle">
+        Comprehensive testing for student authentication endpoints
+      </p>
+
+      <!-- Configuration Section -->
+      <div class="test-section">
+        <h2>Configuration</h2>
+        <div class="config-section">
+          <h3>API Base URL</h3>
+          <div class="form-group">
+            <input
+              type="text"
+              id="apiBaseUrl"
+              value="http://localhost:5000/api"
+              placeholder="http://localhost:5000/api"
+            />
+            <small
+              style="
+                color: #6e6e73;
+                display: block;
+                margin-top: 8px;
+                font-size: 13px;
+              "
+            >
+              Change this if your server runs on a different port or URL
+            </small>
+          </div>
+        </div>
+
+        <div class="stored-data" id="storedData">
+          <h3>📦 Stored Data (localStorage)</h3>
+          <div id="storedDataContent">No data stored yet</div>
+          <button
+            onclick="clearStoredData()"
+            class="btn-danger"
+            style="margin-top: 10px"
+          >
+            Clear All Stored Data
+          </button>
+        </div>
+      </div>
+
+      <!-- Login Section -->
+      <div class="test-section">
+        <h2>1. Student Login</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> POST /api/auth/login<br />
+          <strong>Purpose:</strong> Authenticate student and receive JWT token
+        </div>
+
+        <form id="loginForm">
+          <div class="form-group">
+            <label for="loginMatric">Matric Number:</label>
+            <input
+              type="text"
+              id="loginMatric"
+              placeholder="e.g., ENG/2020/001"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="loginPassword">Password:</label>
+            <input
+              type="password"
+              id="loginPassword"
+              placeholder="Enter password"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="loginDevice">Device ID:</label>
+            <input
+              type="text"
+              id="loginDevice"
+              placeholder="e.g., device-12345 (optional)"
+            />
+            <small style="color: #666; display: block; margin-top: 5px">
+              Optional: For device tracking and new device alerts
+            </small>
+          </div>
+
+          <button type="submit">🔑 Login</button>
+          <button
+            type="button"
+            onclick="fillSampleLogin()"
+            class="btn-secondary"
+          >
+            Fill Sample Data
+          </button>
+        </form>
+
+        <div id="loginResponse" class="response-box" style="display: none">
+          <pre id="loginResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- First Login & Password Change Section -->
+      <div class="test-section">
+        <h2>2. First Login - Change Password</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> PATCH
+          /api/auth/change-password<br />
+          <strong>Purpose:</strong> Change default password on first login<br />
+          <strong>Requirement:</strong> Uses token from login response
+        </div>
+
+        <form id="firstLoginForm">
+          <div class="form-group">
+            <label for="firstLoginOld">Old Password (default):</label>
+            <input
+              type="password"
+              id="firstLoginOld"
+              placeholder="Default password"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="firstLoginNew">New Password:</label>
+            <input
+              type="password"
+              id="firstLoginNew"
+              placeholder="New password (min 8 chars)"
+              required
+            />
+          </div>
+
+          <button type="submit">🔄 Change Password</button>
+          <button
+            type="button"
+            onclick="useStoredToken('first')"
+            class="btn-secondary"
+          >
+            Use Stored Token
+          </button>
+        </form>
+
+        <div id="firstLoginResponse" class="response-box" style="display: none">
+          <pre id="firstLoginResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Get Profile Section -->
+      <div class="test-section">
+        <h2>3. Get Student Profile</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> GET /api/auth/me<br />
+          <strong>Purpose:</strong> Fetch authenticated student's profile<br />
+          <strong>Requirement:</strong> Valid JWT token in Authorization header
+        </div>
+
+        <button onclick="getProfile()">👤 Get My Profile</button>
+        <button onclick="useStoredToken('profile')" class="btn-secondary">
+          Use Stored Token
+        </button>
+
+        <div id="profileResponse" class="response-box" style="display: none">
+          <pre id="profileResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Update Profile Section -->
+      <div class="test-section">
+        <h2>4. Update Password</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> PATCH
+          /api/auth/update-password<br />
+          <strong>Purpose:</strong> Update student's password<br />
+          <strong>Requirement:</strong> Valid JWT token
+        </div>
+
+        <form id="updateProfileForm">
+          <div class="form-group">
+            <label for="updateOldPassword">Current Password:</label>
+            <input
+              type="password"
+              id="updateOldPassword"
+              placeholder="Current password"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label for="updateNewPassword">New Password:</label>
+            <input
+              type="password"
+              id="updateNewPassword"
+              placeholder="New password (min 6 chars)"
+              required
+            />
+          </div>
+
+          <button type="submit">🔒 Update Password</button>
+          <button
+            type="button"
+            onclick="useStoredToken('update')"
+            class="btn-secondary"
+          >
+            Use Stored Token
+          </button>
+        </form>
+
+        <div id="updateResponse" class="response-box" style="display: none">
+          <pre id="updateResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Change Password Section -->
+      <div class="test-section">
+        <h2>5. Update Password (Alternative)</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> PATCH
+          /api/auth/update-password<br />
+          <strong>Purpose:</strong> Change password (not first login)<br />
+          <strong>Requirement:</strong> Valid JWT token
+        </div>
+
+        <form id="changePasswordForm">
+          <div class="form-group">
+            <label for="changeOldPassword">Current Password:</label>
+            <input
+              type="password"
+              id="changeOldPassword"
+              placeholder="Current password"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="changeNewPassword">New Password:</label>
+            <input
+              type="password"
+              id="changeNewPassword"
+              placeholder="New password (min 8 chars)"
+              required
+            />
+          </div>
+
+          <button type="submit">🔐 Change Password</button>
+          <button
+            type="button"
+            onclick="useStoredToken('change')"
+            class="btn-secondary"
+          >
+            Use Stored Token
+          </button>
+        </form>
+
+        <div id="changeResponse" class="response-box" style="display: none">
+          <pre id="changeResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Password Reset Section -->
+      <div class="test-section" style="opacity: 0.6; pointer-events: none">
+        <h2>6. Password Reset (Admin Only)</h2>
+        <div
+          class="info-box"
+          style="background: #fff3cd; border-left: 4px solid #ffc107"
+        >
+          <strong>⚠️ NOT AVAILABLE FOR STUDENTS</strong>
+          <br /><br />Password reset functionality is only available for admins:
+          <br />• POST /api/auth/admin-forgot-password <br />• POST
+          /api/auth/admin-reset-password <br /><br />
+          <strong>Students:</strong> Use the "Change Password" endpoint (Section
+          2) after first login, or contact your administrator to reset your
+          password.
+        </div>
+
+        <form id="forgotPasswordForm" style="display: none">
+          <h3 style="color: #667eea; margin-bottom: 15px">
+            Step 1: Request Reset
+          </h3>
+          <div class="form-group">
+            <label for="forgotEmail">Email:</label>
+            <input
+              type="email"
+              id="forgotEmail"
+              placeholder="student@university.edu"
+              required
+            />
+          </div>
+
+          <button type="submit">📧 Send Reset Code</button>
+        </form>
+
+        <div id="forgotResponse" class="response-box" style="display: none">
+          <pre id="forgotResponseContent"></pre>
+        </div>
+
+        <hr style="margin: 30px 0; border: none; border-top: 2px dashed #ddd" />
+
+        <form id="resetPasswordForm">
+          <h3 style="color: #667eea; margin-bottom: 15px">
+            Step 2: Reset Password
+          </h3>
+          <div class="form-group">
+            <label for="resetToken">Reset Token (from email):</label>
+            <input
+              type="text"
+              id="resetToken"
+              placeholder="Token from email"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="resetNewPassword">New Password:</label>
+            <input
+              type="password"
+              id="resetNewPassword"
+              placeholder="New password (min 8 chars)"
+              required
+            />
+          </div>
+
+          <button type="submit">✅ Reset Password</button>
+        </form>
+
+        <div id="resetResponse" class="response-box" style="display: none">
+          <pre id="resetResponseContent"></pre>
+        </div>
+      </div>
+
+      <!-- Logout Section -->
+      <div class="test-section">
+        <h2>7. Logout</h2>
+        <div class="info-box">
+          <strong>Test this endpoint:</strong> POST /api/auth/logout<br />
+          <strong>Purpose:</strong> Invalidate current session token
+        </div>
+
+        <button onclick="logout()">🚪 Logout</button>
+        <button onclick="useStoredToken('logout')" class="btn-secondary">
+          Use Stored Token
+        </button>
+
+        <div id="logoutResponse" class="response-box" style="display: none">
+          <pre id="logoutResponseContent"></pre>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Get API base URL
+      function getApiUrl() {
+        return document.getElementById("apiBaseUrl").value.trim();
+      }
+
+      // Display stored data
+      function displayStoredData() {
+        const token = localStorage.getItem("studentToken");
+        const studentData = localStorage.getItem("studentData");
+        const container = document.getElementById("storedDataContent");
+
+        if (!token && !studentData) {
+          container.innerHTML =
+            '<p style="color: #666;">No data stored yet</p>';
+          return;
+        }
+
+        let html = "";
+        if (token) {
+          html += `<div class="data-item"><strong>Token:</strong> ${token.substring(
+            0,
+            50
+          )}...</div>`;
+        }
+        if (studentData) {
+          const data = JSON.parse(studentData);
+          html += `<div class="data-item"><strong>Student:</strong> ${data.full_name} (${data.matric_no})</div>`;
+          html += `<div class="data-item"><strong>Email:</strong> ${data.email}</div>`;
+          html += `<div class="data-item"><strong>College:</strong> ${data.college}</div>`;
+          html += `<div class="data-item"><strong>Department:</strong> ${data.department}</div>`;
+          html += `<div class="data-item"><strong>Level:</strong> ${data.level}</div>`;
+        }
+        container.innerHTML = html;
+      }
+
+      // Clear stored data
+      function clearStoredData() {
+        if (confirm("Are you sure you want to clear all stored data?")) {
+          localStorage.removeItem("studentToken");
+          localStorage.removeItem("studentData");
+          displayStoredData();
+          alert("✅ All stored data cleared!");
+        }
+      }
+
+      // Fill sample login data
+      function fillSampleLogin() {
+        document.getElementById("loginMatric").value = "BU22CSC1005";
+        document.getElementById("loginPassword").value = "balikiss12";
+        document.getElementById("loginDevice").value =
+          "test-device-" + Date.now();
+      }
+
+      // Use stored token
+      function useStoredToken(section) {
+        const token = localStorage.getItem("studentToken");
+        if (!token) {
+          alert("❌ No token stored! Please login first.");
+          return;
+        }
+        alert(`✅ Using stored token for ${section} operation`);
+      }
+
+      // Show response
+      function showResponse(elementId, data, isError = false) {
+        const responseBox = document.getElementById(elementId);
+        const responseContent = document.getElementById(elementId + "Content");
+
+        responseBox.style.display = "block";
+        responseBox.className = isError
+          ? "response-box error"
+          : "response-box success";
+        responseContent.textContent = JSON.stringify(data, null, 2);
+      }
+
+      // 1. Login
+      document
+        .getElementById("loginForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const data = {
+            matric_no: document.getElementById("loginMatric").value.trim(),
+            password: document.getElementById("loginPassword").value,
+            device_id:
+              document.getElementById("loginDevice").value.trim() || undefined,
+          };
+
+          try {
+            const response = await fetch(`${getApiUrl()}/auth/login`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data),
+            });
+
+            const result = await response.json();
+            showResponse("loginResponse", result, !response.ok);
+
+            if (response.ok && result.token) {
+              localStorage.setItem("studentToken", result.token);
+              localStorage.setItem(
+                "studentData",
+                JSON.stringify(result.student)
+              );
+              displayStoredData();
+              alert("✅ Login successful! Token stored.");
+            }
+          } catch (error) {
+            showResponse("loginResponse", { error: error.message }, true);
+          }
+        });
+
+      // 2. First Login - Change Password
+      document
+        .getElementById("firstLoginForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const token = localStorage.getItem("studentToken");
+          if (!token) {
+            alert("❌ Please login first!");
+            return;
+          }
+
+          const data = {
+            old_password: document.getElementById("firstLoginOld").value,
+            new_password: document.getElementById("firstLoginNew").value,
+          };
+
+          try {
+            const response = await fetch(
+              `${getApiUrl()}/auth/change-password`,
+              {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(data),
+              }
+            );
+
+            const result = await response.json();
+            showResponse("firstLoginResponse", result, !response.ok);
+
+            if (response.ok) {
+              alert("✅ Password changed successfully!");
+            }
+          } catch (error) {
+            showResponse("firstLoginResponse", { error: error.message }, true);
+          }
+        });
+
+      // 3. Get Profile
+      async function getProfile() {
+        const token = localStorage.getItem("studentToken");
+        if (!token) {
+          alert("❌ Please login first!");
+          return;
+        }
+
+        try {
+          const response = await fetch(`${getApiUrl()}/auth/me`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          const result = await response.json();
+          showResponse("profileResponse", result, !response.ok);
+        } catch (error) {
+          showResponse("profileResponse", { error: error.message }, true);
+        }
+      }
+
+      // 4. Update Profile
+      document
+        .getElementById("updateProfileForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const token = localStorage.getItem("studentToken");
+          if (!token) {
+            alert("❌ Please login first!");
+            return;
+          }
+
+          const data = {
+            old_password: document.getElementById("updateOldPassword").value,
+            new_password: document.getElementById("updateNewPassword").value,
+          };
+
+          try {
+            const response = await fetch(
+              `${getApiUrl()}/auth/update-password`,
+              {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(data),
+              }
+            );
+
+            const result = await response.json();
+            showResponse("updateResponse", result, !response.ok);
+
+            if (response.ok) {
+              alert("✅ Password updated successfully!");
+            }
+          } catch (error) {
+            showResponse("updateResponse", { error: error.message }, true);
+          }
+        });
+
+      // 5. Change Password
+      document
+        .getElementById("changePasswordForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const token = localStorage.getItem("studentToken");
+          if (!token) {
+            alert("❌ Please login first!");
+            return;
+          }
+
+          const data = {
+            old_password: document.getElementById("changeOldPassword").value,
+            new_password: document.getElementById("changeNewPassword").value,
+          };
+
+          try {
+            const response = await fetch(
+              `${getApiUrl()}/auth/update-password`,
+              {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(data),
+              }
+            );
+
+            const result = await response.json();
+            showResponse("changeResponse", result, !response.ok);
+
+            if (response.ok) {
+              alert("✅ Password changed successfully!");
+            }
+          } catch (error) {
+            showResponse("changeResponse", { error: error.message }, true);
+          }
+        });
+
+      // 6a. Forgot Password
+      document
+        .getElementById("forgotPasswordForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const data = {
+            email: document.getElementById("forgotEmail").value.trim(),
+          };
+
+          try {
+            const response = await fetch(
+              `${getApiUrl()}/auth/student/forgot-password`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+              }
+            );
+
+            const result = await response.json();
+            showResponse("forgotResponse", result, !response.ok);
+
+            if (response.ok) {
+              alert("✅ Reset code sent to email!");
+            }
+          } catch (error) {
+            showResponse("forgotResponse", { error: error.message }, true);
+          }
+        });
+
+      // 6b. Reset Password
+      document
+        .getElementById("resetPasswordForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const data = {
+            token: document.getElementById("resetToken").value.trim(),
+            new_password: document.getElementById("resetNewPassword").value,
+          };
+
+          try {
+            const response = await fetch(
+              `${getApiUrl()}/auth/student/reset-password`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+              }
+            );
+
+            const result = await response.json();
+            showResponse("resetResponse", result, !response.ok);
+
+            if (response.ok) {
+              alert("✅ Password reset successfully!");
+            }
+          } catch (error) {
+            showResponse("resetResponse", { error: error.message }, true);
+          }
+        });
+
+      // 7. Logout
+      async function logout() {
+        const token = localStorage.getItem("studentToken");
+        if (!token) {
+          alert("❌ No active session!");
+          return;
+        }
+
+        try {
+          const response = await fetch(`${getApiUrl()}/auth/logout`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          const result = await response.json();
+          showResponse("logoutResponse", result, !response.ok);
+
+          if (response.ok) {
+            localStorage.removeItem("studentToken");
+            localStorage.removeItem("studentData");
+            displayStoredData();
+            alert("✅ Logged out successfully!");
+          }
+        } catch (error) {
+          showResponse("logoutResponse", { error: error.message }, true);
+        }
+      }
+
+      // Initialize
+      displayStoredData();
+    </script>
+  </body>
+</html>

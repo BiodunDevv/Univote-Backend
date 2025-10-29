@@ -342,6 +342,25 @@ class AdminController {
         return res.status(404).json({ error: "Session not found" });
       }
 
+      // Update session status based on current time
+      await session.updateStatus();
+
+      // Prevent editing active or ended sessions
+      if (session.status === "active") {
+        return res.status(403).json({
+          error: "Cannot edit active session",
+          message:
+            "Session is currently active and cannot be modified. Wait until it ends or delete it.",
+        });
+      }
+
+      if (session.status === "ended") {
+        return res.status(403).json({
+          error: "Cannot edit ended session",
+          message: "Session has already ended and cannot be modified.",
+        });
+      }
+
       // Update allowed fields
       const allowedUpdates = [
         "title",
@@ -354,7 +373,6 @@ class AdminController {
         "categories",
         "location",
         "is_off_campus_allowed",
-        "results_public",
       ];
 
       allowedUpdates.forEach((field) => {

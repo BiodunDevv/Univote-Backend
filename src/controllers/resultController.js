@@ -30,14 +30,15 @@ class ResultController {
       }
 
       // Check if results are available
-      // Results available if: session ended OR admin made results public
+      // Results available when session has ended (status automatically set by scheduler)
       const now = new Date();
       const sessionEnded = now > session.end_time;
 
-      if (!sessionEnded && !session.results_public) {
+      if (!sessionEnded && session.status !== "ended") {
         return res.status(403).json({
           error: "Results are not yet available",
-          message: "Results will be available after the voting session ends",
+          message:
+            "Results will be automatically published when the voting session ends",
         });
       }
 
@@ -172,103 +173,6 @@ class ResultController {
   }
 
   /**
-   * Publish results (Admin only)
-   * POST /api/admin/results/:session_id/publish
-   */
-  async publishResults(req, res) {
-    try {
-      const { session_id } = req.params;
-
-      const session = await VotingSession.findById(session_id);
-
-      if (!session) {
-        return res.status(404).json({ error: "Session not found" });
-      }
-
-      // Update session status
-      await session.updateStatus();
-
-      // Make results public
-      session.results_public = true;
-      await session.save();
-
-      // Get eligibility filter for students
-      const eligibilityFilter = { is_active: true };
-
-      if (session.eligible_college) {
-        eligibilityFilter.college = session.eligible_college;
-      }
-
-      // Convert department IDs to department names
-      if (
-        session.eligible_departments &&
-        session.eligible_departments.length > 0
-      ) {
-        const College = require("../models/College");
-        const colleges = await College.find({});
-        const departmentNames = [];
-
-        colleges.forEach((college) => {
-          college.departments.forEach((dept) => {
-            if (session.eligible_departments.includes(dept._id.toString())) {
-              departmentNames.push(dept.name);
-            }
-          });
-        });
-
-        if (departmentNames.length > 0) {
-          eligibilityFilter.department = { $in: departmentNames };
-        }
-      }
-
-      if (session.eligible_levels && session.eligible_levels.length > 0) {
-        eligibilityFilter.level = { $in: session.eligible_levels };
-      }
-
-      // Get all eligible students who voted in this session
-      const studentsWhoVoted = await Student.find({
-        ...eligibilityFilter,
-        has_voted_sessions: session_id,
-      });
-
-      // Send result announcement emails in the background
-      const resultsUrl = `${
-        process.env.FRONTEND_URL || "http://localhost:3000"
-      }/results/${session_id}`;
-
-      let emailsSent = 0;
-      for (const student of studentsWhoVoted) {
-        emailService
-          .sendResultAnnouncement(student, session, resultsUrl)
-          .then(() => {
-            emailsSent++;
-          })
-          .catch((err) => {
-            console.error(
-              `Failed to send result announcement to ${student.email}:`,
-              err
-            );
-          });
-      }
-
-      res.json({
-        message: "Results published successfully",
-        session: {
-          id: session._id,
-          title: session.title,
-          results_public: true,
-        },
-        eligible_students: await Student.countDocuments(eligibilityFilter),
-        students_who_voted: studentsWhoVoted.length,
-        notification_queued_to: studentsWhoVoted.length,
-      });
-    } catch (error) {
-      console.error("Publish results error:", error);
-      res.status(500).json({ error: "Failed to publish results" });
-    }
-  }
-
-  /**
    * Get overall statistics (Admin only)
    * GET /api/admin/results/stats/overview
    */
@@ -290,11 +194,6 @@ class ResultController {
         status: "duplicate",
       });
       const rejectedVotes = await Vote.countDocuments({ status: "rejected" });
-
-      // Get sessions with published results
-      const publishedResults = await VotingSession.countDocuments({
-        results_public: true,
-      });
 
       // Calculate average turnout
       const sessionsWithVotes = await VotingSession.find({
@@ -361,7 +260,6 @@ class ResultController {
           upcoming_sessions: upcomingSessions,
           active_sessions: activeSessions,
           ended_sessions: endedSessions,
-          published_results: publishedResults,
           total_students: totalStudents,
           total_votes_cast: totalVotes,
           duplicate_attempts: duplicateAttempts,

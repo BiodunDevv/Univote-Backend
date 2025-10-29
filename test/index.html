@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Univote Test Suite</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+          "Segoe UI", Helvetica, Arial, sans-serif;
+        background: #fafafa;
+        min-height: 100vh;
+        color: #1d1d1f;
+        line-height: 1.47059;
+        font-weight: 400;
+        letter-spacing: -0.022em;
+      }
+
+      /* Header */
+      .header {
+        background: #ffffff;
+        border-bottom: 1px solid #e5e5e5;
+        padding: 16px 0;
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      }
+
+      .header-content {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .logo {
+        font-size: 24px;
+        font-weight: 600;
+        color: #1d1d1f;
+        letter-spacing: -0.5px;
+      }
+
+      .header-nav {
+        display: flex;
+        gap: 32px;
+        align-items: center;
+      }
+
+      .header-nav a {
+        color: #6e6e73;
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 400;
+        transition: color 0.2s;
+      }
+
+      .header-nav a:hover {
+        color: #1d1d1f;
+      }
+
+      /* Main Container */
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 60px 24px;
+      }
+
+      /* Hero Section */
+      .hero {
+        text-align: center;
+        margin-bottom: 80px;
+      }
+
+      h1 {
+        font-size: 56px;
+        font-weight: 600;
+        color: #1d1d1f;
+        margin-bottom: 12px;
+        letter-spacing: -0.015em;
+        line-height: 1.07143;
+      }
+
+      .subtitle {
+        font-size: 21px;
+        color: #6e6e73;
+        font-weight: 400;
+        margin-bottom: 24px;
+        letter-spacing: -0.016em;
+      }
+
+      /* Cards Grid */
+      .cards-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+        gap: 24px;
+        margin-bottom: 60px;
+      }
+
+      .test-card {
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 18px;
+        padding: 48px 40px;
+        text-align: center;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        cursor: pointer;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .test-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: #1d1d1f;
+        transform: scaleX(0);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .test-card:hover::before {
+        transform: scaleX(1);
+      }
+
+      .test-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+        border-color: #d2d2d7;
+      }
+
+      .test-card .icon {
+        font-size: 48px;
+        margin-bottom: 24px;
+        filter: grayscale(100%);
+      }
+
+      .test-card h2 {
+        font-size: 28px;
+        font-weight: 600;
+        color: #1d1d1f;
+        margin-bottom: 16px;
+        letter-spacing: -0.015em;
+      }
+
+      .test-card p {
+        color: #6e6e73;
+        font-size: 16px;
+        line-height: 1.5;
+        margin-bottom: 24px;
+      }
+
+      .test-card .features {
+        text-align: left;
+        margin-top: 32px;
+      }
+
+      .test-card .features strong {
+        color: #1d1d1f;
+        font-size: 14px;
+        font-weight: 600;
+        display: block;
+        margin-bottom: 12px;
+      }
+
+      .test-card .features ul {
+        list-style: none;
+      }
+
+      .test-card .features li {
+        color: #6e6e73;
+        font-size: 14px;
+        margin-bottom: 8px;
+        padding-left: 16px;
+        position: relative;
+      }
+
+      .test-card .features li::before {
+        content: "·";
+        position: absolute;
+        left: 0;
+        color: #1d1d1f;
+        font-weight: 700;
+      }
+
+      /* Info Boxes */
+      .info-box {
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 18px;
+        padding: 40px;
+        margin-top: 24px;
+      }
+
+      .info-box h3 {
+        font-size: 21px;
+        font-weight: 600;
+        color: #1d1d1f;
+        margin-bottom: 20px;
+        letter-spacing: -0.016em;
+      }
+
+      .info-box ul {
+        list-style: none;
+        padding-left: 0;
+      }
+
+      .info-box li {
+        padding: 16px 0;
+        border-bottom: 1px solid #f5f5f7;
+        color: #6e6e73;
+        font-size: 15px;
+      }
+
+      .info-box li:last-child {
+        border-bottom: none;
+      }
+
+      .info-box li strong {
+        color: #1d1d1f;
+        font-weight: 600;
+      }
+
+      .info-box code {
+        background: #f5f5f7;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas,
+          "Courier New", monospace;
+        color: #1d1d1f;
+        font-size: 14px;
+        font-weight: 400;
+      }
+
+      /* Badges */
+      .badge {
+        display: inline-block;
+        background: #1d1d1f;
+        color: #ffffff;
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 500;
+        margin: 4px;
+        letter-spacing: -0.01em;
+      }
+
+      /* Footer */
+      .footer {
+        text-align: center;
+        color: #6e6e73;
+        margin-top: 80px;
+        padding-top: 32px;
+        border-top: 1px solid #e5e5e5;
+        font-size: 14px;
+      }
+
+      .footer strong {
+        color: #1d1d1f;
+        font-weight: 600;
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        h1 {
+          font-size: 40px;
+        }
+
+        .subtitle {
+          font-size: 19px;
+        }
+
+        .cards-container {
+          grid-template-columns: 1fr;
+        }
+
+        .test-card {
+          padding: 36px 28px;
+        }
+
+        .header-nav {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Header -->
+    <div class="header">
+      <div class="header-content">
+        <div class="logo">Univote</div>
+        <nav class="header-nav">
+          <a href="#tests">Test Suite</a>
+          <a href="#guide">Quick Start</a>
+          <a href="#docs">Documentation</a>
+        </nav>
+      </div>
+    </div>
+
+    <div class="container">
+      <!-- Hero Section -->
+      <div class="hero">
+        <h1>Test Suite</h1>
+        <p class="subtitle">
+          Professional testing interface for authentication and voting workflows
+        </p>
+      </div>
+
+      <div class="cards-container" id="tests">
+        <!-- Authentication Test Card -->
+        <a href="student-auth-test.html" class="test-card">
+          <div class="icon">🔐</div>
+          <h2>Authentication</h2>
+          <p>
+            Comprehensive testing for student authentication endpoints including
+            login, password management, and profile access.
+          </p>
+
+          <div class="features">
+            <strong>Capabilities</strong>
+            <ul>
+              <li>Login & Logout</li>
+              <li>Password Management</li>
+              <li>Profile Access</li>
+              <li>Password Reset</li>
+              <li>Token Management</li>
+            </ul>
+          </div>
+
+          <div style="margin-top: 24px">
+            <span class="badge">8 Endpoints</span>
+            <span class="badge">JWT Auth</span>
+          </div>
+        </a>
+
+        <!-- Voting Test Card -->
+        <a href="student-voting-test.html" class="test-card">
+          <div class="icon">🗳️</div>
+          <h2>Voting System</h2>
+          <p>
+            Complete workflow testing for voting sessions, candidate management,
+            vote submission, and results verification.
+          </p>
+
+          <div class="features">
+            <strong>Capabilities</strong>
+            <ul>
+              <li>Active Sessions</li>
+              <li>Session-Based Voting</li>
+              <li>Image Upload</li>
+              <li>Geolocation</li>
+              <li>Live & Final Results</li>
+            </ul>
+          </div>
+
+          <div style="margin-top: 24px">
+            <span class="badge">7 Endpoints</span>
+            <span class="badge">Face Verification</span>
+          </div>
+        </a>
+
+        <!-- Admin Panel Test Card -->
+        <a href="admin-test.html" class="test-card">
+          <div class="icon">⚙️</div>
+          <h2>Admin Panel</h2>
+          <p>
+            Comprehensive admin interface for managing students, sessions,
+            candidates, and viewing detailed statistics.
+          </p>
+
+          <div class="features">
+            <strong>Capabilities</strong>
+            <ul>
+              <li>Student Management (CRUD)</li>
+              <li>Session Management (CRUD)</li>
+              <li>CSV Bulk Upload</li>
+              <li>Session Statistics</li>
+              <li>Admin Authentication</li>
+            </ul>
+          </div>
+
+          <div style="margin-top: 24px">
+            <span class="badge">12 Endpoints</span>
+            <span class="badge">Admin Only</span>
+            <span class="badge">Bulk Operations</span>
+          </div>
+        </a>
+      </div>
+
+      <!-- Quick Start Info -->
+      <div id="guide"></div>
+      <div class="info-box">
+        <h3>Quick Start Guide</h3>
+        <ul>
+          <li>
+            <strong>1. Start Server:</strong> Run <code>npm run dev</code> in
+            project root
+          </li>
+          <li>
+            <strong>2. Verify Connection:</strong> Server should be at
+            <code>http://localhost:5000</code>
+          </li>
+          <li>
+            <strong>3. Open Test Page:</strong> Click on Authentication, Voting,
+            or Admin test above
+          </li>
+          <li>
+            <strong>4. Configure API URL:</strong> Update API base URL if using
+            different port
+          </li>
+          <li>
+            <strong>5. Begin Testing:</strong> Follow the test interface
+            instructions
+          </li>
+        </ul>
+      </div>
+
+      <!-- Sample Credentials -->
+      <div class="info-box">
+        <h3>Sample Test Data</h3>
+        <ul>
+          <li><strong>Matric Number:</strong> <code>ENG/2020/001</code></li>
+          <li><strong>Default Password:</strong> <code>Univote2024</code></li>
+          <li>
+            <strong>Test Email:</strong> <code>student@university.edu</code>
+          </li>
+          <li>
+            <strong>Location (Kaduna):</strong> Lat: <code>9.0820</code>, Lng:
+            <code>8.6753</code>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Documentation Links -->
+      <div class="info-box" id="docs">
+        <h3>Documentation</h3>
+        <ul>
+          <li>
+            <strong>📖 Test Suite README:</strong> See
+            <code>test/README.md</code> for detailed guide
+          </li>
+          <li>
+            <strong>🗳️ Session-Based Voting:</strong> See
+            <code>SESSION_BASED_VOTING_GUIDE.md</code>
+          </li>
+          <li>
+            <strong>⏰ Auto Session Ending:</strong> See
+            <code>AUTOMATIC_SESSION_ENDING.md</code>
+          </li>
+          <li>
+            <strong>🔌 API Docs:</strong> See <code>swagger.yaml</code> for full
+            API reference
+          </li>
+        </ul>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p>
+          <strong>Univote Backend Test Suite</strong><br />
+          Version 2.0.0 • October 2025<br />
+          Professional testing environment for authentication and voting
+          workflows
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -6,7 +6,6 @@ const {
   authenticateAdmin,
 } = require("../middleware/auth");
 const { apiLimiter } = require("../middleware/rateLimiter");
-const auditLogger = require("../middleware/auditLogger");
 
 /**
  * @route   GET /api/results/:session_id
@@ -18,18 +17,6 @@ router.get(
   authenticateStudent,
   apiLimiter,
   resultController.getResults
-);
-
-/**
- * @route   POST /api/results/:session_id/publish
- * @desc    Publish results and notify students
- * @access  Private (Admin)
- */
-router.post(
-  "/:session_id/publish",
-  authenticateAdmin,
-  auditLogger("publish_results", "results"),
-  resultController.publishResults
 );
 
 /**
