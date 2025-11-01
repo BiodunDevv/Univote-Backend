@@ -4,7 +4,8 @@ const Admin = require("../models/Admin");
 const VotingSession = require("../models/VotingSession");
 const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
-const azureService = require("../services/azureService");
+const faceppService = require("../services/faceppService");
+const emailService = require("../services/emailService");
 const constants = require("../config/constants");
 const mongoose = require("mongoose");
 
@@ -200,6 +201,28 @@ class AdminController {
             continue;
           }
 
+          // Optional: Process facial registration if photo_url is provided
+          let faceToken = null;
+          let photoUrl = row.photo_url || null;
+
+          if (photoUrl) {
+            const faceDetection = await faceppService.detectFace(photoUrl);
+
+            if (faceDetection.success) {
+              faceToken = faceDetection.face_token;
+            } else {
+              // Face detection failed - log warning but continue without face data
+              console.warn(
+                `Face detection failed for ${matric_no}: ${faceDetection.error}`
+              );
+              results.errors.push({
+                matric_no,
+                full_name,
+                warning: `Student created but face registration failed: ${faceDetection.error}`,
+              });
+            }
+          }
+
           // Create new student (only if not exists)
           const student = new Student({
             matric_no: matric_no.toUpperCase(),
@@ -211,6 +234,8 @@ class AdminController {
             college,
             level,
             first_login: true,
+            photo_url: photoUrl,
+            face_token: faceToken,
           });
 
           await student.save();
@@ -263,23 +288,7 @@ class AdminController {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      // Create PersonGroup for this session (optional - skip if not approved)
-      const personGroupId = `session_${Date.now()}`;
-      try {
-        await azureService.createPersonGroup(
-          personGroupId,
-          `Session: ${title}`
-        );
-        console.log(`PersonGroup created: ${personGroupId}`);
-      } catch (azureError) {
-        console.warn(
-          "PersonGroup creation skipped (Feature not approved):",
-          azureError.message
-        );
-        // Continue without PersonGroup - facial recognition won't be available but session can still be created
-      }
-
-      // Create session
+      // Create session (Face++ uses stateless verification, no pre-session setup needed)
       const session = new VotingSession({
         title,
         description,
@@ -295,7 +304,6 @@ class AdminController {
           radius_meters: location.radius_meters || 5000,
         },
         is_off_campus_allowed: is_off_campus_allowed || false,
-        azure_persongroup_id: personGroupId,
         created_by: req.adminId,
       });
 
@@ -411,10 +419,7 @@ class AdminController {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      // Delete PersonGroup from Azure
-      if (session.azure_persongroup_id) {
-        await azureService.deletePersonGroup(session.azure_persongroup_id);
-      }
+      // Face++ uses stateless verification - no cleanup needed
 
       // Delete all votes for this session
       await Vote.deleteMany({ session_id: id }, { session: mongoSession });
@@ -591,15 +596,7 @@ class AdminController {
     mongoSession.startTransaction();
 
     try {
-      // Get all sessions to delete their PersonGroups
-      const sessions = await VotingSession.find({});
-
-      // Delete all PersonGroups from Azure
-      for (const session of sessions) {
-        if (session.azure_persongroup_id) {
-          await azureService.deletePersonGroup(session.azure_persongroup_id);
-        }
-      }
+      // Face++ uses stateless verification - no cleanup needed
 
       // Delete all votes
       await Vote.deleteMany({}, { session: mongoSession });
@@ -710,7 +707,7 @@ class AdminController {
 
       const [students, count] = await Promise.all([
         Student.find(filter)
-          .select("-password_hash -active_token")
+          .select("-password_hash -active_token -embedding_vector")
           .limit(limit * 1)
           .skip((page - 1) * limit)
           .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
@@ -718,8 +715,15 @@ class AdminController {
         Student.countDocuments(filter),
       ]);
 
+      // Add computed field for facial data status
+      const studentsWithFaceStatus = students.map((student) => ({
+        ...student,
+        has_facial_data: !!student.face_token,
+        face_token: undefined, // Remove face_token from response
+      }));
+
       res.json({
-        students,
+        students: studentsWithFaceStatus,
         total: count,
         page: parseInt(page),
         pages: Math.ceil(count / limit),
@@ -764,7 +768,7 @@ class AdminController {
 
       const [students, total, departmentBreakdown] = await Promise.all([
         Student.find(filter)
-          .select("-password_hash -active_token")
+          .select("-password_hash -active_token -embedding_vector")
           .limit(limit * 1)
           .skip((page - 1) * limit)
           .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
@@ -782,13 +786,20 @@ class AdminController {
         ]),
       ]);
 
+      // Add computed field for facial data status
+      const studentsWithFaceStatus = students.map((student) => ({
+        ...student,
+        has_facial_data: !!student.face_token,
+        face_token: undefined, // Remove face_token from response
+      }));
+
       res.json({
         college: {
           id: college._id,
           name: college.name,
           code: college.code,
         },
-        students,
+        students: studentsWithFaceStatus,
         total,
         page: parseInt(page),
         pages: Math.ceil(total / limit),
@@ -842,7 +853,7 @@ class AdminController {
 
       const [students, total, levelBreakdown] = await Promise.all([
         Student.find(filter)
-          .select("-password_hash -active_token")
+          .select("-password_hash -active_token -embedding_vector")
           .limit(limit * 1)
           .skip((page - 1) * limit)
           .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
@@ -865,6 +876,13 @@ class AdminController {
         ]),
       ]);
 
+      // Add computed field for facial data status
+      const studentsWithFaceStatus = students.map((student) => ({
+        ...student,
+        has_facial_data: !!student.face_token,
+        face_token: undefined, // Remove face_token from response
+      }));
+
       res.json({
         college: {
           id: college._id,
@@ -876,7 +894,7 @@ class AdminController {
           name: department.name,
           code: department.code,
         },
-        students,
+        students: studentsWithFaceStatus,
         total,
         page: parseInt(page),
         pages: Math.ceil(total / limit),
@@ -899,13 +917,22 @@ class AdminController {
     try {
       const { id } = req.params;
 
-      const student = await Student.findById(id)
-        .select("-password_hash -active_token")
-        .lean();
+      // Get student data and face_token status separately
+      const [student, studentWithFaceToken] = await Promise.all([
+        Student.findById(id)
+          .select("-password_hash -active_token -face_token -embedding_vector")
+          .lean(),
+        Student.findById(id).select("face_token").lean(),
+      ]);
 
       if (!student) {
         return res.status(404).json({ error: "Student not found" });
       }
+
+      // Add computed field for facial data status
+      student.has_facial_data = !!(
+        studentWithFaceToken && studentWithFaceToken.face_token
+      );
 
       // Get voting history
       const votes = await Vote.find({ student_id: id })
@@ -930,8 +957,15 @@ class AdminController {
   async updateStudent(req, res) {
     try {
       const { id } = req.params;
-      const { full_name, email, department, college, level, is_active } =
-        req.body;
+      const {
+        full_name,
+        email,
+        department,
+        college,
+        level,
+        is_active,
+        photo_url,
+      } = req.body;
 
       const student = await Student.findById(id);
 
@@ -1011,9 +1045,41 @@ class AdminController {
       if (level !== undefined) student.level = level;
       if (is_active !== undefined) student.is_active = is_active;
 
+      // Handle photo_url update with Face++ re-registration
+      let faceUpdateWarning = null;
+      if (photo_url !== undefined && photo_url !== student.photo_url) {
+        student.photo_url = photo_url;
+
+        // If photo URL is provided, re-register face with Face++
+        if (photo_url) {
+          try {
+            const faceDetection = await faceppService.detectFace(photo_url);
+
+            if (faceDetection.success) {
+              student.face_token = faceDetection.face_token;
+            } else {
+              // Face detection failed - keep old face_token and warn admin
+              faceUpdateWarning = `Photo URL updated but face registration failed: ${faceDetection.error}. Old facial data retained.`;
+              console.warn(
+                `Face re-registration failed for student ${student.matric_no}: ${faceDetection.error}`
+              );
+            }
+          } catch (error) {
+            faceUpdateWarning = `Photo URL updated but face registration encountered an error. Old facial data retained.`;
+            console.error(
+              `Face re-registration error for student ${student.matric_no}:`,
+              error
+            );
+          }
+        } else {
+          // Photo URL removed - clear face_token
+          student.face_token = null;
+        }
+      }
+
       await student.save();
 
-      res.json({
+      const response = {
         message: "Student updated successfully",
         student: {
           id: student._id,
@@ -1022,10 +1088,20 @@ class AdminController {
           email: student.email,
           college: student.college,
           department: student.department,
+          department_code: student.department_code,
           level: student.level,
+          photo_url: student.photo_url,
+          has_facial_data: !!student.face_token,
           is_active: student.is_active,
         },
-      });
+      };
+
+      // Add warning if face registration failed
+      if (faceUpdateWarning) {
+        response.warning = faceUpdateWarning;
+      }
+
+      res.json(response);
     } catch (error) {
       console.error("Update student error:", error);
       res.status(500).json({ error: "Failed to update student" });

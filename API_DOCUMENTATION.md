@@ -7,7 +7,7 @@ Complete API documentation for the Univote electronic voting system.
 Univote is a secure university voting system with the following features:
 
 - **JWT-based authentication** for students and admins
-- **Azure Face API** facial verification
+- **Face++ API** facial verification
 - **Geofencing** validation for voting locations
 - **Real-time and final results**
 - **Automated session ending** and results publishing
@@ -167,16 +167,18 @@ python -m http.server 8080
    ```bash
    POST /api/auth/login
    Body: {
-     "matric_no": "ENG/2020/001",
+     "matric_no": "BU22CSC1005",
      "password": "1234"  # Default password
    }
    Response: {
-     "token": "first_login_token",
-     "first_login": true
+     "error": "Password change required",
+     "message": "You must change your password on first login",
+     "code": "FIRST_LOGIN",
+     "token": "first_login_token"
    }
    ```
 
-2. **Change Password**
+2. **Change Password (First Login)**
 
    ```bash
    PATCH /api/auth/change-password
@@ -185,8 +187,20 @@ python -m http.server 8080
      "new_password": "NewSecure@Pass123"
    }
    Response: {
+     "message": "Password changed successfully",
      "token": "student_token",
-     "first_login": false
+     "student": {
+       "id": "student_id",
+       "matric_no": "BU22CSC1005",
+       "full_name": "Muhammed Abiodun",
+       "email": "muhammedabiodun42@gmail.com",
+       "department": "Computer Science",
+       "department_code": "CSC",
+       "college": "College of Computing and Communication Studies",
+       "level": "400",
+       "photo_url": "https://cloudinary.com/.../photo.jpg",
+       "has_facial_data": true
+     }
    }
    ```
 
@@ -195,15 +209,74 @@ python -m http.server 8080
    ```bash
    POST /api/auth/login
    Body: {
-     "matric_no": "ENG/2020/001",
+     "matric_no": "BU22CSC1005",
      "password": "NewSecure@Pass123"
    }
    Response: {
-     "token": "student_token"
+     "message": "Login successful",
+     "token": "student_token",
+     "student": {
+       "id": "student_id",
+       "matric_no": "BU22CSC1005",
+       "full_name": "Muhammed Abiodun",
+       "email": "muhammedabiodun42@gmail.com",
+       "department": "Computer Science",
+       "department_code": "CSC",
+       "college": "College of Computing and Communication Studies",
+       "level": "400",
+       "photo_url": "https://cloudinary.com/.../photo.jpg",
+       "has_facial_data": true,
+       "created_at": "2024-01-01T00:00:00.000Z",
+       "last_login_at": "2024-03-01T10:30:00.000Z"
+     },
+     "new_device": false
    }
    ```
 
-4. **Access Protected Routes**
+4. **Get Profile**
+
+   ```bash
+   GET /api/auth/me
+   Headers: { "Authorization": "Bearer student_token" }
+   Response: {
+     "student": {
+       "id": "student_id",
+       "matric_no": "BU22CSC1005",
+       "full_name": "Muhammed Abiodun",
+       "email": "muhammedabiodun42@gmail.com",
+       "department": "Computer Science",
+       "department_code": "CSC",
+       "college": "College of Computing and Communication Studies",
+       "level": "400",
+       "photo_url": "https://cloudinary.com/.../photo.jpg",
+       "has_facial_data": true,
+       "is_logged_in": true,
+       "first_login": false,
+       "last_login_at": "2024-03-01T10:30:00.000Z",
+       "created_at": "2024-01-01T00:00:00.000Z",
+       "has_voted_sessions": ["session_id_1", "session_id_2"]
+     },
+     "profile": {
+       "id": "student_id",
+       "matric_no": "BU22CSC1005",
+       "full_name": "Muhammed Abiodun",
+       "email": "muhammedabiodun42@gmail.com",
+       "department": "Computer Science",
+       "department_code": "CSC",
+       "college": "College of Computing and Communication Studies",
+       "level": "400",
+       "photo_url": "https://cloudinary.com/.../photo.jpg",
+       "has_facial_data": true,
+       "is_logged_in": true,
+       "first_login": false,
+       "last_login_at": "2024-03-01T10:30:00.000Z",
+       "created_at": "2024-01-01T00:00:00.000Z",
+       "has_voted_sessions": ["session_id_1", "session_id_2"]
+     }
+   }
+   ```
+
+5. **Access Protected Routes**
    ```bash
    GET /api/sessions/active
    Headers: { "Authorization": "Bearer student_token" }

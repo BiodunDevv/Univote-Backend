@@ -1,6 +1,6 @@
 # Univote - University Voting System Backend
 
-A secure, scalable university voting system with facial recognition, geofencing, and real-time results. Built with Node.js, Express, MongoDB, and Azure Face API.
+A secure, scalable university voting system with facial recognition, geofencing, and real-time results. Built with Node.js, Express, MongoDB, and Face++ API.
 
 ## 🎯 Features
 
@@ -8,7 +8,7 @@ A secure, scalable university voting system with facial recognition, geofencing,
 
 - **Secure Authentication**: JWT-based auth with forced password change on first login
 - **Single Active Session**: Automatic logout when logging in from a new device
-- **Facial Recognition**: Azure Face API integration for duplicate vote prevention
+- **Facial Recognition**: Face++ API integration for identity verification during voting
 - **Geofencing**: Location-based voting with customizable radius
 - **Real-time Results**: Live vote counts and result publication
 - **Email Notifications**: Welcome emails, device alerts, vote confirmations, and result announcements
@@ -37,7 +37,7 @@ A secure, scalable university voting system with facial recognition, geofencing,
 
 - Node.js (v14 or higher)
 - MongoDB (v4.4 or higher)
-- Azure Face API subscription
+- Face++ API account (free tier available)
 - Gmail account (for email notifications)
 
 ## 🚀 Quick Start
@@ -70,9 +70,10 @@ EMAIL_USER=your-email@gmail.com
 EMAIL_PASS=your-app-password
 EMAIL_FROM=Univote <noreply@univote.com>
 
-# Azure Face API
-AZURE_FACE_ENDPOINT=https://your-region.api.cognitive.microsoft.com/face/v1.0
-AZURE_FACE_KEY=your_azure_face_api_key
+# Face++ API Configuration
+FACEPP_API_KEY=your_facepp_api_key
+FACEPP_API_SECRET=your_facepp_api_secret
+FACE_CONFIDENCE_THRESHOLD=80
 
 # Geofence Configuration (Bowen University)
 DEFAULT_CAMPUS_LAT=7.8525
@@ -88,11 +89,16 @@ RATE_LIMIT_WINDOW=15
 RATE_LIMIT_MAX=100
 ```
 
-### 3. Azure Face API Setup
+### 3. Face++ API Setup
 
-1. Go to [Azure Portal](https://portal.azure.com)
-2. Create a new "Face" resource
-3. Copy the endpoint and key to your `.env` file
+1. Go to [Face++ Console](https://console.faceplusplus.com/)
+2. Sign up for a free account (no credit card required)
+3. Create a new API Key
+4. Copy the API Key and API Secret to your `.env` file
+5. Free tier includes:
+   - 1,000 calls/month for Detect API
+   - 1,000 calls/month for Compare API
+   - Perfect for testing and small deployments
 
 ### 4. Gmail App Password Setup
 
@@ -444,10 +450,9 @@ Authorization: Bearer {admin-token}
   college: String,
   level: String ('100'-'600'),
   has_voted_sessions: [ObjectId],
-  face_reference: {
-    azurePersonId: String,
-    persistedFaceIds: [String]
-  },
+  photo_url: String,
+  face_token: String,
+  embedding_vector: String,
   is_logged_in: Boolean,
   last_login_device: String,
   active_token: String
@@ -486,7 +491,6 @@ Authorization: Bearer {admin-token}
     radius_meters: Number
   },
   is_off_campus_allowed: Boolean,
-  azure_persongroup_id: String,
   results_public: Boolean
 }
 ```
@@ -516,8 +520,7 @@ Authorization: Bearer {admin-token}
   geo_location: { lat: Number, lng: Number },
   face_match_score: Number,
   face_verification_passed: Boolean,
-  azure_face_id: String,
-  persisted_face_id: String,
+  face_token: String,
   timestamp: Date,
   status: String ('valid' | 'duplicate' | 'rejected'),
   device_id: String
@@ -549,7 +552,7 @@ Authorization: Bearer {admin-token}
 
    - All inputs validated using express-validator
    - Coordinates validated for geofence
-   - Image URLs validated before Azure API calls
+   - Image URLs validated before Face++ API calls
 
 5. **Audit Logging**
    - All sensitive operations logged
@@ -605,7 +608,7 @@ Ensure all production values are set in `.env`:
 
 - Use strong `JWT_SECRET`
 - Use production MongoDB URI
-- Configure real Azure Face API credentials
+- Configure real Face++ API credentials
 - Use production email credentials
 
 ### MongoDB Atlas Setup
@@ -674,12 +677,12 @@ mongod --version
 - Check 2FA is enabled on Gmail account
 - Ensure less secure apps access is NOT enabled (use app password instead)
 
-### Azure Face API Errors
+### Face++ API Errors
 
-- Verify endpoint URL is correct
-- Check subscription key is valid
-- Ensure you haven't exceeded quota
-- Test endpoint in Azure Portal
+- Verify API key and secret are correct
+- Check you haven't exceeded free tier quota (1,000 calls/month)
+- Ensure image URLs are publicly accessible
+- Test credentials in Face++ Console
 
 ### Port Already in Use
 
@@ -714,7 +717,7 @@ For issues and questions:
 
 ## 🎉 Acknowledgments
 
-- Azure Face API for facial recognition
+- Face++ API for facial recognition
 - MongoDB for database
 - Express.js for backend framework
 - Nodemailer for email service

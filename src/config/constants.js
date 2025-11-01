@@ -95,7 +95,7 @@ module.exports = {
 
   defaultPassword: "1234",
 
-  azureFaceThreshold: 0.7, // Confidence threshold for face matching
+  faceConfidenceThreshold: 80, // Confidence threshold for face matching (0-100)
 
   campusLocations: {
     "Bowen University": {

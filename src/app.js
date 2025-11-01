@@ -17,8 +17,11 @@ const sessionRoutes = require("./routes/sessionRoutes");
 const voteRoutes = require("./routes/voteRoutes");
 const resultRoutes = require("./routes/resultRoutes");
 const healthRoutes = require("./routes/healthRoutes");
+const settingsRoutes = require("./routes/settingsRoutes");
 
 const app = express();
+
+app.set("trust proxy", 1);
 
 // Connect to MongoDB (async)
 connectDB()
@@ -68,6 +71,7 @@ app.use("/api/health", healthRoutes); // Keep-alive health check endpoint
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin", collegeRoutes);
+app.use("/api/admin/settings", settingsRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/vote", voteRoutes);
 app.use("/api/results", resultRoutes);

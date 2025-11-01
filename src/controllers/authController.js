@@ -79,8 +79,13 @@ class AuthController {
           full_name: student.full_name,
           email: student.email,
           department: student.department,
+          department_code: student.department_code,
           college: student.college,
           level: student.level,
+          photo_url: student.photo_url,
+          has_facial_data: !!student.face_token,
+          created_at: student.created_at,
+          last_login_at: student.last_login_at,
         },
         new_device: isNewDevice,
       });
@@ -207,6 +212,18 @@ class AuthController {
       res.json({
         message: "Password changed successfully",
         token: newToken,
+        student: {
+          id: student._id,
+          matric_no: student.matric_no,
+          full_name: student.full_name,
+          email: student.email,
+          department: student.department,
+          department_code: student.department_code,
+          college: student.college,
+          level: student.level,
+          photo_url: student.photo_url,
+          has_facial_data: !!student.face_token,
+        },
       });
     } catch (error) {
       console.error("Change password error:", error);
@@ -242,14 +259,37 @@ class AuthController {
   async getProfile(req, res) {
     try {
       const student = await Student.findById(req.studentId).select(
-        "-password_hash -active_token"
+        "-password_hash -active_token -face_token -embedding_vector"
       );
 
       if (!student) {
         return res.status(404).json({ error: "Student not found" });
       }
 
-      res.json({ student });
+      // Add computed field for facial data status
+      const studentProfile = student.toObject();
+      studentProfile.has_facial_data = !!student.face_token;
+
+      res.json({
+        student: studentProfile,
+        profile: {
+          id: student._id,
+          matric_no: student.matric_no,
+          full_name: student.full_name,
+          email: student.email,
+          department: student.department,
+          department_code: student.department_code,
+          college: student.college,
+          level: student.level,
+          photo_url: student.photo_url,
+          has_facial_data: !!student.face_token,
+          is_logged_in: student.is_logged_in,
+          first_login: student.first_login,
+          last_login_at: student.last_login_at,
+          created_at: student.created_at,
+          has_voted_sessions: student.has_voted_sessions,
+        },
+      });
     } catch (error) {
       console.error("Get profile error:", error);
       res.status(500).json({ error: "Failed to get profile" });

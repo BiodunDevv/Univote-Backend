@@ -31,7 +31,7 @@ const adminLimiter = rateLimit({
   message: "Too many admin requests, please try again later.",
 });
 
-// Limiter for Azure Face API calls
+// Limiter for Face++ API calls
 const faceLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 50, // Limit to 50 face API calls per minute (increased from 20)

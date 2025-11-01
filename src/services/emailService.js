@@ -210,6 +210,35 @@ class EmailService {
       throw error;
     }
   }
+
+  /**
+   * Send generic email (for testing and custom messages)
+   * @param {string} to - Recipient email
+   * @param {string} subject - Email subject
+   * @param {string} html - HTML content
+   * @param {string} text - Plain text content (optional)
+   */
+  async sendEmail(to, subject, html, text = null) {
+    try {
+      const mailOptions = {
+        from: this.from,
+        to,
+        subject,
+        html,
+      };
+
+      if (text) {
+        mailOptions.text = text;
+      }
+
+      await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Email sent to ${to}`);
+      return { success: true };
+    } catch (error) {
+      console.error("Error sending email:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new EmailService();

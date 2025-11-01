@@ -39,11 +39,7 @@ const voteSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    azure_face_id: {
-      type: String,
-      default: null,
-    },
-    persisted_face_id: {
+    face_token: {
       type: String,
       default: null,
     },

@@ -9,6 +9,13 @@ const Candidate = require("../src/models/Candidate");
 const Vote = require("../src/models/Vote");
 const AuditLog = require("../src/models/AuditLog");
 
+// Services
+const faceppService = require("../src/services/faceppService");
+
+// Cloudinary image URL for student photos
+const STUDENT_PHOTO_URL =
+  "https://res.cloudinary.com/df4f0usnh/image/upload/v1761725926/univote/candidates/isxi22irk87hyzglhl0s.jpg";
+
 // College and Department mappings (Bowen University) with department codes
 const collegesAndDepartments = {
   "College of Agriculture, Engineering and Science": {
@@ -411,6 +418,8 @@ async function generateStudents() {
 
   const students = [];
   const levels = ["100", "200", "300", "400", "500", "600"];
+  let facesRegistered = 0;
+  let facesFailed = 0;
 
   // Track department counters for unique matric numbers per department
   const departmentCounters = {};
@@ -508,6 +517,8 @@ async function generateStudents() {
           first_login: true,
           has_voted_sessions: [],
           is_logged_in: false,
+          photo_url: STUDENT_PHOTO_URL,
+          face_token: null, // Will be populated after Face++ detection
         };
 
         students.push(student);
@@ -515,10 +526,42 @@ async function generateStudents() {
     }
   }
 
+  console.log(`\n🎭 Registering student faces with Face++...`);
+
+  // Register faces for all students
+  for (let i = 0; i < students.length; i++) {
+    const student = students[i];
+    try {
+      const faceResult = await faceppService.detectFace(student.photo_url);
+      student.face_token = faceResult.face_token;
+      facesRegistered++;
+
+      // Show progress every 10 students
+      if ((i + 1) % 10 === 0) {
+        console.log(
+          `   Progress: ${i + 1}/${students.length} faces registered...`
+        );
+      }
+    } catch (error) {
+      console.warn(
+        `   ⚠️  Failed to register face for ${student.full_name}: ${error.message}`
+      );
+      facesFailed++;
+      // Continue without face_token - student can still be created
+    }
+  }
+
+  console.log(
+    `✅ Face registration complete: ${facesRegistered} successful, ${facesFailed} failed`
+  );
+
   // Insert all students
   const insertedStudents = await Student.insertMany(students);
 
   console.log(`✅ Generated ${insertedStudents.length} students`);
+  console.log(
+    `   🎭 Face++ registration: ${facesRegistered} faces registered successfully`
+  );
   console.log(`   📧 Welcome emails will be sent after first password change`);
   console.log(`\n   Sample Matric Numbers by Department:`);
 
@@ -534,7 +577,7 @@ async function generateStudents() {
     console.log(`   - ${ex.dept} (${ex.code}): ${ex.matric}`);
   });
 
-  return insertedStudents;
+  return { students: insertedStudents, facesRegistered, facesFailed };
 }
 
 /**
@@ -549,7 +592,7 @@ async function seed() {
     await clearDatabase();
     await seedColleges();
     await createAdmin();
-    await generateStudents();
+    const studentResult = await generateStudents();
 
     console.log("\n" + "=".repeat(50));
     console.log("✅ Seed completed successfully!\n");
@@ -562,7 +605,17 @@ async function seed() {
     console.log(
       `     • Mustapha Muhammed (BU22ACC0002) - Mustapha.muhammed@bowen.edu.ng`
     );
-    console.log(`   - Total students created: 86 (2 per department)`);
+    console.log(
+      `   - Total students created: ${studentResult.students.length}`
+    );
+    console.log(
+      `   - Face++ registration: ${studentResult.facesRegistered} students with facial data`
+    );
+    if (studentResult.facesFailed > 0) {
+      console.log(
+        `   - Face++ failures: ${studentResult.facesFailed} students without facial data`
+      );
+    }
     console.log(`   - Default password for all students: 1234`);
     console.log(`   - All students must change password on first login`);
     console.log(`   - Matric format: BU{Year}{DeptCode}{Number}`);
@@ -570,6 +623,9 @@ async function seed() {
       `     Example: BU22CSC0001 = 2022, Computer Science, Student #1`
     );
     console.log("\n🚀 You can now start the server with: npm start");
+    console.log(
+      "🎭 Face++ facial verification enabled for voting (80% confidence threshold)"
+    );
     console.log("=".repeat(50));
   } catch (error) {
     console.error("\n❌ Seed failed:", error);

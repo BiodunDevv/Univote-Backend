@@ -66,10 +66,6 @@ const votingSessionSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    azure_persongroup_id: {
-      type: String,
-      default: null,
-    },
     results_public: {
       type: Boolean,
       default: false,

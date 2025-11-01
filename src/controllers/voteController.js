@@ -3,7 +3,7 @@ const Student = require("../models/Student");
 const VotingSession = require("../models/VotingSession");
 const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
-const azureService = require("../services/azureService");
+const faceppService = require("../services/faceppService");
 const emailService = require("../services/emailService");
 const { isWithinGeofence, isValidCoordinates } = require("../utils/geofence");
 
@@ -142,58 +142,66 @@ class VoteController {
         }
       }
 
-      // Azure Face Detection
-      console.log("Starting face detection...");
-      const faceDetection = await azureService.detectFace(image_url);
+      // Face++ Face Verification
+      console.log("Starting face verification...");
 
-      if (!faceDetection.success) {
+      // Check if student has registered face token
+      if (!student.face_token) {
         await mongoSession.abortTransaction();
         return res.status(400).json({
-          error: faceDetection.error,
-          code: "FACE_DETECTION_FAILED",
+          error:
+            "No registered face found. Please contact administrator to register your face.",
+          code: "NO_REGISTERED_FACE",
         });
       }
 
-      const faceId = faceDetection.faceId;
+      // Verify face matches registered face
+      const faceVerification = await faceppService.verifyFace(
+        student.face_token,
+        image_url
+      );
 
-      // Check for duplicate face in this session
-      console.log("Checking for duplicate faces...");
-      if (session.azure_persongroup_id) {
-        const duplicateCheck = await azureService.checkDuplicateInSession(
-          session.azure_persongroup_id,
-          faceId
+      if (!faceVerification.success) {
+        await mongoSession.abortTransaction();
+        return res.status(400).json({
+          error: faceVerification.error,
+          code: "FACE_VERIFICATION_FAILED",
+        });
+      }
+
+      // Check if confidence meets threshold
+      if (!faceVerification.is_match) {
+        // Record rejected vote
+        await Vote.create(
+          [
+            {
+              student_id: studentId,
+              session_id: session_id,
+              candidate_id: null,
+              position: "N/A",
+              geo_location: { lat, lng },
+              face_match_score: faceVerification.confidence,
+              face_verification_passed: false,
+              face_token: faceVerification.face_token2,
+              status: "rejected",
+              device_id: device_id || null,
+              ip_address: req.ip,
+            },
+          ],
+          { session: mongoSession }
         );
 
-        if (duplicateCheck.isDuplicate) {
-          // Record rejected vote
-          await Vote.create(
-            [
-              {
-                student_id: studentId,
-                session_id: session_id,
-                candidate_id: null,
-                position: "N/A",
-                geo_location: { lat, lng },
-                face_match_score: duplicateCheck.confidence,
-                face_verification_passed: false,
-                azure_face_id: faceId,
-                status: "duplicate",
-                device_id: device_id || null,
-                ip_address: req.ip,
-              },
-            ],
-            { session: mongoSession }
-          );
+        await mongoSession.commitTransaction();
 
-          await mongoSession.commitTransaction();
-
-          return res.status(409).json({
-            error: duplicateCheck.message,
-            code: "DUPLICATE_FACE",
-            confidence: duplicateCheck.confidence,
-          });
-        }
+        return res.status(403).json({
+          error: faceVerification.message,
+          code: "FACE_VERIFICATION_FAILED",
+          confidence: faceVerification.confidence,
+        });
       }
+
+      const verifiedFaceToken = faceVerification.face_token2;
+      const faceConfidence = faceVerification.confidence;
 
       // Validate choices
       if (!Array.isArray(choices) || choices.length === 0) {
@@ -243,9 +251,9 @@ class VoteController {
           candidate_id: choice.candidate_id,
           position: choice.category || candidate.position,
           geo_location: { lat, lng },
-          face_match_score: 1.0,
+          face_match_score: faceConfidence,
           face_verification_passed: true,
-          azure_face_id: faceId,
+          face_token: verifiedFaceToken,
           status: "valid",
           device_id: device_id || null,
           ip_address: req.ip,
@@ -261,30 +269,8 @@ class VoteController {
       // Save all votes
       await Vote.insertMany(voteRecords, { session: mongoSession });
 
-      // Add face to session PersonGroup for future duplicate detection
-      if (session.azure_persongroup_id) {
-        console.log("Adding face to PersonGroup...");
-        const addFaceResult = await azureService.addVoteFaceToSession(
-          session.azure_persongroup_id,
-          student.matric_no,
-          image_url
-        );
-
-        if (addFaceResult.success) {
-          // Update vote records with persisted face ID
-          await Vote.updateMany(
-            {
-              student_id: studentId,
-              session_id: session_id,
-              azure_face_id: faceId,
-            },
-            {
-              $set: { persisted_face_id: addFaceResult.persistedFaceId },
-            },
-            { session: mongoSession }
-          );
-        }
-      }
+      // Face++ verification is complete - no post-vote face registration needed
+      // The student's face_token is already stored and was verified during this vote
 
       // Add session to student's has_voted_sessions
       await Student.findByIdAndUpdate(

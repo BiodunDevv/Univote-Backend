@@ -53,9 +53,17 @@ const studentSchema = new mongoose.Schema(
         ref: "VotingSession",
       },
     ],
-    face_reference: {
-      azurePersonId: String,
-      persistedFaceIds: [String],
+    photo_url: {
+      type: String,
+      default: null,
+    },
+    face_token: {
+      type: String,
+      default: null,
+    },
+    embedding_vector: {
+      type: String,
+      default: null,
     },
     is_logged_in: {
       type: Boolean,
