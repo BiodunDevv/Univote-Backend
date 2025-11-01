@@ -1298,6 +1298,48 @@ class AdminController {
         .sort({ createdAt: -1 })
         .lean();
 
+      // Get accurate vote counts and student participation for each session
+      for (const session of sessions) {
+        // Get vote counts by candidate and unique student count
+        const [votesByCandidate, uniqueVoters] = await Promise.all([
+          Vote.aggregate([
+            {
+              $match: {
+                session_id: new mongoose.Types.ObjectId(session._id),
+                status: "valid",
+              },
+            },
+            {
+              $group: {
+                _id: "$candidate_id",
+                count: { $sum: 1 },
+              },
+            },
+          ]),
+          Vote.distinct("student_id", {
+            session_id: new mongoose.Types.ObjectId(session._id),
+            status: "valid",
+          }),
+        ]);
+
+        // Add vote participation stats
+        session.total_votes = uniqueVoters.length;
+        session.students_voted = uniqueVoters.length;
+
+        // Update each candidate with accurate vote count
+        if (session.candidates && session.candidates.length > 0) {
+          session.candidates = session.candidates.map((candidate) => {
+            const voteData = votesByCandidate.find(
+              (v) => v._id.toString() === candidate._id.toString()
+            );
+            return {
+              ...candidate,
+              vote_count: voteData ? voteData.count : 0,
+            };
+          });
+        }
+      }
+
       res.json({ sessions });
     } catch (error) {
       console.error("Get sessions error:", error);
@@ -1378,10 +1420,9 @@ class AdminController {
               status: "valid",
             },
           },
-          { $unwind: "$votes" },
           {
             $group: {
-              _id: "$votes.candidate_id",
+              _id: "$candidate_id",
               count: { $sum: 1 },
             },
           },

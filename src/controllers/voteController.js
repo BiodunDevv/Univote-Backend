@@ -356,6 +356,69 @@ class VoteController {
       res.status(500).json({ error: "Failed to get voting history" });
     }
   }
+
+  /**
+   * Get vote by ID
+   * GET /api/vote/:id
+   */
+  async getVoteById(req, res) {
+    try {
+      const { id } = req.params;
+
+      const vote = await Vote.findById(id)
+        .populate("student_id", "matric_no full_name email college department level")
+        .populate("session_id", "title description start_time end_time status")
+        .populate("candidate_id", "name position photo_url bio")
+        .lean();
+
+      if (!vote) {
+        return res.status(404).json({ error: "Vote not found" });
+      }
+
+      res.json({
+        vote: {
+          id: vote._id,
+          student: vote.student_id ? {
+            id: vote.student_id._id,
+            matric_no: vote.student_id.matric_no,
+            full_name: vote.student_id.full_name,
+            email: vote.student_id.email,
+            college: vote.student_id.college,
+            department: vote.student_id.department,
+            level: vote.student_id.level,
+          } : null,
+          session: vote.session_id ? {
+            id: vote.session_id._id,
+            title: vote.session_id.title,
+            description: vote.session_id.description,
+            start_time: vote.session_id.start_time,
+            end_time: vote.session_id.end_time,
+            status: vote.session_id.status,
+          } : null,
+          candidate: vote.candidate_id ? {
+            id: vote.candidate_id._id,
+            name: vote.candidate_id.name,
+            position: vote.candidate_id.position,
+            photo_url: vote.candidate_id.photo_url,
+            bio: vote.candidate_id.bio,
+          } : null,
+          position: vote.position,
+          geo_location: vote.geo_location,
+          face_match_score: vote.face_match_score,
+          face_verification_passed: vote.face_verification_passed,
+          status: vote.status,
+          device_id: vote.device_id,
+          ip_address: vote.ip_address,
+          timestamp: vote.timestamp,
+          created_at: vote.createdAt,
+          updated_at: vote.updatedAt,
+        },
+      });
+    } catch (error) {
+      console.error("Get vote by ID error:", error);
+      res.status(500).json({ error: "Failed to get vote details" });
+    }
+  }
 }
 
 module.exports = new VoteController();
