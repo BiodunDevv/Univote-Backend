@@ -80,7 +80,9 @@ class FacePPService {
       );
 
       // Handle specific error cases
-      if (error.response?.data?.error_message === "CONCURRENCY_LIMIT_EXCEEDED") {
+      if (
+        error.response?.data?.error_message === "CONCURRENCY_LIMIT_EXCEEDED"
+      ) {
         return {
           success: false,
           error:
@@ -215,7 +217,9 @@ class FacePPService {
       );
 
       // Handle specific error cases
-      if (error.response?.data?.error_message === "CONCURRENCY_LIMIT_EXCEEDED") {
+      if (
+        error.response?.data?.error_message === "CONCURRENCY_LIMIT_EXCEEDED"
+      ) {
         return {
           success: false,
           error:
