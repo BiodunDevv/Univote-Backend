@@ -33,15 +33,17 @@ class FacePPService {
         };
       }
 
-      const response = await axios.post(`${this.baseUrl}/detect`, null, {
-        params: {
-          api_key: this.apiKey,
-          api_secret: this.apiSecret,
-          image_url: imageUrl,
-          return_landmark: 0,
-          return_attributes: "none",
-        },
-        timeout: 30000, // 30 second timeout
+      const response = await this._retryWithBackoff(async () => {
+        return await axios.post(`${this.baseUrl}/detect`, null, {
+          params: {
+            api_key: this.apiKey,
+            api_secret: this.apiSecret,
+            image_url: imageUrl,
+            return_landmark: 0,
+            return_attributes: "none",
+          },
+          timeout: 30000, // 30 second timeout
+        });
       });
 
       if (
@@ -77,6 +79,24 @@ class FacePPService {
         error.response?.data || error.message
       );
 
+      // Handle specific error cases
+      if (error.response?.data?.error_message === "CONCURRENCY_LIMIT_EXCEEDED") {
+        return {
+          success: false,
+          error:
+            "Face++ API is currently busy. Please try again in a few seconds.",
+          code: "CONCURRENCY_LIMIT_EXCEEDED",
+        };
+      }
+
+      if (error.response?.data?.error_message === "RATE_LIMIT_EXCEEDED") {
+        return {
+          success: false,
+          error: "Too many requests. Please wait a moment and try again.",
+          code: "RATE_LIMIT_EXCEEDED",
+        };
+      }
+
       if (error.response?.data) {
         return {
           success: false,
@@ -90,6 +110,37 @@ class FacePPService {
         success: false,
         error: "Face detection failed. Please try again with a clearer image.",
       };
+    }
+  }
+
+  /**
+   * Retry helper with exponential backoff for rate limiting
+   * @private
+   */
+  async _retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        const isConcurrencyError =
+          error.response?.data?.error_message === "CONCURRENCY_LIMIT_EXCEEDED";
+        const isRateLimitError =
+          error.response?.data?.error_message === "RATE_LIMIT_EXCEEDED";
+
+        // Only retry on rate limit errors
+        if ((isConcurrencyError || isRateLimitError) && attempt < maxRetries) {
+          const delay = baseDelay * Math.pow(2, attempt); // Exponential backoff
+          console.log(
+            `Face++ rate limit hit. Retrying in ${delay}ms... (Attempt ${
+              attempt + 1
+            }/${maxRetries})`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        throw error;
+      }
     }
   }
 
@@ -117,15 +168,20 @@ class FacePPService {
 
       const faceToken2 = detection.face_token;
 
-      // Now compare the two face tokens
-      const response = await axios.post(`${this.baseUrl}/compare`, null, {
-        params: {
-          api_key: this.apiKey,
-          api_secret: this.apiSecret,
-          face_token1: faceToken1,
-          face_token2: faceToken2,
-        },
-        timeout: 30000,
+      // Small delay before comparison to avoid rate limiting
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Now compare the two face tokens with retry logic
+      const response = await this._retryWithBackoff(async () => {
+        return await axios.post(`${this.baseUrl}/compare`, null, {
+          params: {
+            api_key: this.apiKey,
+            api_secret: this.apiSecret,
+            face_token1: faceToken1,
+            face_token2: faceToken2,
+          },
+          timeout: 30000,
+        });
       });
 
       if (!response.data) {
@@ -157,6 +213,24 @@ class FacePPService {
         "Face++ Comparison Error:",
         error.response?.data || error.message
       );
+
+      // Handle specific error cases
+      if (error.response?.data?.error_message === "CONCURRENCY_LIMIT_EXCEEDED") {
+        return {
+          success: false,
+          error:
+            "Face++ API is currently busy. Please try again in a few seconds.",
+          code: "CONCURRENCY_LIMIT_EXCEEDED",
+        };
+      }
+
+      if (error.response?.data?.error_message === "RATE_LIMIT_EXCEEDED") {
+        return {
+          success: false,
+          error: "Too many requests. Please wait a moment and try again.",
+          code: "RATE_LIMIT_EXCEEDED",
+        };
+      }
 
       if (error.response?.data) {
         return {
