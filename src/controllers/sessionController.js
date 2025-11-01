@@ -414,10 +414,9 @@ class SessionController {
               status: "valid",
             },
           },
-          { $unwind: "$votes" },
           {
             $group: {
-              _id: "$votes.candidate_id",
+              _id: "$candidate_id",
               count: { $sum: 1 },
             },
           },
