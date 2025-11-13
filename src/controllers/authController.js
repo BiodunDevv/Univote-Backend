@@ -8,6 +8,7 @@ const {
   verifyToken,
 } = require("../utils/jwt");
 const emailService = require("../services/emailService");
+const cacheService = require("../services/cacheService");
 
 class AuthController {
   /**
@@ -53,6 +54,15 @@ class AuthController {
       const isNewDevice =
         student.last_login_device && student.last_login_device !== deviceInfo;
 
+      // Invalidate old session in Redis if it exists
+      if (student.active_token) {
+        await cacheService.set(
+          `blacklist:${student.active_token}`,
+          true,
+          86400 // 24 hours
+        );
+      }
+
       // Generate new token
       const token = generateStudentToken(student);
 
@@ -62,6 +72,38 @@ class AuthController {
       student.last_login_device = deviceInfo;
       student.last_login_at = new Date();
       await student.save();
+
+      // Store session in Redis for fast validation
+      await cacheService.set(
+        `session:student:${student._id}`,
+        {
+          token,
+          studentId: student._id.toString(),
+          deviceInfo,
+          loginAt: new Date().toISOString(),
+        },
+        86400 // 24 hours TTL
+      );
+
+      // Cache student profile for faster auth
+      await cacheService.set(
+        `student:profile:${student._id}`,
+        {
+          _id: student._id,
+          matric_no: student.matric_no,
+          full_name: student.full_name,
+          email: student.email,
+          department: student.department,
+          department_code: student.department_code,
+          college: student.college,
+          level: student.level,
+          has_voted_sessions: student.has_voted_sessions,
+          face_token: student.face_token,
+          is_active: student.is_active,
+          active_token: student.active_token,
+        },
+        900 // 15 minutes TTL
+      );
 
       // Send new device alert if device changed
       if (isNewDevice) {
@@ -240,6 +282,20 @@ class AuthController {
       const student = await Student.findById(req.studentId);
 
       if (student) {
+        // Blacklist current token in Redis
+        if (req.token) {
+          await cacheService.set(
+            `blacklist:${req.token}`,
+            true,
+            86400 // 24 hours
+          );
+        }
+
+        // Clear session and profile from Redis
+        await cacheService.del(`session:student:${req.studentId}`);
+        await cacheService.del(`student:profile:${req.studentId}`);
+
+        // Update database
         student.is_logged_in = false;
         student.active_token = null;
         await student.save();

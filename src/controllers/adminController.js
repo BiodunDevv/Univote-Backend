@@ -8,6 +8,7 @@ const faceppService = require("../services/faceppService");
 const emailService = require("../services/emailService");
 const constants = require("../config/constants");
 const mongoose = require("mongoose");
+const cacheService = require("../services/cacheService");
 
 class AdminController {
   /**
@@ -325,6 +326,9 @@ class AdminController {
         await session.save();
       }
 
+      // Invalidate cached session data
+      await cacheService.del("admin:sessions:all");
+
       res.status(201).json({
         message: "Voting session created successfully",
         session,
@@ -391,6 +395,12 @@ class AdminController {
 
       await session.save();
 
+      // Invalidate cached session data
+      await cacheService.del("admin:sessions:all");
+      await cacheService.del(`admin:session_stats:${id}`);
+      await cacheService.del(`live_results:${id}`);
+      await cacheService.del(`session:${id}`);
+
       res.json({
         message: "Session updated successfully",
         session,
@@ -438,6 +448,14 @@ class AdminController {
       await VotingSession.findByIdAndDelete(id, { session: mongoSession });
 
       await mongoSession.commitTransaction();
+
+      // Invalidate all cached session data
+      await cacheService.del("admin:sessions:all");
+      await cacheService.del(`admin:session_stats:${id}`);
+      await cacheService.del(`live_results:${id}`);
+      await cacheService.del(`session:${id}`);
+      await cacheService.delPattern(`vote_count:${id}:*`);
+      await cacheService.del(`total_votes:${id}`);
 
       res.json({
         message: "Session deleted successfully",
@@ -1219,6 +1237,18 @@ class AdminController {
     try {
       const { collegeId } = req.params;
 
+      // Try cache first (10 minute TTL for college stats)
+      const cacheKey = `admin:college_stats:${collegeId}`;
+      const cachedStats = await cacheService.get(cacheKey);
+
+      if (cachedStats) {
+        return res.json({
+          ...cachedStats,
+          cached: true,
+        });
+      }
+
+      // Cache miss - query database
       // Get college
       const College = require("../models/College");
       const college = await College.findById(collegeId)
@@ -1259,7 +1289,7 @@ class AdminController {
           ]),
         ]);
 
-      res.json({
+      const responseData = {
         college: {
           id: college._id,
           name: college.name,
@@ -1280,7 +1310,13 @@ class AdminController {
             count: l.count,
           })),
         },
-      });
+        cached: false,
+      };
+
+      // Cache for 10 minutes
+      await cacheService.set(cacheKey, responseData, 600);
+
+      res.json(responseData);
     } catch (error) {
       console.error("Get student statistics by college error:", error);
       res.status(500).json({ error: "Failed to get statistics" });
@@ -1293,6 +1329,18 @@ class AdminController {
    */
   async getSessions(req, res) {
     try {
+      // Try cache first (5 minute TTL)
+      const cacheKey = "admin:sessions:all";
+      const cachedSessions = await cacheService.get(cacheKey);
+
+      if (cachedSessions) {
+        return res.json({
+          sessions: cachedSessions,
+          cached: true,
+        });
+      }
+
+      // Cache miss - query database
       const sessions = await VotingSession.find({})
         .populate("candidates", "name position photo_url vote_count")
         .sort({ createdAt: -1 })
@@ -1340,7 +1388,13 @@ class AdminController {
         }
       }
 
-      res.json({ sessions });
+      // Cache the result (5 minutes)
+      await cacheService.set(cacheKey, sessions, 300);
+
+      res.json({
+        sessions,
+        cached: false,
+      });
     } catch (error) {
       console.error("Get sessions error:", error);
       res.status(500).json({ error: "Failed to get sessions" });
@@ -1470,6 +1524,18 @@ class AdminController {
     try {
       const { id } = req.params;
 
+      // Try cache first (2 minute TTL for session stats)
+      const cacheKey = `admin:session_stats:${id}`;
+      const cachedStats = await cacheService.get(cacheKey);
+
+      if (cachedStats) {
+        return res.json({
+          ...cachedStats,
+          cached: true,
+        });
+      }
+
+      // Cache miss - query database
       const session = await VotingSession.findById(id)
         .populate("candidates", "name position photo_url")
         .lean();
@@ -1525,7 +1591,7 @@ class AdminController {
           })(),
         ]);
 
-      res.json({
+      const responseData = {
         session: {
           id: session._id,
           title: session.title,
@@ -1542,7 +1608,13 @@ class AdminController {
               : 0,
         },
         candidates: session.candidates,
-      });
+        cached: false,
+      };
+
+      // Cache for 2 minutes
+      await cacheService.set(cacheKey, responseData, 120);
+
+      res.json(responseData);
     } catch (error) {
       console.error("Get session stats error:", error);
       res.status(500).json({ error: "Failed to get session stats" });

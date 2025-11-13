@@ -6,6 +6,7 @@ const Vote = require("../models/Vote");
 const faceppService = require("../services/faceppService");
 const emailService = require("../services/emailService");
 const { isWithinGeofence, isValidCoordinates } = require("../utils/geofence");
+const cacheService = require("../services/cacheService");
 
 class VoteController {
   /**
@@ -38,10 +39,28 @@ class VoteController {
         return res.status(400).json({ error: "Invalid coordinates" });
       }
 
+      // ATOMIC VOTE LOCK - Prevent duplicate votes with Redis
+      const voteLockKey = `vote_lock:${session_id}:${studentId}`;
+      const lockAcquired = await cacheService.setNX(
+        voteLockKey,
+        Date.now(),
+        3600 // 1 hour lock
+      );
+
+      if (!lockAcquired) {
+        await mongoSession.abortTransaction();
+        return res.status(409).json({
+          error: "You have already voted in this session",
+          code: "ALREADY_VOTED",
+        });
+      }
+
       // Get student
       const student = await Student.findById(studentId);
       if (!student) {
         await mongoSession.abortTransaction();
+        // Release lock on error
+        await cacheService.del(voteLockKey);
         return res.status(404).json({ error: "Student not found" });
       }
 
@@ -51,6 +70,8 @@ class VoteController {
       );
       if (!session) {
         await mongoSession.abortTransaction();
+        // Release lock on error
+        await cacheService.del(voteLockKey);
         return res.status(404).json({ error: "Voting session not found" });
       }
 
@@ -60,12 +81,14 @@ class VoteController {
       // Check if session is active
       if (session.status !== "active") {
         await mongoSession.abortTransaction();
+        // Release lock on error
+        await cacheService.del(voteLockKey);
         return res.status(400).json({
           error: `Voting session is ${session.status}. You can only vote during active sessions.`,
         });
       }
 
-      // Check if student has already voted
+      // Double-check database (belt and suspenders approach)
       if (student.has_voted_sessions.includes(session_id)) {
         await mongoSession.abortTransaction();
         return res.status(409).json({
@@ -281,6 +304,21 @@ class VoteController {
 
       await mongoSession.commitTransaction();
 
+      // Update Redis counters atomically (after successful commit)
+      for (const choice of choices) {
+        await cacheService.incr(
+          `vote_count:${session_id}:${choice.candidate_id}`
+        );
+      }
+      await cacheService.incr(`total_votes:${session_id}`);
+
+      // Invalidate cached results for this session
+      await cacheService.del(`live_results:${session_id}`);
+
+      // Invalidate student profile cache (has_voted_sessions changed)
+      await cacheService.del(`student:profile:${studentId}`);
+      await cacheService.del(`eligible_sessions:${studentId}`);
+
       // Send vote confirmation email
       emailService
         .sendVoteConfirmation(student, session, voteDetails)
@@ -366,7 +404,10 @@ class VoteController {
       const { id } = req.params;
 
       const vote = await Vote.findById(id)
-        .populate("student_id", "matric_no full_name email college department level")
+        .populate(
+          "student_id",
+          "matric_no full_name email college department level"
+        )
         .populate("session_id", "title description start_time end_time status")
         .populate("candidate_id", "name position photo_url bio")
         .lean();
@@ -378,30 +419,36 @@ class VoteController {
       res.json({
         vote: {
           id: vote._id,
-          student: vote.student_id ? {
-            id: vote.student_id._id,
-            matric_no: vote.student_id.matric_no,
-            full_name: vote.student_id.full_name,
-            email: vote.student_id.email,
-            college: vote.student_id.college,
-            department: vote.student_id.department,
-            level: vote.student_id.level,
-          } : null,
-          session: vote.session_id ? {
-            id: vote.session_id._id,
-            title: vote.session_id.title,
-            description: vote.session_id.description,
-            start_time: vote.session_id.start_time,
-            end_time: vote.session_id.end_time,
-            status: vote.session_id.status,
-          } : null,
-          candidate: vote.candidate_id ? {
-            id: vote.candidate_id._id,
-            name: vote.candidate_id.name,
-            position: vote.candidate_id.position,
-            photo_url: vote.candidate_id.photo_url,
-            bio: vote.candidate_id.bio,
-          } : null,
+          student: vote.student_id
+            ? {
+                id: vote.student_id._id,
+                matric_no: vote.student_id.matric_no,
+                full_name: vote.student_id.full_name,
+                email: vote.student_id.email,
+                college: vote.student_id.college,
+                department: vote.student_id.department,
+                level: vote.student_id.level,
+              }
+            : null,
+          session: vote.session_id
+            ? {
+                id: vote.session_id._id,
+                title: vote.session_id.title,
+                description: vote.session_id.description,
+                start_time: vote.session_id.start_time,
+                end_time: vote.session_id.end_time,
+                status: vote.session_id.status,
+              }
+            : null,
+          candidate: vote.candidate_id
+            ? {
+                id: vote.candidate_id._id,
+                name: vote.candidate_id.name,
+                position: vote.candidate_id.position,
+                photo_url: vote.candidate_id.photo_url,
+                bio: vote.candidate_id.bio,
+              }
+            : null,
           position: vote.position,
           geo_location: vote.geo_location,
           face_match_score: vote.face_match_score,

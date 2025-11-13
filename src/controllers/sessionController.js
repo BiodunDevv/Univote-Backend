@@ -11,6 +11,18 @@ class SessionController {
     try {
       const studentId = req.studentId;
       const { status } = req.query;
+      const cacheService = require("../services/cacheService");
+
+      // Try cache first (2 minute TTL)
+      const cacheKey = `eligible_sessions:${studentId}:${status || "all"}`;
+      const cachedSessions = await cacheService.get(cacheKey);
+
+      if (cachedSessions) {
+        return res.json({
+          sessions: cachedSessions,
+          cached: true,
+        });
+      }
 
       const student = await Student.findById(studentId).lean();
       if (!student) {
@@ -93,8 +105,12 @@ class SessionController {
         });
       }
 
+      // Cache the eligible sessions (2 minute TTL)
+      await cacheService.set(cacheKey, eligibleSessions, 120);
+
       res.json({
         sessions: eligibleSessions,
+        cached: false,
       });
     } catch (error) {
       console.error("List sessions error:", error);
@@ -110,6 +126,18 @@ class SessionController {
     try {
       const { id } = req.params;
       const studentId = req.studentId;
+      const cacheService = require("../services/cacheService");
+
+      // Try cache first (3 minute TTL)
+      const cacheKey = `session:${id}:student:${studentId}`;
+      const cachedSession = await cacheService.get(cacheKey);
+
+      if (cachedSession) {
+        return res.json({
+          ...cachedSession,
+          cached: true,
+        });
+      }
 
       const session = await VotingSession.findById(id)
         .populate("candidates", "name position photo_url bio manifesto")
@@ -192,7 +220,7 @@ class SessionController {
         {}
       );
 
-      res.json({
+      const responseData = {
         session: {
           id: session._id,
           title: session.title,
@@ -210,7 +238,13 @@ class SessionController {
           ),
           candidates_by_position: candidatesByPosition,
         },
-      });
+        cached: false,
+      };
+
+      // Cache for 3 minutes
+      await cacheService.set(cacheKey, responseData, 180);
+
+      res.json(responseData);
     } catch (error) {
       console.error("Get session error:", error);
       res.status(500).json({ error: "Failed to get session" });
@@ -225,6 +259,18 @@ class SessionController {
     try {
       const { id } = req.params;
       const studentId = req.studentId;
+      const cacheService = require("../services/cacheService");
+
+      // Try cache first (3 minute TTL)
+      const cacheKey = `session:${id}:student:${studentId}:byid`;
+      const cachedSession = await cacheService.get(cacheKey);
+
+      if (cachedSession) {
+        return res.json({
+          ...cachedSession,
+          cached: true,
+        });
+      }
 
       const session = await VotingSession.findById(id)
         .populate("candidates", "name position photo_url bio manifesto")
@@ -307,7 +353,7 @@ class SessionController {
         {}
       );
 
-      res.json({
+      const responseData = {
         session: {
           id: session._id,
           title: session.title,
@@ -325,7 +371,13 @@ class SessionController {
           ),
           candidates_by_position: candidatesByPosition,
         },
-      });
+        cached: false,
+      };
+
+      // Cache for 3 minutes
+      await cacheService.set(cacheKey, responseData, 180);
+
+      res.json(responseData);
     } catch (error) {
       console.error("Get session by ID error:", error);
       res.status(500).json({ error: "Failed to get session" });
@@ -339,6 +391,18 @@ class SessionController {
   async getCandidateById(req, res) {
     try {
       const { id } = req.params;
+      const cacheService = require("../services/cacheService");
+
+      // Try cache first (5 minute TTL)
+      const cacheKey = `candidate:${id}`;
+      const cachedCandidate = await cacheService.get(cacheKey);
+
+      if (cachedCandidate) {
+        return res.json({
+          ...cachedCandidate,
+          cached: true,
+        });
+      }
 
       const candidate = await Candidate.findById(id)
         .populate("session_id", "title description start_time end_time status")
@@ -363,7 +427,7 @@ class SessionController {
       }
 
       // Return full candidate details
-      res.json({
+      const responseData = {
         candidate: {
           id: candidate._id,
           name: candidate.name,
@@ -383,7 +447,13 @@ class SessionController {
           created_at: candidate.createdAt,
           updated_at: candidate.updatedAt,
         },
-      });
+        cached: false,
+      };
+
+      // Cache for 5 minutes
+      await cacheService.set(cacheKey, responseData, 300);
+
+      res.json(responseData);
     } catch (error) {
       console.error("Get candidate by ID error:", error);
       res.status(500).json({ error: "Failed to get candidate details" });
@@ -399,13 +469,27 @@ class SessionController {
       const { id } = req.params;
       const Vote = require("../models/Vote");
       const mongoose = require("mongoose");
+      const cacheService = require("../services/cacheService");
 
+      // Try to get cached results first (30 second cache)
+      const cacheKey = `live_results:${id}`;
+      const cachedResults = await cacheService.get(cacheKey);
+
+      if (cachedResults) {
+        // Return cached results with cache indicator
+        return res.json({
+          ...cachedResults,
+          cached: true,
+        });
+      }
+
+      // Cache miss - Query database
       // Parallel queries for maximum performance
       const [session, votesByCandidate, totalVotes] = await Promise.all([
         VotingSession.findById(id)
           .select("title description start_time end_time status results_public")
           .lean(),
-        
+
         // Efficient aggregation for vote counts
         Vote.aggregate([
           {
@@ -421,7 +505,7 @@ class SessionController {
             },
           },
         ]),
-        
+
         // Count total valid votes
         Vote.countDocuments({
           session_id: id,
@@ -494,13 +578,8 @@ class SessionController {
         position.candidates.sort((a, b) => b.vote_count - a.vote_count);
       });
 
-      // Cache control headers for performance
-      res.set({
-        'Cache-Control': 'public, max-age=30', // Cache for 30 seconds
-        'ETag': `"${id}-${totalVotes}"`, // ETag based on session and vote count
-      });
-
-      res.json({
+      // Prepare response data
+      const responseData = {
         session: {
           id: session._id,
           title: session.title,
@@ -513,7 +592,19 @@ class SessionController {
         total_votes: totalVotes,
         last_updated: new Date().toISOString(),
         results: Object.values(resultsByPosition),
+        cached: false,
+      };
+
+      // Cache the results for 30 seconds
+      await cacheService.set(cacheKey, responseData, 30);
+
+      // Cache control headers for performance
+      res.set({
+        "Cache-Control": "public, max-age=30", // Cache for 30 seconds
+        ETag: `"${id}-${totalVotes}"`, // ETag based on session and vote count
       });
+
+      res.json(responseData);
     } catch (error) {
       console.error("Get live results error:", error);
       res.status(500).json({ error: "Failed to get live results" });

@@ -1,7 +1,6 @@
 const VotingSession = require("../models/VotingSession");
 const Vote = require("../models/Vote");
 const Student = require("../models/Student");
-const emailService = require("../services/emailService");
 const mongoose = require("mongoose");
 
 class ResultController {

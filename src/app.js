@@ -5,6 +5,7 @@ const path = require("path");
 const swaggerUi = require("swagger-ui-express");
 const YAML = require("yamljs");
 const connectDB = require("./config/database");
+const { createRedisClient, pingRedis } = require("./config/redis");
 
 // Load Swagger documentation
 const swaggerDocument = YAML.load(path.join(__dirname, "..", "swagger.yaml"));
@@ -22,6 +23,25 @@ const settingsRoutes = require("./routes/settingsRoutes");
 const app = express();
 
 app.set("trust proxy", 1);
+
+// Initialize Redis connection
+console.log("🔄 Initializing Redis...");
+createRedisClient();
+
+// Test Redis connection
+pingRedis()
+  .then((connected) => {
+    if (connected) {
+      console.log("✅ Redis ping successful");
+    } else {
+      console.warn(
+        "⚠️  Redis ping failed, app will continue with reduced functionality"
+      );
+    }
+  })
+  .catch((err) => {
+    console.warn("⚠️  Redis connection warning:", err.message);
+  });
 
 // Connect to MongoDB (async)
 connectDB()

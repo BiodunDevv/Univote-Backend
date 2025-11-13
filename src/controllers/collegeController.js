@@ -1,5 +1,6 @@
 const College = require("../models/College");
 const Student = require("../models/Student");
+const cacheService = require("../services/cacheService");
 
 class CollegeController {
   /**
@@ -54,6 +55,10 @@ class CollegeController {
 
       await college.save();
 
+      // Invalidate cached college data
+      await cacheService.del("admin:colleges:all");
+      await cacheService.del("admin:college_statistics");
+
       res.status(201).json({
         message: "College created successfully",
         college,
@@ -71,6 +76,19 @@ class CollegeController {
   async getAllColleges(req, res) {
     try {
       const { is_active, include_departments = "true" } = req.query;
+
+      // Try cache first (5 minute TTL)
+      const cacheKey = `admin:colleges:all:${
+        is_active || "all"
+      }:${include_departments}`;
+      const cachedColleges = await cacheService.get(cacheKey);
+
+      if (cachedColleges) {
+        return res.json({
+          ...cachedColleges,
+          cached: true,
+        });
+      }
 
       const filter = {};
       if (is_active !== undefined) {
@@ -130,10 +148,16 @@ class CollegeController {
         }
       });
 
-      res.json({
+      const responseData = {
         colleges,
         total: colleges.length,
-      });
+        cached: false,
+      };
+
+      // Cache for 5 minutes
+      await cacheService.set(cacheKey, responseData, 300);
+
+      res.json(responseData);
     } catch (error) {
       console.error("Get all colleges error:", error);
       res.status(500).json({ error: "Failed to fetch colleges" });
@@ -147,6 +171,17 @@ class CollegeController {
   async getCollegeById(req, res) {
     try {
       const { id } = req.params;
+
+      // Try cache first (5 minute TTL)
+      const cacheKey = `admin:college:${id}`;
+      const cachedCollege = await cacheService.get(cacheKey);
+
+      if (cachedCollege) {
+        return res.json({
+          ...cachedCollege,
+          cached: true,
+        });
+      }
 
       const college = await College.findById(id).lean();
 
@@ -185,7 +220,15 @@ class CollegeController {
         });
       }
 
-      res.json({ college });
+      const responseData = {
+        college,
+        cached: false,
+      };
+
+      // Cache for 5 minutes
+      await cacheService.set(cacheKey, responseData, 300);
+
+      res.json(responseData);
     } catch (error) {
       console.error("Get college by ID error:", error);
       res.status(500).json({ error: "Failed to fetch college" });
@@ -239,6 +282,12 @@ class CollegeController {
 
       await college.save();
 
+      // Invalidate cached college data
+      await cacheService.delPattern("admin:colleges:all:*");
+      await cacheService.del(`admin:college:${id}`);
+      await cacheService.del(`admin:college_stats:${id}`);
+      await cacheService.del("admin:college_statistics");
+
       res.json({
         message: "College updated successfully",
         college,
@@ -283,6 +332,12 @@ class CollegeController {
       }
 
       await College.findByIdAndDelete(id);
+
+      // Invalidate cached college data
+      await cacheService.delPattern("admin:colleges:all:*");
+      await cacheService.del(`admin:college:${id}`);
+      await cacheService.del(`admin:college_stats:${id}`);
+      await cacheService.del("admin:college_statistics");
 
       res.json({
         message:
@@ -349,6 +404,11 @@ class CollegeController {
 
       college.departments.push(departmentData);
       await college.save();
+
+      // Invalidate cached college data
+      await cacheService.delPattern("admin:colleges:all:*");
+      await cacheService.del(`admin:college:${id}`);
+      await cacheService.del("admin:college_statistics");
 
       const addedDept = college.departments[college.departments.length - 1];
 
@@ -519,6 +579,11 @@ class CollegeController {
 
       await college.save();
 
+      // Invalidate cached college data
+      await cacheService.delPattern("admin:colleges:all:*");
+      await cacheService.del(`admin:college:${collegeId}`);
+      await cacheService.del("admin:college_statistics");
+
       res.json({
         message: "Department updated successfully",
         department,
@@ -581,6 +646,11 @@ class CollegeController {
       college.departments.pull(deptId);
       await college.save();
 
+      // Invalidate cached college data
+      await cacheService.delPattern("admin:colleges:all:*");
+      await cacheService.del(`admin:college:${collegeId}`);
+      await cacheService.del("admin:college_statistics");
+
       res.json({
         message:
           force === "true" && studentCount > 0
@@ -601,6 +671,17 @@ class CollegeController {
    */
   async getCollegeStatistics(req, res) {
     try {
+      // Try cache first (10 minute TTL)
+      const cacheKey = "admin:college_statistics";
+      const cachedStats = await cacheService.get(cacheKey);
+
+      if (cachedStats) {
+        return res.json({
+          ...cachedStats,
+          cached: true,
+        });
+      }
+
       const colleges = await College.find({}).lean();
 
       // Get all student counts in one aggregation
@@ -649,7 +730,15 @@ class CollegeController {
         colleges_breakdown: collegesBreakdown,
       };
 
-      res.json({ statistics: stats });
+      const responseData = {
+        statistics: stats,
+        cached: false,
+      };
+
+      // Cache for 10 minutes
+      await cacheService.set(cacheKey, responseData, 600);
+
+      res.json(responseData);
     } catch (error) {
       console.error("Get college statistics error:", error);
       res.status(500).json({ error: "Failed to fetch statistics" });

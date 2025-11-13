@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const Student = require("../models/Student");
 const Admin = require("../models/Admin");
+const cacheService = require("../services/cacheService");
 
 /**
  * Middleware to authenticate students using JWT
@@ -23,7 +24,42 @@ const authenticateStudent = async (req, res, next) => {
         return res.status(403).json({ error: "Invalid token type" });
       }
 
-      // Find student and verify active token
+      // Check Redis session first (fast path)
+      const sessionKey = `session:student:${decoded.id}`;
+      const cachedSession = await cacheService.get(sessionKey);
+
+      if (cachedSession) {
+        // Verify token matches cached session
+        if (cachedSession.token !== token) {
+          return res.status(401).json({
+            error:
+              "Session expired. You have been logged in from another device.",
+            code: "SESSION_INVALIDATED",
+          });
+        }
+
+        // Check if token is blacklisted
+        const blacklisted = await cacheService.exists(`blacklist:${token}`);
+        if (blacklisted) {
+          return res.status(401).json({
+            error: "Token has been invalidated",
+            code: "TOKEN_BLACKLISTED",
+          });
+        }
+
+        // Use cached student profile for faster auth
+        const cachedProfile = await cacheService.get(
+          `student:profile:${decoded.id}`
+        );
+        if (cachedProfile) {
+          req.student = cachedProfile;
+          req.studentId = decoded.id;
+          req.token = token;
+          return next();
+        }
+      }
+
+      // Cache miss - Query database (slow path)
       const student = await Student.findById(decoded.id);
 
       if (!student) {
@@ -38,6 +74,36 @@ const authenticateStudent = async (req, res, next) => {
           code: "SESSION_INVALIDATED",
         });
       }
+
+      // Cache session and profile for future requests
+      await cacheService.set(
+        sessionKey,
+        {
+          token: student.active_token,
+          studentId: student._id.toString(),
+          loginAt: student.last_login_at,
+        },
+        86400 // 24 hours TTL
+      );
+
+      await cacheService.set(
+        `student:profile:${student._id}`,
+        {
+          _id: student._id,
+          matric_no: student.matric_no,
+          full_name: student.full_name,
+          email: student.email,
+          department: student.department,
+          department_code: student.department_code,
+          college: student.college,
+          level: student.level,
+          has_voted_sessions: student.has_voted_sessions,
+          face_token: student.face_token,
+          is_active: student.is_active,
+          active_token: student.active_token,
+        },
+        900 // 15 minutes TTL
+      );
 
       // Attach student to request
       req.student = student;
