@@ -180,6 +180,79 @@ class SessionScheduler {
         `📧 Sending result notifications to ${studentsWhoVoted.length} student(s)...`
       );
 
+      // Get winners for each position
+      const Candidate = require("../models/Candidate");
+      const Vote = require("../models/Vote");
+
+      // Get all candidates with their vote counts
+      const candidates = await Candidate.find({
+        session_id: session._id,
+      }).lean();
+
+      // Count votes for each candidate
+      const voteCounts = await Vote.aggregate([
+        {
+          $match: {
+            session_id: session._id,
+            status: "valid",
+          },
+        },
+        {
+          $group: {
+            _id: "$candidate_id",
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+      // Map vote counts to candidates
+      const candidatesWithVotes = candidates.map((candidate) => {
+        const voteData = voteCounts.find(
+          (v) => v._id.toString() === candidate._id.toString()
+        );
+        return {
+          ...candidate,
+          vote_count: voteData ? voteData.count : 0,
+        };
+      });
+
+      // Group by position and find winner for each
+      const positionsMap = {};
+      candidatesWithVotes.forEach((candidate) => {
+        if (!positionsMap[candidate.position]) {
+          positionsMap[candidate.position] = [];
+        }
+        positionsMap[candidate.position].push(candidate);
+      });
+
+      // Get winner (highest votes) for each position
+      const winners = [];
+      Object.keys(positionsMap).forEach((position) => {
+        const positionCandidates = positionsMap[position];
+        positionCandidates.sort((a, b) => b.vote_count - a.vote_count);
+        const winner = positionCandidates[0];
+
+        if (winner && winner.vote_count > 0) {
+          const totalPositionVotes = positionCandidates.reduce(
+            (sum, c) => sum + c.vote_count,
+            0
+          );
+          winners.push({
+            position: winner.position,
+            name: winner.name,
+            photo_url: winner.photo_url || "",
+            vote_count: winner.vote_count,
+            percentage:
+              totalPositionVotes > 0
+                ? ((winner.vote_count / totalPositionVotes) * 100).toFixed(1)
+                : 0,
+          });
+        }
+      });
+
+      // Calculate total votes
+      const totalVotes = voteCounts.reduce((sum, v) => sum + v.count, 0);
+
       // Send result announcement emails in the background
       const resultsUrl = `${
         process.env.FRONTEND_URL || "http://localhost:3000"
@@ -194,7 +267,9 @@ class SessionScheduler {
           await emailService.sendResultAnnouncement(
             student,
             session,
-            resultsUrl
+            resultsUrl,
+            winners,
+            totalVotes
           );
           emailsSent++;
         } catch (err) {

@@ -1,23 +1,24 @@
-const nodemailer = require("nodemailer");
+const SibApiV3Sdk = require("@sendinblue/client");
 const handlebars = require("handlebars");
 const fs = require("fs").promises;
 const path = require("path");
 
 /**
- * Email Service for sending transactional emails
+ * Email Service for sending transactional emails using Brevo (Sendinblue)
  */
 class EmailService {
   constructor() {
-    this.transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
+    // Initialize Brevo API client
+    this.apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 
-    this.from = process.env.EMAIL_FROM || "Univote <noreply@univote.com>";
+    const apiKey = this.apiInstance.authentications["apiKey"];
+    apiKey.apiKey = process.env.BREVO_API_KEY;
+
+    this.fromName = process.env.EMAIL_FROM_NAME || "Univote";
+    this.fromEmail = process.env.EMAIL_FROM_EMAIL || "noreply@univote.com";
     this.templatesDir = path.join(__dirname, "../emails");
+
+    console.log("📧 Brevo Email Service initialized");
   }
 
   /**
@@ -51,14 +52,13 @@ class EmailService {
         year: new Date().getFullYear(),
       });
 
-      const mailOptions = {
-        from: this.from,
-        to: student.email,
-        subject: "Welcome to Univote - Account Activated! 🎉",
-        html,
-      };
+      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+      sendSmtpEmail.sender = { name: this.fromName, email: this.fromEmail };
+      sendSmtpEmail.to = [{ email: student.email, name: student.full_name }];
+      sendSmtpEmail.subject = "Welcome to Univote - Account Activated! 🎉";
+      sendSmtpEmail.htmlContent = html;
 
-      await this.transporter.sendMail(mailOptions);
+      await this.apiInstance.sendTransacEmail(sendSmtpEmail);
       console.log(`✅ Welcome email sent to ${student.email}`);
     } catch (error) {
       console.error("Error sending welcome email:", error);
@@ -80,14 +80,13 @@ class EmailService {
         year: new Date().getFullYear(),
       });
 
-      const mailOptions = {
-        from: this.from,
-        to: student.email,
-        subject: "New Device Login Detected - Univote",
-        html,
-      };
+      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+      sendSmtpEmail.sender = { name: this.fromName, email: this.fromEmail };
+      sendSmtpEmail.to = [{ email: student.email, name: student.full_name }];
+      sendSmtpEmail.subject = "New Device Login Detected - Univote";
+      sendSmtpEmail.htmlContent = html;
 
-      await this.transporter.sendMail(mailOptions);
+      await this.apiInstance.sendTransacEmail(sendSmtpEmail);
       console.log(`✅ New device alert sent to ${student.email}`);
     } catch (error) {
       console.error("Error sending new device alert:", error);
@@ -113,14 +112,13 @@ class EmailService {
         year: new Date().getFullYear(),
       });
 
-      const mailOptions = {
-        from: this.from,
-        to: student.email,
-        subject: `Vote Confirmed - ${session.title}`,
-        html,
-      };
+      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+      sendSmtpEmail.sender = { name: this.fromName, email: this.fromEmail };
+      sendSmtpEmail.to = [{ email: student.email, name: student.full_name }];
+      sendSmtpEmail.subject = `Vote Confirmed - ${session.title}`;
+      sendSmtpEmail.htmlContent = html;
 
-      await this.transporter.sendMail(mailOptions);
+      await this.apiInstance.sendTransacEmail(sendSmtpEmail);
       console.log(`✅ Vote confirmation sent to ${student.email}`);
     } catch (error) {
       console.error("Error sending vote confirmation:", error);
@@ -128,31 +126,42 @@ class EmailService {
   }
 
   /**
-   * Send result announcement email
+   * Send result announcement email with winners
    * @param {Object} student - Student object
    * @param {Object} session - Voting session object
    * @param {string} resultsUrl - URL to view results
+   * @param {Array} winners - Array of winning candidates by position
+   * @param {number} totalVotes - Total votes cast
    */
-  async sendResultAnnouncement(student, session, resultsUrl) {
+  async sendResultAnnouncement(
+    student,
+    session,
+    resultsUrl,
+    winners = [],
+    totalVotes = 0
+  ) {
     try {
       const html = await this.compileTemplate("result_announcement", {
         full_name: student.full_name,
         session_title: session.title,
         results_url: resultsUrl,
+        winners: winners,
+        total_votes: totalVotes,
+        published_at: new Date().toLocaleString(),
         year: new Date().getFullYear(),
       });
 
-      const mailOptions = {
-        from: this.from,
-        to: student.email,
-        subject: `Results Available - ${session.title}`,
-        html,
-      };
+      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+      sendSmtpEmail.sender = { name: this.fromName, email: this.fromEmail };
+      sendSmtpEmail.to = [{ email: student.email, name: student.full_name }];
+      sendSmtpEmail.subject = `🏆 Results Available - ${session.title}`;
+      sendSmtpEmail.htmlContent = html;
 
-      await this.transporter.sendMail(mailOptions);
+      await this.apiInstance.sendTransacEmail(sendSmtpEmail);
       console.log(`✅ Result announcement sent to ${student.email}`);
     } catch (error) {
       console.error("Error sending result announcement:", error);
+      throw error;
     }
   }
 
@@ -169,14 +178,13 @@ class EmailService {
         year: new Date().getFullYear(),
       });
 
-      const mailOptions = {
-        from: this.from,
-        to: student.email,
-        subject: "Password Reset Request - Univote",
-        html,
-      };
+      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+      sendSmtpEmail.sender = { name: this.fromName, email: this.fromEmail };
+      sendSmtpEmail.to = [{ email: student.email, name: student.full_name }];
+      sendSmtpEmail.subject = "Password Reset Request - Univote";
+      sendSmtpEmail.htmlContent = html;
 
-      await this.transporter.sendMail(mailOptions);
+      await this.apiInstance.sendTransacEmail(sendSmtpEmail);
       console.log(`✅ Password reset email sent to ${student.email}`);
     } catch (error) {
       console.error("Error sending password reset:", error);
@@ -196,14 +204,13 @@ class EmailService {
         year: new Date().getFullYear(),
       });
 
-      const mailOptions = {
-        from: this.from,
-        to: admin.email,
-        subject: "🔐 Admin Password Reset Code - Univote",
-        html,
-      };
+      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+      sendSmtpEmail.sender = { name: this.fromName, email: this.fromEmail };
+      sendSmtpEmail.to = [{ email: admin.email, name: admin.full_name }];
+      sendSmtpEmail.subject = "🔐 Admin Password Reset Code - Univote";
+      sendSmtpEmail.htmlContent = html;
 
-      await this.transporter.sendMail(mailOptions);
+      await this.apiInstance.sendTransacEmail(sendSmtpEmail);
       console.log(`✅ Admin password reset email sent to ${admin.email}`);
     } catch (error) {
       console.error("Error sending admin password reset:", error);
@@ -220,18 +227,17 @@ class EmailService {
    */
   async sendEmail(to, subject, html, text = null) {
     try {
-      const mailOptions = {
-        from: this.from,
-        to,
-        subject,
-        html,
-      };
+      const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+      sendSmtpEmail.sender = { name: this.fromName, email: this.fromEmail };
+      sendSmtpEmail.to = [{ email: to }];
+      sendSmtpEmail.subject = subject;
+      sendSmtpEmail.htmlContent = html;
 
       if (text) {
-        mailOptions.text = text;
+        sendSmtpEmail.textContent = text;
       }
 
-      await this.transporter.sendMail(mailOptions);
+      await this.apiInstance.sendTransacEmail(sendSmtpEmail);
       console.log(`✅ Email sent to ${to}`);
       return { success: true };
     } catch (error) {

@@ -276,11 +276,13 @@ class SettingsController {
       // Get Face++ configuration status
       const faceppStatus = faceppService.getStatus();
 
-      // Get email service configuration
+      // Get email service configuration (Brevo)
       const emailConfig = {
-        configured: !!(process.env.EMAIL_USER && process.env.EMAIL_PASS),
-        email_user: process.env.EMAIL_USER || "Not configured",
-        from_email: process.env.EMAIL_FROM || "Not configured",
+        configured: !!process.env.BREVO_API_KEY,
+        service: "Brevo (Sendinblue)",
+        api_configured: !!process.env.BREVO_API_KEY,
+        from_name: process.env.EMAIL_FROM_NAME || "Not configured",
+        from_email: process.env.EMAIL_FROM_EMAIL || "Not configured",
       };
 
       // Get database configuration
@@ -837,15 +839,15 @@ class SettingsController {
         base_url: faceppStatus.base_url,
       };
 
-      // Email check
-      const emailConfigured = !!(
-        process.env.EMAIL_USER && process.env.EMAIL_PASS
-      );
+      // Email check (Brevo)
+      const emailConfigured = !!process.env.BREVO_API_KEY;
       health.checks.email = {
         status: emailConfigured ? "healthy" : "not_configured",
+        service: "Brevo",
         message: emailConfigured
-          ? "Configured"
-          : "Email settings not configured",
+          ? "Brevo API configured"
+          : "Brevo API key not configured",
+        from_email: process.env.EMAIL_FROM_EMAIL || "Not configured",
       };
 
       // JWT check
