@@ -19,6 +19,7 @@ const voteRoutes = require("./routes/voteRoutes");
 const resultRoutes = require("./routes/resultRoutes");
 const healthRoutes = require("./routes/healthRoutes");
 const settingsRoutes = require("./routes/settingsRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes");
 
 const app = express();
 
@@ -95,6 +96,7 @@ app.use("/api/admin/settings", settingsRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/vote", voteRoutes);
 app.use("/api/results", resultRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 // 404 handler
 app.use((req, res) => {
