@@ -9,6 +9,48 @@ const emailService = require("../services/emailService");
 const constants = require("../config/constants");
 const mongoose = require("mongoose");
 const cacheService = require("../services/cacheService");
+const College = require("../models/College");
+
+async function invalidateSessionCaches(sessionId) {
+  await Promise.all([
+    cacheService.del("admin:sessions:all"),
+    cacheService.del(`admin:session_stats:${sessionId}`),
+    cacheService.del(`live_results:${sessionId}`),
+    cacheService.del(`session:${sessionId}`),
+    cacheService.del(`total_votes:${sessionId}`),
+    cacheService.delPattern(`vote_count:${sessionId}:*`),
+  ]);
+}
+
+async function ensureUpcomingSession(session) {
+  await session.updateStatus();
+
+  if (session.status === "active") {
+    return {
+      allowed: false,
+      status: 403,
+      payload: {
+        error: "Cannot modify active session",
+        message:
+          "This session is active. Candidate changes are only allowed while the session is upcoming.",
+      },
+    };
+  }
+
+  if (session.status === "ended") {
+    return {
+      allowed: false,
+      status: 403,
+      payload: {
+        error: "Cannot modify ended session",
+        message:
+          "This session has ended. Candidate changes are only allowed while the session is upcoming.",
+      },
+    };
+  }
+
+  return { allowed: true };
+}
 
 class AdminController {
   /**
@@ -39,7 +81,7 @@ class AdminController {
 
           if (target_department) {
             const deptExists = collegeDoc.departments.some(
-              (d) => d.name === target_department
+              (d) => d.name === target_department,
             );
             if (!deptExists) {
               return res.status(400).json({
@@ -64,11 +106,11 @@ class AdminController {
 
       // Hash default password once
       const salt = await bcrypt.genSalt(
-        parseInt(process.env.BCRYPT_ROUNDS || 10)
+        parseInt(process.env.BCRYPT_ROUNDS || 10),
       );
       const defaultPasswordHash = await bcrypt.hash(
         constants.defaultPassword,
-        salt
+        salt,
       );
 
       for (const row of csv_data) {
@@ -115,7 +157,7 @@ class AdminController {
           }
 
           const deptDoc = collegeDoc.departments.find(
-            (d) => d.name === department
+            (d) => d.name === department,
           );
           if (!deptDoc) {
             results.failed++;
@@ -168,7 +210,7 @@ class AdminController {
               .includes(String(level))
           ) {
             const availableLevels = deptDoc.available_levels.sort(
-              (a, b) => parseInt(a) - parseInt(b)
+              (a, b) => parseInt(a) - parseInt(b),
             );
             const minLevel = availableLevels[0];
             const maxLevel = availableLevels[availableLevels.length - 1];
@@ -177,7 +219,7 @@ class AdminController {
               matric_no,
               full_name,
               error: `Level ${level} is NOT available in ${department} (${college}). Available levels: ${availableLevels.join(
-                ", "
+                ", ",
               )}. Highest level: ${maxLevel}`,
             });
             continue;
@@ -214,7 +256,7 @@ class AdminController {
             } else {
               // Face detection failed - log warning but continue without face data
               console.warn(
-                `Face detection failed for ${matric_no}: ${faceDetection.error}`
+                `Face detection failed for ${matric_no}: ${faceDetection.error}`,
               );
               results.errors.push({
                 matric_no,
@@ -395,11 +437,7 @@ class AdminController {
 
       await session.save();
 
-      // Invalidate cached session data
-      await cacheService.del("admin:sessions:all");
-      await cacheService.del(`admin:session_stats:${id}`);
-      await cacheService.del(`live_results:${id}`);
-      await cacheService.del(`session:${id}`);
+      await invalidateSessionCaches(id);
 
       res.json({
         message: "Session updated successfully",
@@ -441,7 +479,7 @@ class AdminController {
       await Student.updateMany(
         { has_voted_sessions: id },
         { $pull: { has_voted_sessions: id } },
-        { session: mongoSession }
+        { session: mongoSession },
       );
 
       // Delete the session
@@ -471,6 +509,136 @@ class AdminController {
   }
 
   /**
+   * Create a candidate for a session
+   * POST /api/admin/sessions/:id/candidates
+   */
+  async createCandidate(req, res) {
+    try {
+      const { id } = req.params;
+      const { name, position, photo_url, bio, manifesto } = req.body;
+
+      const session = await VotingSession.findById(id);
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      const editability = await ensureUpcomingSession(session);
+      if (!editability.allowed) {
+        return res.status(editability.status).json(editability.payload);
+      }
+
+      if (!session.categories.includes(position)) {
+        return res.status(400).json({
+          error: "Invalid candidate position",
+          message:
+            "Candidate position must match one of the session categories.",
+        });
+      }
+
+      const candidate = await Candidate.create({
+        session_id: session._id,
+        name,
+        position,
+        photo_url,
+        bio: bio || "",
+        manifesto: manifesto || "",
+      });
+
+      session.candidates.push(candidate._id);
+      await session.save();
+      await invalidateSessionCaches(session._id.toString());
+
+      res.status(201).json({
+        message: "Candidate created successfully",
+        candidate: {
+          _id: candidate._id,
+          name: candidate.name,
+          position: candidate.position,
+          photo_url: candidate.photo_url,
+          bio: candidate.bio,
+          manifesto: candidate.manifesto,
+          vote_count: candidate.vote_count,
+          session_id: candidate.session_id,
+        },
+      });
+    } catch (error) {
+      console.error("Create candidate error:", error);
+      res.status(500).json({ error: "Failed to create candidate" });
+    }
+  }
+
+  /**
+   * List candidates
+   * GET /api/admin/candidates
+   */
+  async listCandidates(req, res) {
+    try {
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.min(
+        Math.max(parseInt(req.query.limit, 10) || 12, 1),
+        100,
+      );
+      const skip = (page - 1) * limit;
+      const { session_id, position, search, status } = req.query;
+
+      const candidateFilter = {};
+      if (session_id) {
+        candidateFilter.session_id = session_id;
+      }
+      if (position) {
+        candidateFilter.position = position;
+      }
+      if (search) {
+        candidateFilter.$or = [
+          { name: { $regex: search, $options: "i" } },
+          { position: { $regex: search, $options: "i" } },
+        ];
+      }
+
+      if (status) {
+        const matchingSessions = await VotingSession.find({ status })
+          .select("_id")
+          .lean();
+
+        const matchingSessionIds = matchingSessions.map((session) => session._id);
+        candidateFilter.session_id = session_id
+          ? session_id
+          : { $in: matchingSessionIds };
+      }
+
+      const [candidates, total] = await Promise.all([
+        Candidate.find(candidateFilter)
+          .populate("session_id", "title status start_time end_time categories")
+          .sort({ createdAt: -1, name: 1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Candidate.countDocuments(candidateFilter),
+      ]);
+
+      res.json({
+        candidates,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.max(1, Math.ceil(total / limit)),
+        },
+        filters: {
+          session_id: session_id || null,
+          position: position || null,
+          search: search || null,
+          status: status || null,
+        },
+      });
+    } catch (error) {
+      console.error("List candidates error:", error);
+      res.status(500).json({ error: "Failed to list candidates" });
+    }
+  }
+
+  /**
    * Update a candidate
    * PATCH /api/admin/candidates/:id
    */
@@ -485,6 +653,25 @@ class AdminController {
         return res.status(404).json({ error: "Candidate not found" });
       }
 
+      const session = await VotingSession.findById(candidate.session_id);
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      const editability = await ensureUpcomingSession(session);
+      if (!editability.allowed) {
+        return res.status(editability.status).json(editability.payload);
+      }
+
+      if (position !== undefined && !session.categories.includes(position)) {
+        return res.status(400).json({
+          error: "Invalid candidate position",
+          message:
+            "Candidate position must match one of the session categories.",
+        });
+      }
+
       // Update fields
       if (name !== undefined) candidate.name = name;
       if (position !== undefined) candidate.position = position;
@@ -493,11 +680,12 @@ class AdminController {
       if (manifesto !== undefined) candidate.manifesto = manifesto;
 
       await candidate.save();
+      await invalidateSessionCaches(session._id.toString());
 
       res.json({
         message: "Candidate updated successfully",
         candidate: {
-          id: candidate._id,
+          _id: candidate._id,
           name: candidate.name,
           position: candidate.position,
           photo_url: candidate.photo_url,
@@ -529,6 +717,17 @@ class AdminController {
 
       const sessionId = candidate.session_id;
 
+      const session = await VotingSession.findById(sessionId);
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      const editability = await ensureUpcomingSession(session);
+      if (!editability.allowed) {
+        return res.status(editability.status).json(editability.payload);
+      }
+
       // Delete the candidate
       await Candidate.findByIdAndDelete(id);
 
@@ -536,11 +735,12 @@ class AdminController {
       await VotingSession.findByIdAndUpdate(sessionId, {
         $pull: { candidates: id },
       });
+      await invalidateSessionCaches(sessionId.toString());
 
       res.json({
         message: "Candidate deleted successfully",
         deleted_candidate: {
-          id: candidate._id,
+          _id: candidate._id,
           name: candidate.name,
           position: candidate.position,
         },
@@ -629,7 +829,7 @@ class AdminController {
       await Student.updateMany(
         {},
         { $set: { has_voted_sessions: [] } },
-        { session: mongoSession }
+        { session: mongoSession },
       );
 
       await mongoSession.commitTransaction();
@@ -667,7 +867,7 @@ class AdminController {
 
       // Hash password
       const salt = await bcrypt.genSalt(
-        parseInt(process.env.BCRYPT_ROUNDS || 10)
+        parseInt(process.env.BCRYPT_ROUNDS || 10),
       );
       const passwordHash = await bcrypt.hash(password, salt);
 
@@ -703,31 +903,70 @@ class AdminController {
   async getStudents(req, res) {
     try {
       const {
+        college_id,
+        department_id,
         college,
         department,
         level,
         search,
+        is_active,
+        has_facial_data,
         page = 1,
         limit = 50,
       } = req.query;
 
       const filter = {};
 
-      // College filter is now required or can be omitted for all
-      if (college) filter.college = college;
-      if (department) filter.department = department;
+      // Resolve college/department by ID when provided to support stable filtering.
+      if (college_id) {
+        const collegeDoc = await College.findById(college_id).lean();
+        if (!collegeDoc) {
+          return res.status(404).json({ error: "College not found" });
+        }
+
+        filter.college = collegeDoc.name;
+
+        if (department_id) {
+          const dept = collegeDoc.departments.find(
+            (item) => item._id.toString() === department_id,
+          );
+
+          if (!dept) {
+            return res.status(404).json({ error: "Department not found" });
+          }
+
+          filter.department = dept.name;
+        }
+      } else {
+        if (college) filter.college = college;
+        if (department) filter.department = department;
+      }
+
       if (level) filter.level = level;
+      if (is_active === "true" || is_active === "false") {
+        filter.is_active = is_active === "true";
+      }
+
+      if (has_facial_data === "true") {
+        filter.face_token = { $exists: true, $ne: null };
+      }
+      if (has_facial_data === "false") {
+        filter.$or = [{ face_token: { $exists: false } }, { face_token: null }];
+      }
 
       // Search by name, email, or matric number using text index
       if (search) {
         filter.$text = { $search: search };
       }
 
+      const pageNumber = Number.parseInt(page, 10) || 1;
+      const limitNumber = Number.parseInt(limit, 10) || 50;
+
       const [students, count] = await Promise.all([
         Student.find(filter)
           .select("-password_hash -active_token -embedding_vector")
-          .limit(limit * 1)
-          .skip((page - 1) * limit)
+          .limit(limitNumber)
+          .skip((pageNumber - 1) * limitNumber)
           .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
           .lean(),
         Student.countDocuments(filter),
@@ -743,17 +982,104 @@ class AdminController {
       res.json({
         students: studentsWithFaceStatus,
         total: count,
-        page: parseInt(page),
-        pages: Math.ceil(count / limit),
+        page: pageNumber,
+        pages: Math.ceil(count / limitNumber),
         filter: {
-          college: college || "all",
-          department: department || "all",
+          college: filter.college || college || "all",
+          department: filter.department || department || "all",
           level: level || "all",
+          is_active: is_active || "all",
+          has_facial_data: has_facial_data || "all",
         },
       });
     } catch (error) {
       console.error("Get students error:", error);
       res.status(500).json({ error: "Failed to get students" });
+    }
+  }
+
+  /**
+   * Get students overview, filters and grouped metrics
+   * GET /api/admin/students/overview
+   */
+  async getStudentsOverview(req, res) {
+    try {
+      const [
+        total_students,
+        active_students,
+        inactive_students,
+        with_facial_data,
+        colleges,
+        by_college,
+        by_department,
+      ] = await Promise.all([
+        Student.countDocuments({}),
+        Student.countDocuments({ is_active: true }),
+        Student.countDocuments({ is_active: false }),
+        Student.countDocuments({ face_token: { $exists: true, $ne: null } }),
+        College.find({})
+          .select("name code departments._id departments.name departments.code")
+          .sort({ name: 1 })
+          .lean(),
+        Student.aggregate([
+          {
+            $group: {
+              _id: "$college",
+              total: { $sum: 1 },
+              active: {
+                $sum: {
+                  $cond: [{ $eq: ["$is_active", true] }, 1, 0],
+                },
+              },
+            },
+          },
+          { $sort: { total: -1 } },
+        ]),
+        Student.aggregate([
+          {
+            $group: {
+              _id: {
+                college: "$college",
+                department: "$department",
+              },
+              total: { $sum: 1 },
+            },
+          },
+          { $sort: { total: -1 } },
+        ]),
+      ]);
+
+      res.json({
+        totals: {
+          total_students,
+          active_students,
+          inactive_students,
+          with_facial_data,
+        },
+        colleges: colleges.map((college) => ({
+          id: college._id,
+          name: college.name,
+          code: college.code,
+          departments: (college.departments || []).map((department) => ({
+            id: department._id,
+            name: department.name,
+            code: department.code,
+          })),
+        })),
+        by_college: by_college.map((entry) => ({
+          college: entry._id,
+          total: entry.total,
+          active: entry.active,
+        })),
+        by_department: by_department.map((entry) => ({
+          college: entry._id.college,
+          department: entry._id.department,
+          total: entry.total,
+        })),
+      });
+    } catch (error) {
+      console.error("Get students overview error:", error);
+      res.status(500).json({ error: "Failed to get students overview" });
     }
   }
 
@@ -850,7 +1176,7 @@ class AdminController {
       }
 
       const department = college.departments.find(
-        (d) => d._id.toString() === departmentId
+        (d) => d._id.toString() === departmentId,
       );
 
       if (!department) {
@@ -953,10 +1279,13 @@ class AdminController {
       );
 
       // Get voting history
-      const votes = await Vote.find({ student_id: id })
+      const votes = (await Vote.find({ student_id: id })
         .populate("session_id", "title start_time end_time")
-        .select("session_id voted_at status")
-        .lean();
+        .select("session_id timestamp status")
+        .lean()).map((vote) => ({
+          ...vote,
+          voted_at: vote.timestamp,
+        }));
 
       res.json({
         student,
@@ -1004,7 +1333,7 @@ class AdminController {
 
         const targetDepartment = department || student.department;
         const deptDoc = collegeDoc.departments.find(
-          (d) => d.name === targetDepartment
+          (d) => d.name === targetDepartment,
         );
 
         if (!deptDoc) {
@@ -1026,14 +1355,14 @@ class AdminController {
 
           if (!deptDoc.available_levels.includes(level)) {
             const minLevel = Math.min(
-              ...deptDoc.available_levels.map((l) => parseInt(l))
+              ...deptDoc.available_levels.map((l) => parseInt(l)),
             );
             const maxLevel = Math.max(
-              ...deptDoc.available_levels.map((l) => parseInt(l))
+              ...deptDoc.available_levels.map((l) => parseInt(l)),
             );
             return res.status(400).json({
               error: `Level ${level} is not offered by ${targetDepartment}. Available levels: ${deptDoc.available_levels.join(
-                ", "
+                ", ",
               )} (${minLevel}-${maxLevel})`,
             });
           }
@@ -1052,7 +1381,7 @@ class AdminController {
             name: college || student.college,
           });
           const deptDoc = collegeDoc.departments.find(
-            (d) => d.name === department
+            (d) => d.name === department,
           );
           if (deptDoc) {
             student.department_code = deptDoc.code;
@@ -1079,14 +1408,14 @@ class AdminController {
               // Face detection failed - keep old face_token and warn admin
               faceUpdateWarning = `Photo URL updated but face registration failed: ${faceDetection.error}. Old facial data retained.`;
               console.warn(
-                `Face re-registration failed for student ${student.matric_no}: ${faceDetection.error}`
+                `Face re-registration failed for student ${student.matric_no}: ${faceDetection.error}`,
               );
             }
           } catch (error) {
             faceUpdateWarning = `Photo URL updated but face registration encountered an error. Old facial data retained.`;
             console.error(
               `Face re-registration error for student ${student.matric_no}:`,
-              error
+              error,
             );
           }
         } else {
@@ -1123,6 +1452,66 @@ class AdminController {
     } catch (error) {
       console.error("Update student error:", error);
       res.status(500).json({ error: "Failed to update student" });
+    }
+  }
+
+  /**
+   * Activate student
+   * PATCH /api/admin/students/:id/activate
+   */
+  async activateStudent(req, res) {
+    try {
+      const { id } = req.params;
+
+      const student = await Student.findById(id);
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      student.is_active = true;
+      await student.save();
+
+      res.json({
+        message: "Student marked active",
+        student: {
+          id: student._id,
+          matric_no: student.matric_no,
+          is_active: true,
+        },
+      });
+    } catch (error) {
+      console.error("Activate student error:", error);
+      res.status(500).json({ error: "Failed to activate student" });
+    }
+  }
+
+  /**
+   * Deactivate student
+   * PATCH /api/admin/students/:id/deactivate
+   */
+  async deactivateStudent(req, res) {
+    try {
+      const { id } = req.params;
+
+      const student = await Student.findById(id);
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      student.is_active = false;
+      await student.save();
+
+      res.json({
+        message: "Student marked inactive",
+        student: {
+          id: student._id,
+          matric_no: student.matric_no,
+          is_active: false,
+        },
+      });
+    } catch (error) {
+      console.error("Deactivate student error:", error);
+      res.status(500).json({ error: "Failed to deactivate student" });
     }
   }
 
@@ -1215,7 +1604,7 @@ class AdminController {
 
       const result = await Student.updateMany(
         { _id: { $in: student_ids } },
-        { $set: updateFields }
+        { $set: updateFields },
       );
 
       res.json({
@@ -1329,75 +1718,183 @@ class AdminController {
    */
   async getSessions(req, res) {
     try {
-      // Try cache first (5 minute TTL)
-      const cacheKey = "admin:sessions:all";
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.min(
+        Math.max(parseInt(req.query.limit, 10) || 20, 1),
+        100,
+      );
+      const status = req.query.status;
+      const useFresh = req.query.fresh === "true";
+
+      const filter = {};
+      if (status && ["active", "upcoming", "ended"].includes(status)) {
+        filter.status = status;
+      }
+
+      const cacheKey = `admin:sessions:list:${page}:${limit}:${status || "all"}`;
       const cachedSessions = await cacheService.get(cacheKey);
 
-      if (cachedSessions) {
+      if (!useFresh && cachedSessions) {
         return res.json({
-          sessions: cachedSessions,
+          ...cachedSessions,
           cached: true,
         });
       }
 
-      // Cache miss - query database
-      const sessions = await VotingSession.find({})
-        .populate("candidates", "name position photo_url vote_count")
-        .sort({ createdAt: -1 })
-        .lean();
+      const [sessions, total] = await Promise.all([
+        VotingSession.find(filter)
+          .populate("candidates", "name position photo_url vote_count")
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        VotingSession.countDocuments(filter),
+      ]);
 
-      // Get accurate vote counts and student participation for each session
+      const sessionIds = sessions.map((session) => session._id);
+      const [votesByCandidate, uniqueVotersPerSession] = await Promise.all([
+        Vote.aggregate([
+          {
+            $match: {
+              session_id: { $in: sessionIds },
+              status: "valid",
+            },
+          },
+          {
+            $group: {
+              _id: {
+                session_id: "$session_id",
+                candidate_id: "$candidate_id",
+              },
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+        Vote.aggregate([
+          {
+            $match: {
+              session_id: { $in: sessionIds },
+              status: "valid",
+            },
+          },
+          {
+            $group: {
+              _id: {
+                session_id: "$session_id",
+                student_id: "$student_id",
+              },
+            },
+          },
+          {
+            $group: {
+              _id: "$_id.session_id",
+              students_voted: { $sum: 1 },
+            },
+          },
+        ]),
+      ]);
+
+      const candidateVoteMap = new Map(
+        votesByCandidate.map((item) => [
+          `${item._id.session_id.toString()}:${item._id.candidate_id.toString()}`,
+          item.count,
+        ]),
+      );
+
+      const voterCountMap = new Map(
+        uniqueVotersPerSession.map((item) => [
+          item._id.toString(),
+          item.students_voted,
+        ]),
+      );
+
       for (const session of sessions) {
-        // Get vote counts by candidate and unique student count
-        const [votesByCandidate, uniqueVoters] = await Promise.all([
-          Vote.aggregate([
-            {
-              $match: {
-                session_id: new mongoose.Types.ObjectId(session._id),
-                status: "valid",
-              },
-            },
-            {
-              $group: {
-                _id: "$candidate_id",
-                count: { $sum: 1 },
-              },
-            },
-          ]),
-          Vote.distinct("student_id", {
-            session_id: new mongoose.Types.ObjectId(session._id),
-            status: "valid",
-          }),
-        ]);
+        const sessionKey = session._id.toString();
+        session.total_votes = voterCountMap.get(sessionKey) || 0;
+        session.students_voted = voterCountMap.get(sessionKey) || 0;
 
-        // Add vote participation stats
-        session.total_votes = uniqueVoters.length;
-        session.students_voted = uniqueVoters.length;
-
-        // Update each candidate with accurate vote count
         if (session.candidates && session.candidates.length > 0) {
-          session.candidates = session.candidates.map((candidate) => {
-            const voteData = votesByCandidate.find(
-              (v) => v._id.toString() === candidate._id.toString()
-            );
-            return {
-              ...candidate,
-              vote_count: voteData ? voteData.count : 0,
-            };
-          });
+          session.candidates = session.candidates.map((candidate) => ({
+            ...candidate,
+            vote_count:
+              candidateVoteMap.get(
+                `${sessionKey}:${candidate._id.toString()}`,
+              ) || 0,
+          }));
         }
       }
 
-      // Cache the result (5 minutes)
-      await cacheService.set(cacheKey, sessions, 300);
+      const payload = {
+        sessions,
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit),
+        },
+      };
+
+      if (!useFresh) {
+        await cacheService.set(cacheKey, payload, 120);
+      }
 
       res.json({
-        sessions,
+        ...payload,
         cached: false,
       });
     } catch (error) {
       console.error("Get sessions error:", error);
       res.status(500).json({ error: "Failed to get sessions" });
+    }
+  }
+
+  /**
+   * Get sessions overview stats
+   * GET /api/admin/sessions/summary
+   */
+  async getSessionsSummary(req, res) {
+    try {
+      const useFresh = req.query.fresh === "true";
+      const cacheKey = "admin:sessions:summary";
+      const cachedSummary = await cacheService.get(cacheKey);
+
+      if (!useFresh && cachedSummary) {
+        return res.json({
+          summary: cachedSummary,
+          cached: true,
+        });
+      }
+
+      const [
+        totalSessions,
+        activeSessions,
+        upcomingSessions,
+        endedSessions,
+        totalVotes,
+      ] = await Promise.all([
+        VotingSession.countDocuments({}),
+        VotingSession.countDocuments({ status: "active" }),
+        VotingSession.countDocuments({ status: "upcoming" }),
+        VotingSession.countDocuments({ status: "ended" }),
+        Vote.countDocuments({ status: "valid" }),
+      ]);
+
+      const summary = {
+        total_sessions: totalSessions,
+        active_sessions: activeSessions,
+        upcoming_sessions: upcomingSessions,
+        ended_sessions: endedSessions,
+        total_votes: totalVotes,
+      };
+
+      if (!useFresh) {
+        await cacheService.set(cacheKey, summary, 60);
+      }
+
+      res.json({ summary, cached: false });
+    } catch (error) {
+      console.error("Get sessions summary error:", error);
+      res.status(500).json({ error: "Failed to get sessions summary" });
     }
   }
 
@@ -1486,7 +1983,7 @@ class AdminController {
       // Add vote counts to candidates
       const candidatesWithVotes = session.candidates.map((candidate) => {
         const voteData = votesByCandidate.find(
-          (v) => v._id.toString() === candidate._id.toString()
+          (v) => v._id.toString() === candidate._id.toString(),
         );
         return {
           ...candidate,
@@ -1668,7 +2165,7 @@ class AdminController {
       const { id } = req.params;
 
       const admin = await Admin.findById(id).select(
-        "-password_hash -reset_password_code"
+        "-password_hash -reset_password_code",
       );
 
       if (!admin) {

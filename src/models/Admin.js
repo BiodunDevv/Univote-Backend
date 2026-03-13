@@ -39,6 +39,24 @@ const adminSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    notification_preferences: {
+      email_on_new_vote: {
+        type: Boolean,
+        default: true,
+      },
+      email_on_session_end: {
+        type: Boolean,
+        default: true,
+      },
+      email_on_student_upload: {
+        type: Boolean,
+        default: true,
+      },
+      email_on_system_alert: {
+        type: Boolean,
+        default: true,
+      },
+    },
   },
   {
     timestamps: true,

@@ -12,14 +12,23 @@ class DashboardController {
   /**
    * Helper: Get or cache individual stat with Redis
    */
-  getCachedStat = async (key, fetchFunction, ttl = 300) => {
-    const cached = await cacheService.get(key);
-    if (cached !== null) return cached;
-    
+  getCachedStat = async (
+    key,
+    fetchFunction,
+    ttl = 300,
+    bypassCache = false,
+  ) => {
+    if (!bypassCache) {
+      const cached = await cacheService.get(key);
+      if (cached !== null) return cached;
+    }
+
     const data = await fetchFunction();
-    await cacheService.set(key, data, ttl);
+    if (!bypassCache) {
+      await cacheService.set(key, data, ttl);
+    }
     return data;
-  }
+  };
 
   /**
    * Get admin dashboard statistics
@@ -28,17 +37,20 @@ class DashboardController {
   getAdminDashboard = async (req, res) => {
     try {
       const adminId = req.adminId;
+      const forceFresh = req.query.fresh === "true";
 
       // Try cache first (5 minute TTL)
       const cacheKey = `dashboard:admin:full`;
-      const cachedData = await cacheService.get(cacheKey);
+      const cachedData = forceFresh ? null : await cacheService.get(cacheKey);
 
       if (cachedData) {
         console.log("✅ Dashboard served from cache");
         return res.json({
           ...cachedData,
           cached: true,
-          cache_age: Math.floor((Date.now() - new Date(cachedData.timestamp).getTime()) / 1000),
+          cache_age: Math.floor(
+            (Date.now() - new Date(cachedData.timestamp).getTime()) / 1000,
+          ),
         });
       }
 
@@ -66,111 +78,224 @@ class DashboardController {
         newStudents,
       ] = await Promise.all([
         // Cache counts separately for 2 minutes
-        this.getCachedStat("stat:total_students", () => Student.countDocuments({}), 120),
-        this.getCachedStat("stat:active_students", () => 
-          Student.countDocuments({ last_login_at: { $gte: thirtyDaysAgo } }), 120),
-        this.getCachedStat("stat:total_sessions", () => VotingSession.countDocuments({}), 120),
-        this.getCachedStat("stat:active_sessions", () => 
-          VotingSession.countDocuments({ status: "active" }), 60),
-        this.getCachedStat("stat:upcoming_sessions", () => 
-          VotingSession.countDocuments({ status: "upcoming" }), 60),
-        this.getCachedStat("stat:ended_sessions", () => 
-          VotingSession.countDocuments({ status: "ended" }), 120),
-        this.getCachedStat("stat:total_votes", () => 
-          Vote.countDocuments({ status: "valid" }), 120),
-        this.getCachedStat("stat:total_colleges", () => 
-          College.countDocuments({ is_active: true }), 300),
-        this.getCachedStat("stat:total_departments", () => 
-          College.aggregate([
-            { $match: { is_active: true } },
-            { $unwind: "$departments" },
-            { $match: { "departments.is_active": true } },
-            { $count: "total" },
-          ]).then((result) => result[0]?.total || 0), 300),
-        
+        this.getCachedStat(
+          "stat:total_students",
+          () => Student.countDocuments({}),
+          120,
+          forceFresh,
+        ),
+        this.getCachedStat(
+          "stat:active_students",
+          () =>
+            Student.countDocuments({ last_login_at: { $gte: thirtyDaysAgo } }),
+          120,
+          forceFresh,
+        ),
+        this.getCachedStat(
+          "stat:total_sessions",
+          () => VotingSession.countDocuments({}),
+          120,
+          forceFresh,
+        ),
+        this.getCachedStat(
+          "stat:active_sessions",
+          () => VotingSession.countDocuments({ status: "active" }),
+          60,
+          forceFresh,
+        ),
+        this.getCachedStat(
+          "stat:upcoming_sessions",
+          () => VotingSession.countDocuments({ status: "upcoming" }),
+          60,
+          forceFresh,
+        ),
+        this.getCachedStat(
+          "stat:ended_sessions",
+          () => VotingSession.countDocuments({ status: "ended" }),
+          120,
+          forceFresh,
+        ),
+        this.getCachedStat(
+          "stat:total_votes",
+          () => Vote.countDocuments({ status: "valid" }),
+          120,
+          forceFresh,
+        ),
+        this.getCachedStat(
+          "stat:total_colleges",
+          () => College.countDocuments({ is_active: true }),
+          300,
+          forceFresh,
+        ),
+        this.getCachedStat(
+          "stat:total_departments",
+          () =>
+            College.aggregate([
+              { $match: { is_active: true } },
+              { $unwind: "$departments" },
+              { $match: { "departments.is_active": true } },
+              { $count: "total" },
+            ]).then((result) => result[0]?.total || 0),
+          300,
+          forceFresh,
+        ),
+
         // Cache distributions for 3 minutes
-        this.getCachedStat("stat:students_by_level", () => 
-          Student.aggregate([
-            { $group: { _id: "$level", count: { $sum: 1 } } },
-            { $sort: { _id: 1 } },
-          ]), 180),
-        
-        this.getCachedStat("stat:students_by_college", () => 
-          Student.aggregate([
-            { $group: { _id: "$college", count: { $sum: 1 } } },
-            { $sort: { count: -1 } },
-            { $limit: 10 },
-          ]), 180),
-        
-        this.getCachedStat("stat:new_students_7days", () => 
-          Student.countDocuments({ created_at: { $gte: sevenDaysAgo } }), 300),
+        this.getCachedStat(
+          "stat:students_by_level",
+          () =>
+            Student.aggregate([
+              { $group: { _id: "$level", count: { $sum: 1 } } },
+              { $sort: { _id: 1 } },
+            ]),
+          180,
+          forceFresh,
+        ),
+
+        this.getCachedStat(
+          "stat:students_by_college",
+          () =>
+            Student.aggregate([
+              { $group: { _id: "$college", count: { $sum: 1 } } },
+              { $sort: { count: -1 } },
+              { $limit: 10 },
+            ]),
+          180,
+          forceFresh,
+        ),
+
+        this.getCachedStat(
+          "stat:new_students_7days",
+          () => Student.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
+          300,
+          forceFresh,
+        ),
       ]);
 
       // Fetch non-cacheable or short-lived data
-      const [recentAuditLogs, recentSessions, topVoters, voteTrend, studentsWhoVoted] = await Promise.all([
+      const [
+        recentAuditLogs,
+        recentSessions,
+        topVoters,
+        voteTrend,
+        studentsWhoVoted,
+      ] = await Promise.all([
         // Recent audit logs (last 10) - cache for 1 minute
-        this.getCachedStat("stat:recent_audit_logs", async () => {
-          const logs = await AuditLog.find({})
-            .sort({ createdAt: -1 })
-            .limit(10)
-            .populate("user_id", "full_name email matric_no")
-            .lean();
-          return logs;
-        }, 60),
+        this.getCachedStat(
+          "stat:recent_audit_logs",
+          async () => {
+            const logs = await AuditLog.find({})
+              .sort({ createdAt: -1 })
+              .limit(10)
+              .populate("user_id", "full_name email matric_no")
+              .lean();
+            return logs;
+          },
+          60,
+          forceFresh,
+        ),
 
         // Recent sessions with vote counts - cache for 2 minutes
-        this.getCachedStat("stat:recent_sessions", async () => {
-          const sessions = await VotingSession.find({})
-            .sort({ createdAt: -1 })
-            .limit(5)
-            .select("title status start_time end_time")
-            .lean();
-          
-          const sessionsWithVotes = await Promise.all(
-            sessions.map(async (session) => {
-              const voteCount = await Vote.countDocuments({
-                session_id: session._id,
-                status: "valid",
-              });
-              return { ...session, vote_count: voteCount };
-            })
-          );
-          return sessionsWithVotes;
-        }, 120),
+        this.getCachedStat(
+          "stat:recent_sessions",
+          async () => {
+            const sessions = await VotingSession.find({})
+              .sort({ createdAt: -1 })
+              .limit(5)
+              .select("title status start_time end_time")
+              .lean();
+
+            const sessionIds = sessions.map((session) => session._id);
+            const voteCounts = await Vote.aggregate([
+              {
+                $match: {
+                  status: "valid",
+                  session_id: { $in: sessionIds },
+                },
+              },
+              {
+                $group: {
+                  _id: "$session_id",
+                  count: { $sum: 1 },
+                },
+              },
+            ]);
+
+            const voteCountMap = new Map(
+              voteCounts.map((item) => [item._id.toString(), item.count]),
+            );
+
+            const sessionsWithVotes = sessions.map((session) => ({
+              ...session,
+              vote_count: voteCountMap.get(session._id.toString()) || 0,
+            }));
+            return sessionsWithVotes;
+          },
+          120,
+          forceFresh,
+        ),
 
         // Top 5 voters - cache for 3 minutes
-        this.getCachedStat("stat:top_voters", async () => {
-          const students = await Student.find({
-            has_voted_sessions: { $exists: true, $ne: [] },
-          })
-            .select("matric_no full_name department college has_voted_sessions")
-            .sort({ "has_voted_sessions.length": -1 })
-            .limit(5)
-            .lean();
-          
-          return students.map((s) => ({
-            matric_no: s.matric_no,
-            full_name: s.full_name,
-            department: s.department,
-            college: s.college,
-            votes_cast: s.has_voted_sessions.length,
-          }));
-        }, 180),
+        this.getCachedStat(
+          "stat:top_voters",
+          async () => {
+            return Student.aggregate([
+              {
+                $project: {
+                  matric_no: 1,
+                  full_name: 1,
+                  department: 1,
+                  college: 1,
+                  votes_cast: {
+                    $size: { $ifNull: ["$has_voted_sessions", []] },
+                  },
+                },
+              },
+              {
+                $match: {
+                  votes_cast: { $gt: 0 },
+                },
+              },
+              { $sort: { votes_cast: -1 } },
+              { $limit: 5 },
+            ]);
+          },
+          180,
+          forceFresh,
+        ),
 
         // Vote trend (last 7 days) - cache for 5 minutes
-        this.getCachedStat("stat:vote_trend", () => 
-          Vote.aggregate([
-            { $match: { createdAt: { $gte: sevenDaysAgo }, status: "valid" } },
-            { $group: {
-              _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-              count: { $sum: 1 },
-            }},
-            { $sort: { _id: 1 } },
-          ]), 300),
+        this.getCachedStat(
+          "stat:vote_trend",
+          () =>
+            Vote.aggregate([
+              {
+                $match: { createdAt: { $gte: sevenDaysAgo }, status: "valid" },
+              },
+              {
+                $group: {
+                  _id: {
+                    $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+                  },
+                  count: { $sum: 1 },
+                },
+              },
+              { $sort: { _id: 1 } },
+            ]),
+          300,
+          forceFresh,
+        ),
 
         // Students who voted - cache for 2 minutes
-        this.getCachedStat("stat:students_who_voted", () => 
-          Student.countDocuments({ has_voted_sessions: { $exists: true, $ne: [] } }), 120),
+        this.getCachedStat(
+          "stat:students_who_voted",
+          () =>
+            Student.countDocuments({
+              has_voted_sessions: { $exists: true, $ne: [] },
+            }),
+          120,
+          forceFresh,
+        ),
       ]);
 
       // Calculate participation rate
@@ -231,15 +356,17 @@ class DashboardController {
       };
 
       // Cache full dashboard for 5 minutes
-      await cacheService.set(cacheKey, dashboardData, 300);
-      console.log(`💾 Dashboard cached with key: ${cacheKey}`);
+      if (!forceFresh) {
+        await cacheService.set(cacheKey, dashboardData, 300);
+        console.log(`💾 Dashboard cached with key: ${cacheKey}`);
+      }
 
       res.json(dashboardData);
     } catch (error) {
       console.error("Admin dashboard error:", error);
       res.status(500).json({ error: "Failed to load dashboard data" });
     }
-  }
+  };
 
   /**
    * Get student dashboard data
@@ -259,19 +386,25 @@ class DashboardController {
         return res.json({
           ...cachedData,
           cached: true,
-          cache_age: Math.floor((Date.now() - new Date(cachedData.timestamp).getTime()) / 1000),
+          cache_age: Math.floor(
+            (Date.now() - new Date(cachedData.timestamp).getTime()) / 1000,
+          ),
         });
       }
 
       console.log("🔄 Fetching fresh student dashboard data...");
 
       // Get student details from cache or DB
-      const student = await this.getCachedStat(`student:profile:${studentId}`, () => 
-        Student.findById(studentId)
-          .select(
-            "matric_no full_name email department college level has_voted_sessions face_token photo_url created_at last_login_at"
-          )
-          .lean(), 120);
+      const student = await this.getCachedStat(
+        `student:profile:${studentId}`,
+        () =>
+          Student.findById(studentId)
+            .select(
+              "matric_no full_name email department college level has_voted_sessions face_token photo_url created_at last_login_at",
+            )
+            .lean(),
+        120,
+      );
 
       if (!student) {
         return res.status(404).json({ error: "Student not found" });
@@ -279,16 +412,23 @@ class DashboardController {
 
       // Get eligible sessions - cache for 1 minute
       const now = new Date();
-      const allSessions = await this.getCachedStat("stat:all_sessions", () => 
-        VotingSession.find({})
-          .select(
-            "title status start_time end_time eligible_college eligible_departments eligible_levels"
-          )
-          .lean(), 60);
+      const allSessions = await this.getCachedStat(
+        "stat:all_sessions",
+        () =>
+          VotingSession.find({})
+            .select(
+              "title status start_time end_time eligible_college eligible_departments eligible_levels",
+            )
+            .lean(),
+        60,
+      );
 
       // Cache college departments mapping for 5 minutes
-      const collegesData = await this.getCachedStat("stat:colleges_departments", () => 
-        College.find({}).select("departments").lean(), 300);
+      const collegesData = await this.getCachedStat(
+        "stat:colleges_departments",
+        () => College.find({}).select("departments").lean(),
+        300,
+      );
 
       // Filter eligible sessions
       const eligibleSessions = [];
@@ -343,7 +483,7 @@ class DashboardController {
 
         // Add has_voted flag
         const hasVoted = student.has_voted_sessions.some(
-          (id) => id.toString() === session._id.toString()
+          (id) => id.toString() === session._id.toString(),
         );
 
         const sessionData = {
@@ -364,31 +504,32 @@ class DashboardController {
 
       // Count sessions by status
       const activeSessions = eligibleSessions.filter(
-        (s) => s.status === "active"
+        (s) => s.status === "active",
       ).length;
       const upcomingSessions = eligibleSessions.filter(
-        (s) => s.status === "upcoming"
+        (s) => s.status === "upcoming",
       ).length;
       const endedSessions = eligibleSessions.filter(
-        (s) => s.status === "ended"
+        (s) => s.status === "ended",
       ).length;
 
       // Get voting history with session details - cache for 2 minutes
       const votingHistory = await this.getCachedStat(
-        `student:voting_history:${studentId}`, 
-        () => Vote.find({ student_id: studentId, status: "valid" })
-          .populate("session_id", "title start_time end_time")
-          .populate("candidate_id", "name position photo_url")
-          .sort({ createdAt: -1 })
-          .limit(10)
-          .lean(), 
-        120
+        `student:voting_history:${studentId}`,
+        () =>
+          Vote.find({ student_id: studentId, status: "valid" })
+            .populate("session_id", "title start_time end_time")
+            .populate("candidate_id", "name position photo_url")
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .lean(),
+        120,
       );
 
       // Get recent results for sessions student voted in
       const recentResults = [];
       const sessionIdsToCheck = student.has_voted_sessions.slice(0, 5);
-      
+
       for (const sessionId of sessionIdsToCheck) {
         // Cache each session result for 3 minutes
         const sessionResult = await this.getCachedStat(
@@ -419,7 +560,7 @@ class DashboardController {
               const candidates = resultsByPosition[position];
               const maxVotes = Math.max(...candidates.map((c) => c.vote_count));
               winners[position] = candidates.find(
-                (c) => c.vote_count === maxVotes
+                (c) => c.vote_count === maxVotes,
               );
             });
 
@@ -430,7 +571,7 @@ class DashboardController {
               winners: winners,
             };
           },
-          180
+          180,
         );
 
         if (sessionResult) {
@@ -443,7 +584,7 @@ class DashboardController {
 
       // Check for active sessions not yet voted in
       const activeNotVoted = eligibleSessions.filter(
-        (s) => s.status === "active" && !s.has_voted
+        (s) => s.status === "active" && !s.has_voted,
       );
       if (activeNotVoted.length > 0) {
         notifications.push({
@@ -513,14 +654,16 @@ class DashboardController {
       // Cache for 2 minutes
       await cacheService.set(cacheKey, dashboardData, 120);
       console.log(`💾 Student dashboard cached with key: ${cacheKey}`);
-      console.log(`✅ Student dashboard fetched in ${Date.now() - startTime}ms`);
+      console.log(
+        `✅ Student dashboard fetched in ${Date.now() - startTime}ms`,
+      );
 
       res.json(dashboardData);
     } catch (error) {
       console.error("Student dashboard error:", error);
       res.status(500).json({ error: "Failed to load dashboard data" });
     }
-  }
+  };
 
   /**
    * Get dashboard statistics summary (quick overview)
@@ -531,9 +674,10 @@ class DashboardController {
       const userType = req.admin ? "admin" : "student";
       const userId = req.admin ? req.adminId : req.studentId;
       const startTime = Date.now();
+      const forceFresh = req.query.fresh === "true";
 
       const cacheKey = `dashboard:quick:${userType}:${userId}`;
-      const cachedStats = await cacheService.get(cacheKey);
+      const cachedStats = forceFresh ? null : await cacheService.get(cacheKey);
 
       if (cachedStats) {
         console.log("✅ Quick stats served from cache");
@@ -546,16 +690,36 @@ class DashboardController {
         // Use cached individual stats for better performance
         const [totalStudents, activeSessions, totalVotes, pendingActions] =
           await Promise.all([
-            this.getCachedStat("stat:total_students", () => Student.countDocuments({}), 120),
-            this.getCachedStat("stat:active_sessions", () => 
-              VotingSession.countDocuments({ status: "active" }), 60),
-            this.getCachedStat("stat:total_votes", () => 
-              Vote.countDocuments({ status: "valid" }), 120),
-            this.getCachedStat("stat:pending_actions", () => 
-              AuditLog.countDocuments({
-                status: "failure",
-                createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-              }), 120),
+            this.getCachedStat(
+              "stat:total_students",
+              () => Student.countDocuments({}),
+              120,
+              forceFresh,
+            ),
+            this.getCachedStat(
+              "stat:active_sessions",
+              () => VotingSession.countDocuments({ status: "active" }),
+              60,
+              forceFresh,
+            ),
+            this.getCachedStat(
+              "stat:total_votes",
+              () => Vote.countDocuments({ status: "valid" }),
+              120,
+              forceFresh,
+            ),
+            this.getCachedStat(
+              "stat:pending_actions",
+              () =>
+                AuditLog.countDocuments({
+                  status: "failure",
+                  createdAt: {
+                    $gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
+                  },
+                }),
+              120,
+              forceFresh,
+            ),
           ]);
 
         const stats = {
@@ -566,21 +730,35 @@ class DashboardController {
           fetch_time_ms: Date.now() - startTime,
         };
 
-        await cacheService.set(cacheKey, stats, 60); // 1 minute cache
-        console.log(`✅ Quick stats (admin) fetched in ${Date.now() - startTime}ms`);
+        if (!forceFresh) {
+          await cacheService.set(cacheKey, stats, 60); // 1 minute cache
+        }
+        console.log(
+          `✅ Quick stats (admin) fetched in ${Date.now() - startTime}ms`,
+        );
         return res.json(stats);
       } else {
         // Student quick stats - use cached data
         const student = await this.getCachedStat(
           `student:profile:${userId}`,
           () => Student.findById(userId).select("has_voted_sessions").lean(),
-          120
+          120,
+          forceFresh,
         );
 
         const [totalEligible, activeSessions] = await Promise.all([
-          this.getCachedStat("stat:total_sessions", () => VotingSession.countDocuments({}), 120),
-          this.getCachedStat("stat:active_sessions", () => 
-            VotingSession.countDocuments({ status: "active" }), 60),
+          this.getCachedStat(
+            "stat:total_sessions",
+            () => VotingSession.countDocuments({}),
+            120,
+            forceFresh,
+          ),
+          this.getCachedStat(
+            "stat:active_sessions",
+            () => VotingSession.countDocuments({ status: "active" }),
+            60,
+            forceFresh,
+          ),
         ]);
 
         const stats = {
@@ -590,15 +768,19 @@ class DashboardController {
           fetch_time_ms: Date.now() - startTime,
         };
 
-        await cacheService.set(cacheKey, stats, 60); // 1 minute cache
-        console.log(`✅ Quick stats (student) fetched in ${Date.now() - startTime}ms`);
+        if (!forceFresh) {
+          await cacheService.set(cacheKey, stats, 60); // 1 minute cache
+        }
+        console.log(
+          `✅ Quick stats (student) fetched in ${Date.now() - startTime}ms`,
+        );
         return res.json(stats);
       }
     } catch (error) {
       console.error("Quick stats error:", error);
       res.status(500).json({ error: "Failed to load statistics" });
     }
-  }
+  };
 
   /**
    * Invalidate dashboard cache
@@ -618,7 +800,9 @@ class DashboardController {
         cacheService.delPattern(`student:profile:${userId}*`),
         cacheService.delPattern(`student:voting_history:${userId}*`),
         // Clear global stats if admin
-        userType === "admin" ? cacheService.delPattern("stat:*") : Promise.resolve(),
+        userType === "admin"
+          ? cacheService.delPattern("stat:*")
+          : Promise.resolve(),
       ]);
 
       console.log(`✅ Cache invalidated successfully for ${userType}`);
@@ -634,7 +818,7 @@ class DashboardController {
       console.error("Cache invalidation error:", error);
       res.status(500).json({ error: "Failed to invalidate cache" });
     }
-  }
+  };
 }
 
 module.exports = new DashboardController();

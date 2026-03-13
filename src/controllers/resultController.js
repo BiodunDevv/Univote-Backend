@@ -1,7 +1,30 @@
 const VotingSession = require("../models/VotingSession");
 const Vote = require("../models/Vote");
 const Student = require("../models/Student");
+const College = require("../models/College");
 const mongoose = require("mongoose");
+
+async function resolveEligibleDepartmentNames(departmentIds) {
+  if (!departmentIds || departmentIds.length === 0) {
+    return [];
+  }
+
+  const colleges = await College.find({})
+    .select("departments._id departments.name")
+    .lean();
+
+  const matchedNames = [];
+
+  colleges.forEach((college) => {
+    college.departments.forEach((department) => {
+      if (departmentIds.includes(department._id.toString())) {
+        matchedNames.push(department.name);
+      }
+    });
+  });
+
+  return matchedNames;
+}
 
 class ResultController {
   /**
@@ -17,7 +40,9 @@ class ResultController {
         VotingSession.findById(session_id)
           .populate("candidates", "name position photo_url bio manifesto")
           .lean(),
-        Student.findById(studentId).select("college department level").lean(),
+        Student.findById(studentId)
+          .select("college department level has_voted_sessions")
+          .lean(),
       ]);
 
       if (!session) {
@@ -53,18 +78,9 @@ class ResultController {
         session.eligible_departments &&
         session.eligible_departments.length > 0
       ) {
-        // Convert department IDs to names
-        const College = require("../models/College");
-        const colleges = await College.find({});
-        const departmentNames = [];
-
-        colleges.forEach((college) => {
-          college.departments.forEach((dept) => {
-            if (session.eligible_departments.includes(dept._id.toString())) {
-              departmentNames.push(dept.name);
-            }
-          });
-        });
+        const departmentNames = await resolveEligibleDepartmentNames(
+          session.eligible_departments,
+        );
 
         if (!departmentNames.includes(student.department)) {
           isEligible = false;
@@ -77,7 +93,9 @@ class ResultController {
       }
 
       // Check if student voted in this session
-      const hasVoted = student.has_voted_sessions.includes(session_id);
+      const hasVoted = (student.has_voted_sessions || []).some(
+        (value) => value.toString() === session_id,
+      );
 
       // Get vote breakdown by candidate using aggregation
       const votesByCandidate = await Vote.aggregate([
@@ -87,10 +105,9 @@ class ResultController {
             status: "valid",
           },
         },
-        { $unwind: "$votes" },
         {
           $group: {
-            _id: "$votes.candidate_id",
+            _id: "$candidate_id",
             count: { $sum: 1 },
           },
         },
@@ -121,6 +138,28 @@ class ResultController {
           percentage: parseFloat(percentage),
         };
       });
+
+      const eligibilityFilter = { is_active: true };
+
+      if (session.eligible_college) {
+        eligibilityFilter.college = session.eligible_college;
+      }
+
+      if (session.eligible_departments && session.eligible_departments.length) {
+        const departmentNames = await resolveEligibleDepartmentNames(
+          session.eligible_departments,
+        );
+
+        if (departmentNames.length > 0) {
+          eligibilityFilter.department = { $in: departmentNames };
+        }
+      }
+
+      if (session.eligible_levels && session.eligible_levels.length > 0) {
+        eligibilityFilter.level = { $in: session.eligible_levels };
+      }
+
+      const totalEligible = await Student.countDocuments(eligibilityFilter);
 
       // Group results by position
       const resultsByPosition = candidatesWithVotes.reduce((acc, candidate) => {
@@ -163,6 +202,7 @@ class ResultController {
         is_eligible: isEligible,
         has_voted: hasVoted,
         total_valid_votes: totalVotes,
+        total_eligible: totalEligible,
         results: Object.values(resultsByPosition),
       });
     } catch (error) {
@@ -213,17 +253,9 @@ class ResultController {
           session.eligible_departments &&
           session.eligible_departments.length > 0
         ) {
-          const College = require("../models/College");
-          const colleges = await College.find({});
-          const departmentNames = [];
-
-          colleges.forEach((college) => {
-            college.departments.forEach((dept) => {
-              if (session.eligible_departments.includes(dept._id.toString())) {
-                departmentNames.push(dept.name);
-              }
-            });
-          });
+          const departmentNames = await resolveEligibleDepartmentNames(
+            session.eligible_departments,
+          );
 
           if (departmentNames.length > 0) {
             eligibilityFilter.department = { $in: departmentNames };

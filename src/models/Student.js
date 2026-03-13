@@ -88,7 +88,7 @@ const studentSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Compound indexes for faster queries (matric_no and email already indexed via unique: true)
@@ -96,6 +96,9 @@ studentSchema.index({ department: 1, college: 1, level: 1 });
 studentSchema.index({ college: 1, is_active: 1 });
 studentSchema.index({ department: 1, is_active: 1 });
 studentSchema.index({ level: 1, is_active: 1 });
+studentSchema.index({ last_login_at: -1 });
+studentSchema.index({ createdAt: -1 });
+studentSchema.index({ has_voted_sessions: 1 });
 studentSchema.index({ is_active: 1, college: 1, department: 1, level: 1 }); // For eligibility queries
 studentSchema.index({ full_name: "text", email: "text", matric_no: "text" }); // For text search
 

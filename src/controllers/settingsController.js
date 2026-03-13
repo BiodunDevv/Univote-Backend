@@ -113,7 +113,7 @@ class SettingsController {
       // Verify current password
       const isValidPassword = await bcrypt.compare(
         current_password,
-        admin.password_hash
+        admin.password_hash,
       );
 
       if (!isValidPassword) {
@@ -122,7 +122,7 @@ class SettingsController {
 
       // Hash new password
       const salt = await bcrypt.genSalt(
-        parseInt(process.env.BCRYPT_ROUNDS || 10)
+        parseInt(process.env.BCRYPT_ROUNDS || 10),
       );
       admin.password_hash = await bcrypt.hash(new_password, salt);
 
@@ -181,40 +181,49 @@ class SettingsController {
           ? ((studentsWithFacialData / totalStudents) * 100).toFixed(2)
           : 0;
 
-      // Get voting statistics
-      const votingStats = await VotingSession.aggregate([
+      // Get recent sessions with vote counts using grouped aggregation (faster than $lookup of full vote arrays)
+      const recentSessions = await VotingSession.find({})
+        .select("title status start_time end_time")
+        .sort({ start_time: -1 })
+        .limit(5)
+        .lean();
+
+      const sessionIds = recentSessions.map((session) => session._id);
+      const voteCounts = await Vote.aggregate([
         {
-          $lookup: {
-            from: "votes",
-            localField: "_id",
-            foreignField: "session_id",
-            as: "votes",
+          $match: {
+            status: "valid",
+            session_id: { $in: sessionIds },
           },
         },
         {
-          $project: {
-            title: 1,
-            status: 1,
-            start_time: 1,
-            end_time: 1,
-            vote_count: { $size: "$votes" },
+          $group: {
+            _id: "$session_id",
+            count: { $sum: 1 },
           },
         },
-        { $sort: { start_time: -1 } },
-        { $limit: 5 },
       ]);
+
+      const voteCountMap = new Map(
+        voteCounts.map((item) => [item._id.toString(), item.count]),
+      );
+
+      const votingStats = recentSessions.map((session) => ({
+        ...session,
+        vote_count: voteCountMap.get(session._id.toString()) || 0,
+      }));
 
       // Get admin details for recent audit logs
       const adminIds = [
         ...new Set(
-          recentAuditLogs.map((log) => log.user_id.toString()).filter(Boolean)
+          recentAuditLogs.map((log) => log.user_id.toString()).filter(Boolean),
         ),
       ];
       const admins = await Admin.find({ _id: { $in: adminIds } })
         .select("full_name email")
         .lean();
       const adminMap = Object.fromEntries(
-        admins.map((admin) => [admin._id.toString(), admin])
+        admins.map((admin) => [admin._id.toString(), admin]),
       );
 
       res.json({
@@ -366,7 +375,7 @@ class SettingsController {
         .select("full_name email role")
         .lean();
       const adminMap = Object.fromEntries(
-        admins.map((admin) => [admin._id.toString(), admin])
+        admins.map((admin) => [admin._id.toString(), admin]),
       );
 
       res.json({
@@ -501,7 +510,7 @@ class SettingsController {
             If you received this email, your email configuration is working correctly.
           </p>
         </div>
-        `
+        `,
       );
 
       res.json({
@@ -691,7 +700,7 @@ class SettingsController {
         case "students":
           data = await Student.find(filters)
             .select(
-              "-password_hash -active_token -face_token -embedding_vector"
+              "-password_hash -active_token -face_token -embedding_vector",
             )
             .lean();
           filename = `students_export_${Date.now()}.${format}`;
@@ -724,14 +733,14 @@ class SettingsController {
           // Get admin details for audit logs
           const adminIds = [
             ...new Set(
-              data.map((log) => log.user_id.toString()).filter(Boolean)
+              data.map((log) => log.user_id.toString()).filter(Boolean),
             ),
           ];
           const admins = await Admin.find({ _id: { $in: adminIds } })
             .select("full_name email")
             .lean();
           const adminMap = Object.fromEntries(
-            admins.map((admin) => [admin._id.toString(), admin])
+            admins.map((admin) => [admin._id.toString(), admin]),
           );
           // Map admin details to logs
           data = data.map((log) => {
@@ -775,14 +784,14 @@ class SettingsController {
                   ? JSON.stringify(value)
                   : value;
               })
-              .join(",")
+              .join(","),
           ),
         ].join("\n");
 
         res.setHeader("Content-Type", "text/csv");
         res.setHeader(
           "Content-Disposition",
-          `attachment; filename="${filename}"`
+          `attachment; filename="${filename}"`,
         );
         return res.send(csv);
       } else {
@@ -790,7 +799,7 @@ class SettingsController {
         res.setHeader("Content-Type", "application/json");
         res.setHeader(
           "Content-Disposition",
-          `attachment; filename="${filename}"`
+          `attachment; filename="${filename}"`,
         );
         return res.json({
           data_type,

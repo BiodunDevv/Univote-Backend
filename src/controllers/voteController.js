@@ -16,6 +16,8 @@ class VoteController {
   async submitVote(req, res) {
     const mongoSession = await mongoose.startSession();
     mongoSession.startTransaction();
+    let voteLockKey = null;
+    let voteLockAcquired = false;
 
     try {
       const { session_id, choices, image_url, lat, lng, device_id } = req.body;
@@ -40,14 +42,14 @@ class VoteController {
       }
 
       // ATOMIC VOTE LOCK - Prevent duplicate votes with Redis
-      const voteLockKey = `vote_lock:${session_id}:${studentId}`;
-      const lockAcquired = await cacheService.setNX(
+      voteLockKey = `vote_lock:${session_id}:${studentId}`;
+      voteLockAcquired = await cacheService.setNX(
         voteLockKey,
         Date.now(),
-        3600 // 1 hour lock
+        3600, // 1 hour lock
       );
 
-      if (!lockAcquired) {
+      if (!voteLockAcquired) {
         await mongoSession.abortTransaction();
         return res.status(409).json({
           error: "You have already voted in this session",
@@ -65,9 +67,8 @@ class VoteController {
       }
 
       // Get session
-      const session = await VotingSession.findById(session_id).populate(
-        "candidates"
-      );
+      const session =
+        await VotingSession.findById(session_id).populate("candidates");
       if (!session) {
         await mongoSession.abortTransaction();
         // Release lock on error
@@ -91,6 +92,7 @@ class VoteController {
       // Double-check database (belt and suspenders approach)
       if (student.has_voted_sessions.includes(session_id)) {
         await mongoSession.abortTransaction();
+        await cacheService.del(voteLockKey);
         return res.status(409).json({
           error: "You have already voted in this session",
           code: "ALREADY_VOTED",
@@ -103,6 +105,7 @@ class VoteController {
         student.college !== session.eligible_college
       ) {
         await mongoSession.abortTransaction();
+        await cacheService.del(voteLockKey);
         return res.status(403).json({
           error:
             "You are not eligible for this voting session (college mismatch)",
@@ -128,6 +131,7 @@ class VoteController {
 
         if (!departmentNames.includes(student.department)) {
           await mongoSession.abortTransaction();
+          await cacheService.del(voteLockKey);
           return res.status(403).json({
             error:
               "You are not eligible for this voting session (department mismatch)",
@@ -138,6 +142,7 @@ class VoteController {
       if (session.eligible_levels && session.eligible_levels.length > 0) {
         if (!session.eligible_levels.includes(student.level)) {
           await mongoSession.abortTransaction();
+          await cacheService.del(voteLockKey);
           return res.status(403).json({
             error:
               "You are not eligible for this voting session (level mismatch)",
@@ -145,18 +150,20 @@ class VoteController {
         }
       }
 
-      // Check geofence (unless off-campus is allowed)
-      if (!session.is_off_campus_allowed) {
+      // Check geofence (skip if off-campus is allowed or geofencing is globally disabled)
+      const geofenceDisabled = process.env.DISABLE_GEOFENCE === "true";
+      if (!geofenceDisabled && !session.is_off_campus_allowed) {
         const withinGeofence = isWithinGeofence(
           lat,
           lng,
           session.location.lat,
           session.location.lng,
-          session.location.radius_meters
+          session.location.radius_meters,
         );
 
         if (!withinGeofence) {
           await mongoSession.abortTransaction();
+          await cacheService.del(voteLockKey);
           return res.status(403).json({
             error:
               "You are outside the voting geofence. Please ensure you are within the designated voting location.",
@@ -171,6 +178,7 @@ class VoteController {
       // Check if student has registered face token
       if (!student.face_token) {
         await mongoSession.abortTransaction();
+        await cacheService.del(voteLockKey);
         return res.status(400).json({
           error:
             "No registered face found. Please contact administrator to register your face.",
@@ -181,11 +189,12 @@ class VoteController {
       // Verify face matches registered face
       const faceVerification = await faceppService.verifyFace(
         student.face_token,
-        image_url
+        image_url,
       );
 
       if (!faceVerification.success) {
         await mongoSession.abortTransaction();
+        await cacheService.del(voteLockKey);
         return res.status(400).json({
           error: faceVerification.error,
           code: "FACE_VERIFICATION_FAILED",
@@ -194,27 +203,8 @@ class VoteController {
 
       // Check if confidence meets threshold
       if (!faceVerification.is_match) {
-        // Record rejected vote
-        await Vote.create(
-          [
-            {
-              student_id: studentId,
-              session_id: session_id,
-              candidate_id: null,
-              position: "N/A",
-              geo_location: { lat, lng },
-              face_match_score: faceVerification.confidence,
-              face_verification_passed: false,
-              face_token: faceVerification.face_token2,
-              status: "rejected",
-              device_id: device_id || null,
-              ip_address: req.ip,
-            },
-          ],
-          { session: mongoSession }
-        );
-
-        await mongoSession.commitTransaction();
+        await mongoSession.abortTransaction();
+        await cacheService.del(voteLockKey);
 
         return res.status(403).json({
           error: faceVerification.message,
@@ -229,6 +219,7 @@ class VoteController {
       // Validate choices
       if (!Array.isArray(choices) || choices.length === 0) {
         await mongoSession.abortTransaction();
+        await cacheService.del(voteLockKey);
         return res.status(400).json({ error: "Invalid choices format" });
       }
 
@@ -241,6 +232,7 @@ class VoteController {
 
       if (candidates.length !== choices.length) {
         await mongoSession.abortTransaction();
+        await cacheService.del(voteLockKey);
         return res.status(400).json({ error: "Invalid candidate selection" });
       }
 
@@ -250,11 +242,12 @@ class VoteController {
 
       for (const choice of choices) {
         const candidate = candidates.find(
-          (c) => c._id.toString() === choice.candidate_id
+          (c) => c._id.toString() === choice.candidate_id,
         );
 
         if (!candidate) {
           await mongoSession.abortTransaction();
+          await cacheService.del(voteLockKey);
           return res
             .status(400)
             .json({ error: `Invalid candidate: ${choice.candidate_id}` });
@@ -264,7 +257,7 @@ class VoteController {
         await Candidate.findByIdAndUpdate(
           choice.candidate_id,
           { $inc: { vote_count: 1 } },
-          { session: mongoSession }
+          { session: mongoSession },
         );
 
         // Create vote record
@@ -299,7 +292,7 @@ class VoteController {
       await Student.findByIdAndUpdate(
         studentId,
         { $push: { has_voted_sessions: session_id } },
-        { session: mongoSession }
+        { session: mongoSession },
       );
 
       await mongoSession.commitTransaction();
@@ -307,7 +300,7 @@ class VoteController {
       // Update Redis counters atomically (after successful commit)
       for (const choice of choices) {
         await cacheService.incr(
-          `vote_count:${session_id}:${choice.candidate_id}`
+          `vote_count:${session_id}:${choice.candidate_id}`,
         );
       }
       await cacheService.incr(`total_votes:${session_id}`);
@@ -336,6 +329,9 @@ class VoteController {
       });
     } catch (error) {
       await mongoSession.abortTransaction();
+      if (voteLockAcquired && voteLockKey) {
+        await cacheService.del(voteLockKey);
+      }
       console.error("Submit vote error:", error);
       res.status(500).json({ error: "Failed to submit vote" });
     } finally {
@@ -406,7 +402,7 @@ class VoteController {
       const vote = await Vote.findById(id)
         .populate(
           "student_id",
-          "matric_no full_name email college department level"
+          "matric_no full_name email college department level",
         )
         .populate("session_id", "title description start_time end_time status")
         .populate("candidate_id", "name position photo_url bio")

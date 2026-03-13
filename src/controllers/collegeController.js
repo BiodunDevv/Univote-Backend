@@ -381,7 +381,7 @@ class CollegeController {
 
       // Check for duplicate department code in this college
       const existingDept = college.departments.find(
-        (d) => d.code.toUpperCase() === code.toUpperCase() || d.name === name
+        (d) => d.code.toUpperCase() === code.toUpperCase() || d.name === name,
       );
 
       if (existingDept) {
@@ -556,7 +556,7 @@ class CollegeController {
         const duplicate = college.departments.find(
           (d) =>
             d._id.toString() !== deptId &&
-            (d.name === name || d.code.toUpperCase() === code?.toUpperCase())
+            (d.name === name || d.code.toUpperCase() === code?.toUpperCase()),
         );
 
         if (duplicate) {
@@ -746,6 +746,103 @@ class CollegeController {
   }
 
   /**
+   * Per-college detailed statistics
+   * GET /api/admin/colleges/:id/stats
+   */
+  async getCollegeDetailStats(req, res) {
+    try {
+      const { id } = req.params;
+
+      const cacheKey = `admin:college_stats:${id}`;
+      const cachedStats = await cacheService.get(cacheKey);
+
+      if (cachedStats) {
+        return res.json({
+          ...cachedStats,
+          cached: true,
+        });
+      }
+
+      const college = await College.findById(id).lean();
+      if (!college) {
+        return res.status(404).json({ error: "College not found" });
+      }
+
+      const departmentStats = await Promise.all(
+        college.departments.map(async (department) => {
+          const studentFilter = {
+            college: college.name,
+            department: department.name,
+          };
+
+          const [totalStudents, activeStudents, levelDistributionRaw] =
+            await Promise.all([
+              Student.countDocuments(studentFilter),
+              Student.countDocuments({
+                ...studentFilter,
+                is_active: true,
+              }),
+              Student.aggregate([
+                { $match: studentFilter },
+                { $group: { _id: "$level", count: { $sum: 1 } } },
+                { $sort: { _id: 1 } },
+              ]),
+            ]);
+
+          const level_distribution = levelDistributionRaw.reduce(
+            (acc, item) => {
+              acc[item._id] = item.count;
+              return acc;
+            },
+            {},
+          );
+
+          return {
+            department_id: department._id,
+            department_name: department.name,
+            department_code: department.code,
+            is_active: department.is_active,
+            total_students: totalStudents,
+            active_students: activeStudents,
+            inactive_students: totalStudents - activeStudents,
+            level_distribution,
+          };
+        }),
+      );
+
+      const totalStudents = departmentStats.reduce(
+        (sum, department) => sum + department.total_students,
+        0,
+      );
+      const activeStudents = departmentStats.reduce(
+        (sum, department) => sum + department.active_students,
+        0,
+      );
+
+      const responseData = {
+        college_id: college._id,
+        college_name: college.name,
+        college_code: college.code,
+        total_departments: college.departments.length,
+        total_students: totalStudents,
+        active_students: activeStudents,
+        inactive_students: totalStudents - activeStudents,
+        departments: departmentStats,
+        cached: false,
+      };
+
+      await cacheService.set(cacheKey, responseData, 300);
+
+      return res.json(responseData);
+    } catch (error) {
+      console.error("Get college detail stats error:", error);
+      return res
+        .status(500)
+        .json({ error: "Failed to fetch college statistics" });
+    }
+  }
+
+  /**
    * Search departments across all colleges
    * GET /api/admin/departments/search
    */
@@ -769,7 +866,7 @@ class CollegeController {
         const matchingDepts = college.departments.filter(
           (dept) =>
             dept.name.toLowerCase().includes(query.toLowerCase()) ||
-            dept.code.toLowerCase().includes(query.toLowerCase())
+            dept.code.toLowerCase().includes(query.toLowerCase()),
         );
 
         for (const dept of matchingDepts) {
@@ -791,6 +888,167 @@ class CollegeController {
     } catch (error) {
       console.error("Search departments error:", error);
       res.status(500).json({ error: "Failed to search departments" });
+    }
+  }
+
+  async getAllDepartments(req, res) {
+    try {
+      const { page = 1, limit = 20, search, college_id, is_active } = req.query;
+
+      const pageNumber = Number.parseInt(page, 10) || 1;
+      const limitNumber = Number.parseInt(limit, 10) || 20;
+
+      const collegeFilter = {};
+      if (college_id) {
+        collegeFilter._id = college_id;
+      }
+
+      const colleges = await College.find(collegeFilter)
+        .select("name code departments")
+        .lean();
+
+      const studentCounts = await Student.aggregate([
+        {
+          $group: {
+            _id: { college: "$college", department: "$department" },
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+      const deptCountMap = {};
+      studentCounts.forEach((item) => {
+        deptCountMap[`${item._id.college}|||${item._id.department}`] =
+          item.count;
+      });
+
+      let departments = [];
+
+      colleges.forEach((college) => {
+        (college.departments || []).forEach((department) => {
+          departments.push({
+            _id: department._id,
+            name: department.name,
+            code: department.code,
+            description: department.description || "",
+            hod_name: department.hod_name || "",
+            hod_email: department.hod_email || "",
+            available_levels: department.available_levels || [],
+            is_active: department.is_active,
+            student_count:
+              deptCountMap[`${college.name}|||${department.name}`] || 0,
+            college: {
+              id: college._id,
+              name: college.name,
+              code: college.code,
+            },
+          });
+        });
+      });
+
+      if (is_active === "true" || is_active === "false") {
+        const activeValue = is_active === "true";
+        departments = departments.filter(
+          (department) => department.is_active === activeValue,
+        );
+      }
+
+      if (search) {
+        const searchValue = search.toLowerCase();
+        departments = departments.filter(
+          (department) =>
+            department.name.toLowerCase().includes(searchValue) ||
+            department.code.toLowerCase().includes(searchValue) ||
+            department.college.name.toLowerCase().includes(searchValue),
+        );
+      }
+
+      departments.sort((a, b) =>
+        a.name.localeCompare(b.name, "en", { sensitivity: "base" }),
+      );
+
+      const total = departments.length;
+      const start = (pageNumber - 1) * limitNumber;
+      const paginated = departments.slice(start, start + limitNumber);
+
+      res.json({
+        departments: paginated,
+        total,
+        page: pageNumber,
+        pages: Math.ceil(total / limitNumber),
+        limit: limitNumber,
+      });
+    } catch (error) {
+      console.error("Get all departments error:", error);
+      res.status(500).json({ error: "Failed to fetch departments" });
+    }
+  }
+
+  async getDepartmentOverview(req, res) {
+    try {
+      const [colleges, totalStudents] = await Promise.all([
+        College.find({}).select("name code departments").lean(),
+        Student.countDocuments({}),
+      ]);
+
+      const studentCounts = await Student.aggregate([
+        {
+          $group: {
+            _id: { college: "$college", department: "$department" },
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+      const deptCountMap = {};
+      studentCounts.forEach((item) => {
+        deptCountMap[`${item._id.college}|||${item._id.department}`] =
+          item.count;
+      });
+
+      let totalDepartments = 0;
+      let activeDepartments = 0;
+      let inactiveDepartments = 0;
+
+      const collegesBreakdown = colleges.map((college) => {
+        const departments = college.departments || [];
+        totalDepartments += departments.length;
+
+        departments.forEach((department) => {
+          if (department.is_active) {
+            activeDepartments += 1;
+          } else {
+            inactiveDepartments += 1;
+          }
+        });
+
+        const studentCount = departments.reduce((sum, department) => {
+          return (
+            sum + (deptCountMap[`${college.name}|||${department.name}`] || 0)
+          );
+        }, 0);
+
+        return {
+          id: college._id,
+          name: college.name,
+          code: college.code,
+          department_count: departments.length,
+          student_count: studentCount,
+        };
+      });
+
+      res.json({
+        totals: {
+          total_departments: totalDepartments,
+          active_departments: activeDepartments,
+          inactive_departments: inactiveDepartments,
+          total_students: totalStudents,
+        },
+        colleges: collegesBreakdown,
+      });
+    } catch (error) {
+      console.error("Get department overview error:", error);
+      res.status(500).json({ error: "Failed to fetch department overview" });
     }
   }
 }

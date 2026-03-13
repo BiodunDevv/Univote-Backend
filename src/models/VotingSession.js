@@ -64,7 +64,7 @@ const votingSessionSchema = new mongoose.Schema(
     },
     is_off_campus_allowed: {
       type: Boolean,
-      default: false,
+      default: true,
     },
     results_public: {
       type: Boolean,
@@ -77,11 +77,14 @@ const votingSessionSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Index for efficient queries
 votingSessionSchema.index({ status: 1, start_time: 1, end_time: 1 });
+votingSessionSchema.index({ createdAt: -1 });
+votingSessionSchema.index({ start_time: -1 });
+votingSessionSchema.index({ status: 1, createdAt: -1 });
 
 // Virtual to check if session is currently active
 votingSessionSchema.virtual("is_active").get(function () {

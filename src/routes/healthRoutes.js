@@ -2,13 +2,37 @@ const express = require("express");
 const router = express.Router();
 
 /**
- * Health check endpoint for monitoring services
- * This endpoint is used by external cron jobs to keep the server alive
+ * Health check endpoints for monitoring services
+ * These endpoints are used by external cron jobs to keep the server alive
  */
 
 /**
- * GET /api/health
- * Basic health check - returns server status
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Basic health check
+ *     description: Returns server status, uptime, and environment. Used by monitoring services and keep-alive cron jobs.
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server is running
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: ok
+ *                 message:
+ *                   type: string
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 uptime:
+ *                   type: number
+ *                 environment:
+ *                   type: string
  */
 router.get("/", (req, res) => {
   res.status(200).json({
@@ -21,8 +45,26 @@ router.get("/", (req, res) => {
 });
 
 /**
- * GET /api/health/ping
- * Simple ping endpoint for keep-alive services
+ * @swagger
+ * /health/ping:
+ *   get:
+ *     summary: Ping endpoint
+ *     description: Simple ping for keep-alive services. Returns minimal response.
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server is alive
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: alive
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
  */
 router.get("/ping", (req, res) => {
   res.status(200).json({
@@ -32,8 +74,49 @@ router.get("/ping", (req, res) => {
 });
 
 /**
- * GET /api/health/detailed
- * Detailed health check with system information
+ * @swagger
+ * /health/detailed:
+ *   get:
+ *     summary: Detailed health check
+ *     description: Returns detailed system information including memory usage, Node.js version, platform, and formatted uptime.
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Detailed health information
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 uptime:
+ *                   type: object
+ *                   properties:
+ *                     seconds:
+ *                       type: integer
+ *                     formatted:
+ *                       type: string
+ *                 memory:
+ *                   type: object
+ *                   properties:
+ *                     rss:
+ *                       type: string
+ *                     heapTotal:
+ *                       type: string
+ *                     heapUsed:
+ *                       type: string
+ *                     external:
+ *                       type: string
+ *                 node_version:
+ *                   type: string
+ *                 platform:
+ *                   type: string
+ *                 environment:
+ *                   type: string
  */
 router.get("/detailed", (req, res) => {
   const memoryUsage = process.memoryUsage();

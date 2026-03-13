@@ -28,6 +28,13 @@ class AuthController {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
+      if (!student.is_active) {
+        return res.status(403).json({
+          error: "Account is inactive",
+          code: "ACCOUNT_INACTIVE",
+        });
+      }
+
       // Verify password
       const isPasswordValid = await bcrypt.compare(
         password,
@@ -349,6 +356,91 @@ class AuthController {
     } catch (error) {
       console.error("Get profile error:", error);
       res.status(500).json({ error: "Failed to get profile" });
+    }
+  }
+
+  /**
+   * Update current student profile
+   * PATCH /api/auth/me
+   */
+  async updateProfile(req, res) {
+    try {
+      const { full_name, email, photo_url } = req.body;
+
+      if (
+        full_name === undefined &&
+        email === undefined &&
+        photo_url === undefined
+      ) {
+        return res.status(400).json({
+          error: "At least one profile field is required",
+        });
+      }
+
+      const student = await Student.findById(req.studentId);
+
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      if (!student.is_active) {
+        return res.status(403).json({
+          error: "Account is inactive",
+          code: "ACCOUNT_INACTIVE",
+        });
+      }
+
+      if (full_name !== undefined) {
+        student.full_name = full_name.trim();
+      }
+
+      if (email !== undefined) {
+        const normalizedEmail = email.trim().toLowerCase();
+        const existingStudent = await Student.findOne({
+          email: normalizedEmail,
+          _id: { $ne: student._id },
+        }).select("_id");
+
+        if (existingStudent) {
+          return res.status(409).json({
+            error: "Email is already in use by another student",
+          });
+        }
+
+        student.email = normalizedEmail;
+      }
+
+      if (photo_url !== undefined) {
+        student.photo_url = photo_url ? photo_url.trim() : null;
+      }
+
+      await student.save();
+      await cacheService.del(`student:profile:${student._id}`);
+      await cacheService.del(`dashboard:student:${student._id}`);
+
+      res.json({
+        message: "Profile updated successfully",
+        profile: {
+          id: student._id,
+          matric_no: student.matric_no,
+          full_name: student.full_name,
+          email: student.email,
+          department: student.department,
+          department_code: student.department_code,
+          college: student.college,
+          level: student.level,
+          photo_url: student.photo_url,
+          has_facial_data: !!student.face_token,
+          is_logged_in: student.is_logged_in,
+          first_login: student.first_login,
+          last_login_at: student.last_login_at,
+          created_at: student.createdAt,
+          has_voted_sessions: student.has_voted_sessions,
+        },
+      });
+    } catch (error) {
+      console.error("Update student profile error:", error);
+      res.status(500).json({ error: "Failed to update profile" });
     }
   }
 

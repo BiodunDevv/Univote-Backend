@@ -9,50 +9,157 @@ const {
 const { apiLimiter } = require("../middleware/rateLimiter");
 
 /**
- * @route   GET /api/dashboard/admin
- * @desc    Get admin dashboard statistics and data
- * @access  Private (Admin)
+ * @swagger
+ * /dashboard/admin:
+ *   get:
+ *     summary: Get admin dashboard
+ *     description: Retrieve comprehensive admin dashboard with session stats, recent activity, voter turnout charts, and system overview.
+ *     tags: [Dashboard]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Admin dashboard data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 stats:
+ *                   type: object
+ *                   properties:
+ *                     total_students:
+ *                       type: integer
+ *                     total_sessions:
+ *                       type: integer
+ *                     active_sessions:
+ *                       type: integer
+ *                     total_votes:
+ *                       type: integer
+ *                 recent_sessions:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/VotingSession'
+ *                 recent_activity:
+ *                   type: array
+ *                   items:
+ *                     type: object
  */
 router.get(
   "/admin",
   authenticateAdmin,
   apiLimiter,
-  dashboardController.getAdminDashboard
+  dashboardController.getAdminDashboard,
 );
 
 /**
- * @route   GET /api/dashboard/student
- * @desc    Get student dashboard data
- * @access  Private (Student)
+ * @swagger
+ * /dashboard/student:
+ *   get:
+ *     summary: Get student dashboard
+ *     description: Retrieve student dashboard showing eligible sessions, voting status, and recent activity.
+ *     tags: [Dashboard]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Student dashboard data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 eligible_sessions:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/VotingSession'
+ *                 voted_sessions:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                 stats:
+ *                   type: object
+ *                   properties:
+ *                     total_eligible:
+ *                       type: integer
+ *                     total_voted:
+ *                       type: integer
  */
 router.get(
   "/student",
   authenticateStudent,
   apiLimiter,
-  dashboardController.getStudentDashboard
+  dashboardController.getStudentDashboard,
 );
 
 /**
- * @route   GET /api/dashboard/stats
- * @desc    Get quick statistics (works for both admin and student)
- * @access  Private (Student or Admin)
+ * @swagger
+ * /dashboard/stats:
+ *   get:
+ *     summary: Get quick statistics
+ *     description: Get quick overview statistics. Works for both admin and student roles.
+ *     tags: [Dashboard]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Quick stats
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total_students:
+ *                   type: integer
+ *                   description: Admin view only
+ *                 active_sessions:
+ *                   type: integer
+ *                 total_votes:
+ *                   type: integer
+ *                   description: Admin view — total system votes
+ *                 votes_cast:
+ *                   type: integer
+ *                   description: Student view — personal vote count
+ *                 total_eligible_sessions:
+ *                   type: integer
+ *                   description: Student view only
+ *                 pending_actions:
+ *                   type: integer
+ *                   description: Admin view only
+ *                 fetch_time_ms:
+ *                   type: number
  */
 router.get(
   "/stats",
   authenticateStudentOrAdmin,
   apiLimiter,
-  dashboardController.getQuickStats
+  dashboardController.getQuickStats,
 );
 
 /**
- * @route   POST /api/dashboard/invalidate-cache
- * @desc    Invalidate dashboard cache for current user
- * @access  Private (Student or Admin)
+ * @swagger
+ * /dashboard/invalidate-cache:
+ *   post:
+ *     summary: Invalidate dashboard cache
+ *     description: Clear cached dashboard data for the authenticated user. Forces fresh data on next dashboard load.
+ *     tags: [Dashboard]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Cache invalidated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
  */
 router.post(
   "/invalidate-cache",
   authenticateStudentOrAdmin,
-  dashboardController.invalidateCache
+  dashboardController.invalidateCache,
 );
 
 module.exports = router;

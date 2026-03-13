@@ -63,7 +63,7 @@ const voteSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Compound indexes for efficient queries
@@ -71,11 +71,13 @@ voteSchema.index({ student_id: 1, session_id: 1 });
 voteSchema.index({ session_id: 1, candidate_id: 1 });
 voteSchema.index({ session_id: 1, status: 1 });
 voteSchema.index({ session_id: 1, status: 1, position: 1 }); // For aggregation queries
+voteSchema.index({ status: 1, createdAt: -1 });
+voteSchema.index({ student_id: 1, status: 1, createdAt: -1 });
 
 // Ensure student can only vote once per session per position
 voteSchema.index(
   { student_id: 1, session_id: 1, position: 1 },
-  { unique: true }
+  { unique: true },
 );
 
 module.exports = mongoose.model("Vote", voteSchema);

@@ -12,9 +12,62 @@ const validate = require("../middleware/validator");
 const auditLogger = require("../middleware/auditLogger");
 
 /**
- * @route   POST /api/auth/login
- * @desc    Student login
- * @access  Public
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: Student login
+ *     description: Authenticate a student with matric number and password. Returns JWT token. Handles first-login password change flow and new-device detection.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [matric_no, password]
+ *             properties:
+ *               matric_no:
+ *                 type: string
+ *                 example: BU22CSC1005
+ *               password:
+ *                 type: string
+ *                 example: "1234"
+ *               device_id:
+ *                 type: string
+ *                 description: Device identifier for session tracking
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 token:
+ *                   type: string
+ *                 student:
+ *                   $ref: '#/components/schemas/Student'
+ *                 new_device:
+ *                   type: boolean
+ *       401:
+ *         description: Invalid credentials
+ *       403:
+ *         description: First login — password change required (code FIRST_LOGIN)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                 code:
+ *                   type: string
+ *                   example: FIRST_LOGIN
+ *                 token:
+ *                   type: string
+ *                   description: Temporary token for password change
  */
 router.post(
   "/login",
@@ -25,13 +78,46 @@ router.post(
     validate,
   ],
   auditLogger("login", "auth"),
-  authController.login
+  authController.login,
 );
 
 /**
- * @route   POST /api/auth/admin-login
- * @desc    Admin login
- * @access  Public
+ * @swagger
+ * /auth/admin-login:
+ *   post:
+ *     summary: Admin login
+ *     description: Authenticate an admin with email and password. Returns JWT token with admin role.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: admin@univote.com
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Admin login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 token:
+ *                   type: string
+ *                 admin:
+ *                   $ref: '#/components/schemas/Admin'
+ *       401:
+ *         description: Invalid credentials
  */
 router.post(
   "/admin-login",
@@ -42,13 +128,51 @@ router.post(
     validate,
   ],
   auditLogger("admin_login", "auth"),
-  authController.adminLogin
+  authController.adminLogin,
 );
 
 /**
- * @route   PATCH /api/auth/change-password
- * @desc    Change password (first login or regular)
- * @access  Private
+ * @swagger
+ * /auth/change-password:
+ *   patch:
+ *     summary: Change password
+ *     description: Change student password. Used for first-login forced password change (with first_login token) or regular password update (with session token).
+ *     tags: [Auth]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [new_password]
+ *             properties:
+ *               new_password:
+ *                 type: string
+ *                 minLength: 6
+ *               old_password:
+ *                 type: string
+ *                 description: Required if not first login
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 token:
+ *                   type: string
+ *                   description: New session token
+ *                 student:
+ *                   $ref: '#/components/schemas/Student'
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Invalid old password or no token
  */
 router.patch(
   "/change-password",
@@ -60,32 +184,139 @@ router.patch(
     validate,
   ],
   auditLogger("change_password", "auth"),
-  authController.changePassword
+  authController.changePassword,
 );
 
 /**
- * @route   POST /api/auth/logout
- * @desc    Logout student
- * @access  Private
+ * @swagger
+ * /auth/logout:
+ *   post:
+ *     summary: Student logout
+ *     description: Invalidate the current session. Blacklists the JWT token and clears Redis session data.
+ *     tags: [Auth]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ *       401:
+ *         description: Not authenticated
  */
 router.post(
   "/logout",
   authenticateStudent,
   auditLogger("logout", "auth"),
-  authController.logout
+  authController.logout,
 );
 
 /**
- * @route   GET /api/auth/me
- * @desc    Get current user profile
- * @access  Private
+ * @swagger
+ * /auth/me:
+ *   get:
+ *     summary: Get current student profile
+ *     description: Returns the authenticated student's full profile information including voting history flags.
+ *     tags: [Auth]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Student profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 student:
+ *                   $ref: '#/components/schemas/Student'
+ *                 profile:
+ *                   $ref: '#/components/schemas/Student'
+ *       404:
+ *         description: Student not found
  */
 router.get("/me", authenticateStudent, authController.getProfile);
 
 /**
- * @route   PATCH /api/auth/update-password
- * @desc    Update password for logged-in students or admins
- * @access  Private (Student or Admin)
+ * @swagger
+ * /auth/me:
+ *   patch:
+ *     summary: Update current student profile
+ *     description: Update the authenticated student's editable profile fields.
+ *     tags: [Auth]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               full_name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               photo_url:
+ *                 type: string
+ *                 format: uri
+ *     responses:
+ *       200:
+ *         description: Student profile updated successfully
+ *       400:
+ *         description: Validation error
+ *       409:
+ *         description: Email already exists
+ */
+router.patch(
+  "/me",
+  authenticateStudent,
+  [
+    body("full_name")
+      .optional()
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Full name cannot be empty"),
+    body("email").optional().isEmail().withMessage("Valid email is required"),
+    body("photo_url")
+      .optional({ nullable: true })
+      .isString()
+      .withMessage("Photo URL must be a string"),
+    validate,
+  ],
+  auditLogger("update_profile", "auth"),
+  authController.updateProfile,
+);
+
+/**
+ * @swagger
+ * /auth/update-password:
+ *   patch:
+ *     summary: Update password (student or admin)
+ *     description: Update password for a currently logged-in student or admin. Requires current password verification.
+ *     tags: [Auth]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [old_password, new_password]
+ *             properties:
+ *               old_password:
+ *                 type: string
+ *               new_password:
+ *                 type: string
+ *                 minLength: 6
+ *     responses:
+ *       200:
+ *         description: Password updated successfully
+ *       400:
+ *         description: New password same as old or too short
+ *       401:
+ *         description: Current password incorrect
  */
 router.patch(
   "/update-password",
@@ -99,26 +330,70 @@ router.patch(
     validate,
   ],
   auditLogger("update_password", "auth"),
-  authController.updatePassword
+  authController.updatePassword,
 );
 
 /**
- * @route   POST /api/auth/admin-forgot-password
- * @desc    Request admin password reset code
- * @access  Public
+ * @swagger
+ * /auth/admin-forgot-password:
+ *   post:
+ *     summary: Request admin password reset
+ *     description: Sends a 6-digit reset code to the admin's email. Always returns success to prevent email enumeration.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *     responses:
+ *       200:
+ *         description: Reset code sent (if account exists)
  */
 router.post(
   "/admin-forgot-password",
   authLimiter,
   [body("email").isEmail().withMessage("Valid email is required"), validate],
   auditLogger("admin_forgot_password", "auth"),
-  authController.adminForgotPassword
+  authController.adminForgotPassword,
 );
 
 /**
- * @route   POST /api/auth/admin-reset-password
- * @desc    Reset admin password using code
- * @access  Public
+ * @swagger
+ * /auth/admin-reset-password:
+ *   post:
+ *     summary: Reset admin password with code
+ *     description: Reset an admin's password using the 6-digit code received via email. Code expires after 1 hour.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, reset_code, new_password]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               reset_code:
+ *                 type: string
+ *                 minLength: 6
+ *                 maxLength: 6
+ *                 example: "123456"
+ *               new_password:
+ *                 type: string
+ *                 minLength: 8
+ *     responses:
+ *       200:
+ *         description: Password reset successfully
+ *       400:
+ *         description: Invalid or expired reset code
  */
 router.post(
   "/admin-reset-password",
@@ -134,7 +409,7 @@ router.post(
     validate,
   ],
   auditLogger("admin_reset_password", "auth"),
-  authController.adminResetPassword
+  authController.adminResetPassword,
 );
 
 module.exports = router;

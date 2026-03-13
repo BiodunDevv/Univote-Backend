@@ -52,6 +52,13 @@ const authenticateStudent = async (req, res, next) => {
           `student:profile:${decoded.id}`
         );
         if (cachedProfile) {
+          if (!cachedProfile.is_active) {
+            return res.status(403).json({
+              error: "Student account is inactive",
+              code: "ACCOUNT_INACTIVE",
+            });
+          }
+
           req.student = cachedProfile;
           req.studentId = decoded.id;
           req.token = token;
@@ -64,6 +71,13 @@ const authenticateStudent = async (req, res, next) => {
 
       if (!student) {
         return res.status(401).json({ error: "Student not found" });
+      }
+
+      if (!student.is_active) {
+        return res.status(403).json({
+          error: "Student account is inactive",
+          code: "ACCOUNT_INACTIVE",
+        });
       }
 
       // Check if this is the active token (single session enforcement)
@@ -213,6 +227,13 @@ const authenticateForPasswordChange = async (req, res, next) => {
         return res.status(401).json({ error: "Student not found" });
       }
 
+      if (!student.is_active) {
+        return res.status(403).json({
+          error: "Student account is inactive",
+          code: "ACCOUNT_INACTIVE",
+        });
+      }
+
       // Attach student to request
       req.student = student;
       req.studentId = student._id;
@@ -255,6 +276,13 @@ const authenticateStudentOrAdmin = async (req, res, next) => {
         const student = await Student.findById(decoded.id);
         if (!student) {
           return res.status(401).json({ error: "Student not found" });
+        }
+
+        if (!student.is_active) {
+          return res.status(403).json({
+            error: "Student account is inactive",
+            code: "ACCOUNT_INACTIVE",
+          });
         }
 
         // Check active token for students
