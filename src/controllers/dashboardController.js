@@ -450,7 +450,7 @@ class DashboardController {
         () =>
           Student.findOne(getTenantScopedFilter(req, { _id: studentId }))
             .select(
-              "matric_no full_name email department college level has_voted_sessions face_token photo_url createdAt last_login_at",
+              "matric_no member_id employee_id username full_name email department college level has_voted_sessions face_token photo_url createdAt last_login_at first_login",
             )
             .lean(),
         120,
@@ -659,6 +659,7 @@ class DashboardController {
           level: student.level,
           photo_url: student.photo_url,
           has_facial_data: !!student.face_token,
+          first_login: Boolean(student.first_login),
           member_since: student.createdAt,
           last_login: student.last_login_at,
         },

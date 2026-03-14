@@ -223,17 +223,6 @@ class AuthController {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
-      // Check if first login
-      if (student.first_login) {
-        const firstLoginToken = generateFirstLoginToken(student);
-        return res.status(403).json({
-          error: "Password change required",
-          message: `You must change your password on first ${participantLabels.lowerSingular} sign in`,
-          code: "FIRST_LOGIN",
-          token: firstLoginToken,
-        });
-      }
-
       // Check for device change
       const deviceInfo = device_id || req.headers["user-agent"];
       const isNewDevice =
@@ -299,7 +288,9 @@ class AuthController {
       }
 
       res.json({
-        message: "Login successful",
+        message: student.first_login
+          ? "Login successful. Your temporary password should be changed soon."
+          : "Login successful",
         token,
         student: serializeStudent(student),
         tenant: serializeTenant(req.tenant),

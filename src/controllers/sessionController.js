@@ -10,6 +10,7 @@ const {
   getTenantCacheNamespace,
   prependTenantMatch,
 } = require("../utils/tenantScope");
+const { getTenantEligibilityPolicy } = require("../utils/tenantSettings");
 
 function calculateSessionStatus(session) {
   const now = new Date();
@@ -44,7 +45,10 @@ function resolveEligibleDepartmentNames(eligibleDepartmentIds, colleges) {
 }
 
 function getSessionEligibility(session, student, colleges) {
+  const eligibilityPolicy = getTenantEligibilityPolicy(student?.tenant || null);
+
   if (
+    eligibilityPolicy.college &&
     session.eligible_college &&
     session.eligible_college !== student.college
   ) {
@@ -54,7 +58,11 @@ function getSessionEligibility(session, student, colleges) {
     };
   }
 
-  if (session.eligible_departments && session.eligible_departments.length > 0) {
+  if (
+    eligibilityPolicy.department &&
+    session.eligible_departments &&
+    session.eligible_departments.length > 0
+  ) {
     const departmentNames = resolveEligibleDepartmentNames(
       session.eligible_departments,
       colleges,
@@ -68,7 +76,11 @@ function getSessionEligibility(session, student, colleges) {
     }
   }
 
-  if (session.eligible_levels && session.eligible_levels.length > 0) {
+  if (
+    eligibilityPolicy.level &&
+    session.eligible_levels &&
+    session.eligible_levels.length > 0
+  ) {
     if (!session.eligible_levels.includes(student.level)) {
       return {
         eligible: false,
@@ -103,15 +115,43 @@ function buildCandidatesByPosition(candidates) {
 }
 
 class SessionController {
+  constructor() {
+    this.getStudentAndCollegeContext = this.getStudentAndCollegeContext.bind(this);
+    this.listEligibleSessions = this.listEligibleSessions.bind(this);
+    this.buildSessionResponse = this.buildSessionResponse.bind(this);
+    this.getSession = this.getSession.bind(this);
+    this.getSessionById = this.getSessionById.bind(this);
+    this.getCandidateById = this.getCandidateById.bind(this);
+    this.getLiveResults = this.getLiveResults.bind(this);
+  }
+
   async getStudentAndCollegeContext(req, studentId) {
     const [student, colleges] = await Promise.all([
-      Student.findOne(getTenantScopedFilter(req, { _id: studentId })).lean(),
+      Student.findOne(getTenantScopedFilter(req, { _id: studentId }))
+        .select(
+          "matric_no member_id employee_id username display_identifier full_name email college department level photo_url has_voted_sessions tenant_id",
+        )
+        .lean(),
       College.find(getTenantScopedFilter(req, {}))
         .select("departments._id departments.name")
         .lean(),
     ]);
 
-    return { student, colleges };
+    const tenantId =
+      student?.tenant_id ||
+      req.tenant?._id ||
+      req.tenant?.id ||
+      null;
+
+    return {
+      student: student
+        ? {
+            ...student,
+            tenant: req.tenant || (tenantId ? { _id: tenantId } : null),
+          }
+        : null,
+      colleges,
+    };
   }
 
   /**

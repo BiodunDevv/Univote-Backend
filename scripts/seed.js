@@ -30,6 +30,10 @@ const SECONDARY_TENANT_SLUG = "summit-demo";
 const STUDENT_PHOTO_URL =
   "https://res.cloudinary.com/df4f0usnh/image/upload/v1761725926/univote/candidates/isxi22irk87hyzglhl0s.jpg";
 
+function generateSeedFaceToken(tenantSlug, index) {
+  return `seed-face-${tenantSlug}-${String(index).padStart(4, "0")}`;
+}
+
 // College and Department mappings (Bowen University) with department codes
 const collegesAndDepartments = {
   "College of Agriculture, Engineering and Science": {
@@ -793,6 +797,7 @@ async function seedTenantStudents(tenant, colleges) {
         departmentCounters[department.code],
       );
       tenantMemberSequence += 1;
+      const seedFaceToken = generateSeedFaceToken(tenant.slug, tenantMemberSequence);
 
       students.push({
         tenant_id: tenant._id,
@@ -818,7 +823,7 @@ async function seedTenantStudents(tenant, colleges) {
         level: tenant.slug === SECONDARY_TENANT_SLUG ? null : selectedLevel,
         has_voted_sessions: [],
         photo_url: STUDENT_PHOTO_URL,
-        face_token: null,
+        face_token: seedFaceToken,
         is_logged_in: false,
         is_active: true,
       });
