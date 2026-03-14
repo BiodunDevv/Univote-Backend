@@ -2,12 +2,39 @@ const mongoose = require("mongoose");
 
 const studentSchema = new mongoose.Schema(
   {
+    tenant_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      default: null,
+      index: true,
+    },
     matric_no: {
       type: String,
-      required: true,
-      unique: true,
+      required: false,
       uppercase: true,
       trim: true,
+      default: null,
+    },
+    member_id: {
+      type: String,
+      required: false,
+      uppercase: true,
+      trim: true,
+      default: null,
+    },
+    employee_id: {
+      type: String,
+      required: false,
+      uppercase: true,
+      trim: true,
+      default: null,
+    },
+    username: {
+      type: String,
+      required: false,
+      lowercase: true,
+      trim: true,
+      default: null,
     },
     full_name: {
       type: String,
@@ -16,9 +43,10 @@ const studentSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      required: true,
+      required: false,
       lowercase: true,
       trim: true,
+      default: null,
     },
     password_hash: {
       type: String,
@@ -30,22 +58,26 @@ const studentSchema = new mongoose.Schema(
     },
     department: {
       type: String,
-      required: true,
+      required: false,
+      default: null,
     },
     department_code: {
       type: String,
-      required: true,
+      required: false,
       uppercase: true,
       trim: true,
+      default: null,
     },
     college: {
       type: String,
-      required: true,
+      required: false,
+      default: null,
     },
     level: {
       type: String,
-      required: true,
+      required: false,
       enum: ["100", "200", "300", "400", "500", "600"],
+      default: null,
     },
     has_voted_sessions: [
       {
@@ -81,6 +113,14 @@ const studentSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    reset_password_code: {
+      type: String,
+      default: null,
+    },
+    reset_password_expires: {
+      type: Date,
+      default: null,
+    },
     is_active: {
       type: Boolean,
       default: true,
@@ -91,7 +131,42 @@ const studentSchema = new mongoose.Schema(
   },
 );
 
-// Compound indexes for faster queries (matric_no and email already indexed via unique: true)
+// Compound indexes for faster queries
+studentSchema.index(
+  { tenant_id: 1, matric_no: 1 },
+  { unique: true, partialFilterExpression: { tenant_id: { $type: "objectId" } } },
+);
+studentSchema.index(
+  { tenant_id: 1, member_id: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      tenant_id: { $type: "objectId" },
+      member_id: { $type: "string" },
+    },
+  },
+);
+studentSchema.index(
+  { tenant_id: 1, employee_id: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      tenant_id: { $type: "objectId" },
+      employee_id: { $type: "string" },
+    },
+  },
+);
+studentSchema.index(
+  { tenant_id: 1, username: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      tenant_id: { $type: "objectId" },
+      username: { $type: "string" },
+    },
+  },
+);
+studentSchema.index({ tenant_id: 1, email: 1 });
 studentSchema.index({ department: 1, college: 1, level: 1 });
 studentSchema.index({ college: 1, is_active: 1 });
 studentSchema.index({ department: 1, is_active: 1 });
@@ -99,7 +174,15 @@ studentSchema.index({ level: 1, is_active: 1 });
 studentSchema.index({ last_login_at: -1 });
 studentSchema.index({ createdAt: -1 });
 studentSchema.index({ has_voted_sessions: 1 });
+studentSchema.index({ tenant_id: 1, createdAt: -1 });
 studentSchema.index({ is_active: 1, college: 1, department: 1, level: 1 }); // For eligibility queries
-studentSchema.index({ full_name: "text", email: "text", matric_no: "text" }); // For text search
+studentSchema.index({
+  full_name: "text",
+  email: "text",
+  matric_no: "text",
+  member_id: "text",
+  employee_id: "text",
+  username: "text",
+}); // For text search
 
 module.exports = mongoose.model("Student", studentSchema);

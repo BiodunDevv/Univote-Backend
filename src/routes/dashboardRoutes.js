@@ -4,8 +4,10 @@ const dashboardController = require("../controllers/dashboardController");
 const {
   authenticateStudent,
   authenticateAdmin,
+  requireTenantAdmin,
   authenticateStudentOrAdmin,
 } = require("../middleware/auth");
+const { requireTenantAccess } = require("../middleware/tenantContext");
 const { apiLimiter } = require("../middleware/rateLimiter");
 
 /**
@@ -48,6 +50,8 @@ const { apiLimiter } = require("../middleware/rateLimiter");
 router.get(
   "/admin",
   authenticateAdmin,
+  requireTenantAdmin,
+  requireTenantAccess,
   apiLimiter,
   dashboardController.getAdminDashboard,
 );
@@ -88,6 +92,7 @@ router.get(
 router.get(
   "/student",
   authenticateStudent,
+  requireTenantAccess,
   apiLimiter,
   dashboardController.getStudentDashboard,
 );
@@ -132,6 +137,7 @@ router.get(
 router.get(
   "/stats",
   authenticateStudentOrAdmin,
+  requireTenantAccess,
   apiLimiter,
   dashboardController.getQuickStats,
 );
@@ -159,6 +165,7 @@ router.get(
 router.post(
   "/invalidate-cache",
   authenticateStudentOrAdmin,
+  requireTenantAccess,
   dashboardController.invalidateCache,
 );
 

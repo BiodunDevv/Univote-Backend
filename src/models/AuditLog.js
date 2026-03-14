@@ -2,6 +2,12 @@ const mongoose = require("mongoose");
 
 const auditLogSchema = new mongoose.Schema(
   {
+    tenant_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      default: null,
+      index: true,
+    },
     user_type: {
       type: String,
       enum: ["student", "admin"],
@@ -52,5 +58,6 @@ auditLogSchema.index({ action: 1, createdAt: -1 });
 auditLogSchema.index({ user_type: 1, createdAt: -1 });
 auditLogSchema.index({ status: 1, createdAt: -1 });
 auditLogSchema.index({ user_type: 1, status: 1, createdAt: -1 });
+auditLogSchema.index({ tenant_id: 1, createdAt: -1 });
 
 module.exports = mongoose.model("AuditLog", auditLogSchema);

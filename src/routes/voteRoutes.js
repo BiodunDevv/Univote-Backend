@@ -3,6 +3,7 @@ const router = express.Router();
 const { body } = require("express-validator");
 const voteController = require("../controllers/voteController");
 const { authenticateStudent } = require("../middleware/auth");
+const { requireTenantAccess } = require("../middleware/tenantContext");
 const { voteLimiter, faceLimiter } = require("../middleware/rateLimiter");
 const validate = require("../middleware/validator");
 const auditLogger = require("../middleware/auditLogger");
@@ -83,6 +84,7 @@ const auditLogger = require("../middleware/auditLogger");
 router.post(
   "/",
   authenticateStudent,
+  requireTenantAccess,
   voteLimiter,
   faceLimiter,
   [
@@ -127,6 +129,6 @@ router.post(
  *                 total:
  *                   type: integer
  */
-router.get("/history", authenticateStudent, voteController.getVotingHistory);
+router.get("/history", authenticateStudent, requireTenantAccess, voteController.getVotingHistory);
 
 module.exports = router;

@@ -4,15 +4,261 @@ const Admin = require("../models/Admin");
 const VotingSession = require("../models/VotingSession");
 const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
-const faceppService = require("../services/faceppService");
+const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
 const constants = require("../config/constants");
 const mongoose = require("mongoose");
 const cacheService = require("../services/cacheService");
 const College = require("../models/College");
+const {
+  getTenantScopedFilter,
+  assignTenantId,
+  getTenantCacheNamespace,
+  prependTenantMatch,
+} = require("../utils/tenantScope");
+const {
+  buildQuotaErrorMessage,
+  getTenantQuotaStatus,
+} = require("../services/planAccessService");
+const {
+  getTenantEligibilityPolicy,
+  getTenantIdentityMetadata,
+  getTenantSettings,
+  isTenantParticipantFieldEnabled,
+  isTenantParticipantFieldRequired,
+} = require("../utils/tenantSettings");
 
-async function invalidateSessionCaches(sessionId) {
+function getParticipantIdentifierKey(student, tenant) {
+  const identity = getTenantIdentityMetadata(tenant);
+  return identity.display_identifier || "matric_no";
+}
+
+function getParticipantIdentifierValue(student, tenant) {
+  const key = getParticipantIdentifierKey(student, tenant);
+  return (
+    student?.[key] ||
+    student?.display_identifier ||
+    student?.matric_no ||
+    student?.member_id ||
+    student?.employee_id ||
+    student?.username ||
+    student?.email ||
+    "unknown"
+  );
+}
+
+function buildParticipantIdentityPayload(tenant, payload = {}) {
+  const settings = getTenantSettings(tenant);
+  const primary = settings.identity.primary_identifier;
+  const normalized = {
+    matric_no: payload.matric_no ? String(payload.matric_no).trim().toUpperCase() : null,
+    member_id: payload.member_id ? String(payload.member_id).trim().toUpperCase() : null,
+    employee_id: payload.employee_id
+      ? String(payload.employee_id).trim().toUpperCase()
+      : null,
+    username: payload.username ? String(payload.username).trim().toLowerCase() : null,
+    email: payload.email ? String(payload.email).trim().toLowerCase() : null,
+  };
+
+  const primaryValue = normalized[primary];
+
+  return {
+    settings,
+    primary,
+    normalized,
+    primaryValue,
+    requiresEmail: Boolean(settings.auth.require_email),
+  };
+}
+
+function normalizeParticipantFieldValue(fieldKey, value) {
+  if (value === undefined || value === null) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+
+  if (fieldKey === "level") {
+    return normalized;
+  }
+
+  if (fieldKey === "email") {
+    return normalized.toLowerCase();
+  }
+
+  if (["matric_no", "member_id", "employee_id", "department_code"].includes(fieldKey)) {
+    return normalized.toUpperCase();
+  }
+
+  if (fieldKey === "username") {
+    return normalized.toLowerCase();
+  }
+
+  return normalized;
+}
+
+function getParticipantFieldValue(payload, fieldKey) {
+  return normalizeParticipantFieldValue(fieldKey, payload?.[fieldKey]);
+}
+
+function normalizeParticipantStructurePayload(tenant, payload = {}, fallbacks = {}) {
+  return {
+    college: isTenantParticipantFieldEnabled(tenant, "college")
+      ? getParticipantFieldValue(payload, "college") ??
+        getParticipantFieldValue(fallbacks, "college")
+      : null,
+    department: isTenantParticipantFieldEnabled(tenant, "department")
+      ? getParticipantFieldValue(payload, "department") ??
+        getParticipantFieldValue(fallbacks, "department")
+      : null,
+    level: isTenantParticipantFieldEnabled(tenant, "level")
+      ? getParticipantFieldValue(payload, "level") ??
+        getParticipantFieldValue(fallbacks, "level")
+      : null,
+    photo_url: isTenantParticipantFieldEnabled(tenant, "photo_url")
+      ? getParticipantFieldValue(payload, "photo_url")
+      : null,
+  };
+}
+
+function buildParticipantRequiredFieldList(tenant, identity) {
+  const requiredFields = ["full_name", identity.primary];
+
+  if (isTenantParticipantFieldRequired(tenant, "email")) {
+    requiredFields.push("email");
+  }
+  if (isTenantParticipantFieldRequired(tenant, "college")) {
+    requiredFields.push("college");
+  }
+  if (isTenantParticipantFieldRequired(tenant, "department")) {
+    requiredFields.push("department");
+  }
+  if (isTenantParticipantFieldRequired(tenant, "level")) {
+    requiredFields.push("level");
+  }
+
+  return requiredFields;
+}
+
+async function resolveParticipantStructureDocuments(req, structure) {
+  if (!structure.college && !structure.department && !structure.level) {
+    return { collegeDoc: null, deptDoc: null };
+  }
+
+  const collegeName = structure.college;
+  if (!collegeName) {
+    return {
+      error: "College is required when department or level is provided",
+    };
+  }
+
+  const collegeDoc = await College.findOne(
+    getTenantScopedFilter(req, { name: collegeName }),
+  );
+
+  if (!collegeDoc) {
+    return { error: `College '${collegeName}' not found` };
+  }
+
+  let deptDoc = null;
+  if (structure.department) {
+    deptDoc = collegeDoc.departments.find((d) => d.name === structure.department);
+    if (!deptDoc) {
+      return {
+        error: `Department '${structure.department}' does not exist in ${collegeName}`,
+      };
+    }
+  }
+
+  if (structure.level) {
+    if (!["100", "200", "300", "400", "500", "600"].includes(structure.level)) {
+      return {
+        error: `Invalid level '${structure.level}'. Must be one of: 100, 200, 300, 400, 500, 600`,
+      };
+    }
+
+    if (deptDoc) {
+      const availableLevels = (deptDoc.available_levels || []).map(String);
+      if (availableLevels.length === 0) {
+        return {
+          error: `Department '${structure.department}' in ${collegeName} does not have available levels configured`,
+        };
+      }
+      if (!availableLevels.includes(String(structure.level))) {
+        return {
+          error: `Level ${structure.level} is not available in ${structure.department} (${collegeName}). Available levels: ${availableLevels.join(", ")}`,
+        };
+      }
+    }
+  }
+
+  return { collegeDoc, deptDoc };
+}
+
+function sanitizeSessionEligibility(req, payload = {}) {
+  const eligibilityPolicy = getTenantEligibilityPolicy(req.tenant);
+  const requested = {
+    eligible_college: payload.eligible_college || null,
+    eligible_departments: Array.isArray(payload.eligible_departments)
+      ? payload.eligible_departments.filter(Boolean)
+      : [],
+    eligible_levels: Array.isArray(payload.eligible_levels)
+      ? payload.eligible_levels.filter(Boolean)
+      : [],
+  };
+
+  if (requested.eligible_college && !eligibilityPolicy.college) {
+    return {
+      error: "College-based eligibility is disabled for this tenant",
+      code: "ELIGIBILITY_DIMENSION_DISABLED",
+    };
+  }
+
+  if (requested.eligible_departments.length > 0 && !eligibilityPolicy.department) {
+    return {
+      error: "Department-based eligibility is disabled for this tenant",
+      code: "ELIGIBILITY_DIMENSION_DISABLED",
+    };
+  }
+
+  if (requested.eligible_levels.length > 0 && !eligibilityPolicy.level) {
+    return {
+      error: "Level-based eligibility is disabled for this tenant",
+      code: "ELIGIBILITY_DIMENSION_DISABLED",
+    };
+  }
+
+  return {
+    eligible_college: eligibilityPolicy.college ? requested.eligible_college : null,
+    eligible_departments:
+      eligibilityPolicy.department && requested.eligible_departments.length > 0
+        ? requested.eligible_departments
+        : null,
+    eligible_levels:
+      eligibilityPolicy.level && requested.eligible_levels.length > 0
+        ? requested.eligible_levels
+        : null,
+  };
+}
+
+function buildTenantCacheKey(req, key) {
+  return `${key}:${getTenantCacheNamespace(req)}`;
+}
+
+async function invalidateSessionCaches(req, sessionId) {
+  const tenantNamespace = getTenantCacheNamespace(req);
+
   await Promise.all([
+    cacheService.delPattern(`admin:sessions:list:${tenantNamespace}:*`),
+    cacheService.del(buildTenantCacheKey(req, "admin:sessions:summary")),
+    cacheService.del(buildTenantCacheKey(req, "admin:analytics:overview")),
+    cacheService.del(buildTenantCacheKey(req, `admin:session_stats:${sessionId}`)),
+    cacheService.del(
+      buildTenantCacheKey(req, `admin:advanced_session_stats:${sessionId}`),
+    ),
+    cacheService.del(`live_results:${tenantNamespace}:${sessionId}`),
+    cacheService.del(`session:${tenantNamespace}:${sessionId}`),
+    cacheService.del(`total_votes:${tenantNamespace}:${sessionId}`),
+    cacheService.delPattern(`vote_count:${tenantNamespace}:${sessionId}:*`),
+    // Legacy cleanup during migration.
     cacheService.del("admin:sessions:all"),
     cacheService.del(`admin:session_stats:${sessionId}`),
     cacheService.del(`live_results:${sessionId}`),
@@ -20,6 +266,97 @@ async function invalidateSessionCaches(sessionId) {
     cacheService.del(`total_votes:${sessionId}`),
     cacheService.delPattern(`vote_count:${sessionId}:*`),
   ]);
+}
+
+async function resolveEligibleDepartmentNames(req, eligibleDepartmentIds = []) {
+  if (!eligibleDepartmentIds || eligibleDepartmentIds.length === 0) {
+    return [];
+  }
+
+  const colleges = await College.find(getTenantScopedFilter(req, {}))
+    .select("departments._id departments.name")
+    .lean();
+
+  const departmentNames = [];
+
+  colleges.forEach((college) => {
+    (college.departments || []).forEach((department) => {
+      if (eligibleDepartmentIds.includes(department._id.toString())) {
+        departmentNames.push(department.name);
+      }
+    });
+  });
+
+  return departmentNames;
+}
+
+async function countEligibleStudents(req, session) {
+  const eligibilityFilter = getTenantScopedFilter(req, { is_active: true });
+  const eligibilityPolicy = getTenantEligibilityPolicy(req.tenant);
+
+  if (eligibilityPolicy.college && session.eligible_college) {
+    eligibilityFilter.college = session.eligible_college;
+  }
+
+  if (
+    eligibilityPolicy.department &&
+    session.eligible_departments &&
+    session.eligible_departments.length > 0
+  ) {
+    const departmentNames = await resolveEligibleDepartmentNames(
+      req,
+      session.eligible_departments,
+    );
+
+    if (departmentNames.length > 0) {
+      eligibilityFilter.department = { $in: departmentNames };
+    }
+  }
+
+  if (
+    eligibilityPolicy.level &&
+    session.eligible_levels &&
+    session.eligible_levels.length > 0
+  ) {
+    eligibilityFilter.level = { $in: session.eligible_levels };
+  }
+
+  return Student.countDocuments(eligibilityFilter);
+}
+
+async function getVotesByCandidate(req, sessionId) {
+  return Vote.aggregate(
+    prependTenantMatch(req, [
+      {
+        $match: {
+          session_id: new mongoose.Types.ObjectId(sessionId),
+          status: "valid",
+        },
+      },
+      {
+        $group: {
+          _id: "$candidate_id",
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+  );
+}
+
+function mapCandidatesWithVoteCounts(candidates = [], votesByCandidate = [], totalVotes = 0) {
+  return candidates.map((candidate) => {
+    const voteData = votesByCandidate.find(
+      (entry) => entry._id.toString() === candidate._id.toString(),
+    );
+    const voteCount = voteData ? voteData.count : 0;
+
+    return {
+      ...candidate,
+      vote_count: voteCount,
+      vote_percentage:
+        totalVotes > 0 ? Number(((voteCount / totalVotes) * 100).toFixed(2)) : 0,
+    };
+  });
 }
 
 async function ensureUpcomingSession(session) {
@@ -67,19 +404,37 @@ class AdminController {
         return res.status(400).json({ error: "Invalid CSV data format" });
       }
 
-      // Validate target college and department if specified
-      if (target_college || target_department) {
-        const College = require("../models/College");
+      const studentQuota = await getTenantQuotaStatus(
+        req.tenant,
+        req.tenantId,
+        "students",
+        csv_data.length,
+      );
 
-        if (target_college) {
-          const collegeDoc = await College.findOne({ name: target_college });
+      if (!studentQuota.allowed) {
+        return res.status(403).json({
+          error: buildQuotaErrorMessage(studentQuota, "student records"),
+          code: "PLAN_LIMIT_REACHED",
+          quota: studentQuota,
+        });
+      }
+
+      // Validate target college and department if specified
+      if (
+        (isTenantParticipantFieldEnabled(req.tenant, "college") && target_college) ||
+        (isTenantParticipantFieldEnabled(req.tenant, "department") && target_department)
+      ) {
+        if (target_college && isTenantParticipantFieldEnabled(req.tenant, "college")) {
+          const collegeDoc = await College.findOne(
+            getTenantScopedFilter(req, { name: target_college }),
+          );
           if (!collegeDoc) {
             return res.status(400).json({
               error: `College '${target_college}' not found`,
             });
           }
 
-          if (target_department) {
+          if (target_department && isTenantParticipantFieldEnabled(req.tenant, "department")) {
             const deptExists = collegeDoc.departments.some(
               (d) => d.name === target_department,
             );
@@ -115,131 +470,125 @@ class AdminController {
 
       for (const row of csv_data) {
         try {
+          const identity = buildParticipantIdentityPayload(req.tenant, row);
+          const structure = normalizeParticipantStructurePayload(
+            req.tenant,
+            row,
+            {
+              college: target_college,
+              department: target_department,
+              level: target_level,
+            },
+          );
           // Use target values if not provided in CSV
-          const matric_no = row.matric_no;
           const full_name = row.full_name;
-          const email = row.email;
-          const department = row.department || target_department;
-          const college = row.college || target_college;
-          const level = row.level || target_level;
+          const email = identity.normalized.email;
+          const department = structure.department;
+          const college = structure.college;
+          const level = structure.level;
+          const participantIdentifier = identity.primaryValue;
+          const requiredFields = buildParticipantRequiredFieldList(
+            req.tenant,
+            identity,
+          );
 
           // Validate required fields
-          if (
-            !matric_no ||
-            !full_name ||
-            !email ||
-            !department ||
-            !college ||
-            !level
-          ) {
+          if (!participantIdentifier || !full_name) {
             results.failed++;
             results.errors.push({
-              matric_no: matric_no || "unknown",
+              matric_no: participantIdentifier || "unknown",
               full_name: full_name || "unknown",
-              error:
-                "Missing required fields (matric_no, full_name, email, department, college, level)",
+              error: `Missing required fields (${requiredFields.join(", ")})`,
             });
             continue;
           }
 
-          // Validate college and department exist
-          const College = require("../models/College");
-          const collegeDoc = await College.findOne({ name: college });
-
-          if (!collegeDoc) {
+          if (isTenantParticipantFieldRequired(req.tenant, "email") && !email) {
             results.failed++;
             results.errors.push({
-              matric_no,
+              matric_no: participantIdentifier,
               full_name,
-              error: `College '${college}' not found`,
+              error: `Missing required fields (${requiredFields.join(", ")})`,
             });
             continue;
           }
 
-          const deptDoc = collegeDoc.departments.find(
-            (d) => d.name === department,
-          );
-          if (!deptDoc) {
-            results.failed++;
-            results.errors.push({
-              matric_no,
-              full_name,
-              error: `Department '${department}' does not exist in ${college}`,
-            });
-            continue;
-          }
-
-          // Validate level format first
-          if (!["100", "200", "300", "400", "500", "600"].includes(level)) {
-            results.failed++;
-            results.errors.push({
-              matric_no,
-              full_name,
-              error: `Invalid level '${level}'. Must be one of: 100, 200, 300, 400, 500, 600`,
-            });
-            continue;
-          }
-
-          // Check if department has available levels configured
           if (
-            !deptDoc.available_levels ||
-            deptDoc.available_levels.length === 0
+            isTenantParticipantFieldRequired(req.tenant, "college") &&
+            !college
           ) {
             results.failed++;
             results.errors.push({
-              matric_no,
+              matric_no: participantIdentifier,
               full_name,
-              error: `Department '${department}' in ${college} does not have available levels configured`,
+              error: `Missing required fields (${requiredFields.join(", ")})`,
             });
             continue;
           }
 
-          // Debug: Log what we're checking
-          console.log(`Checking level ${level} for ${department}:`, {
-            availableLevels: deptDoc.available_levels,
-            includes: deptDoc.available_levels.includes(level),
-            levelType: typeof level,
-            availableTypes: deptDoc.available_levels.map((l) => typeof l),
-          });
-
-          // Validate level is within department's available levels
-          // Convert both to strings for comparison to avoid type mismatch
           if (
-            !deptDoc.available_levels
-              .map((l) => String(l))
-              .includes(String(level))
+            isTenantParticipantFieldRequired(req.tenant, "department") &&
+            !department
           ) {
-            const availableLevels = deptDoc.available_levels.sort(
-              (a, b) => parseInt(a) - parseInt(b),
-            );
-            const minLevel = availableLevels[0];
-            const maxLevel = availableLevels[availableLevels.length - 1];
             results.failed++;
             results.errors.push({
-              matric_no,
+              matric_no: participantIdentifier,
               full_name,
-              error: `Level ${level} is NOT available in ${department} (${college}). Available levels: ${availableLevels.join(
-                ", ",
-              )}. Highest level: ${maxLevel}`,
+              error: `Missing required fields (${requiredFields.join(", ")})`,
+            });
+            continue;
+          }
+
+          if (isTenantParticipantFieldRequired(req.tenant, "level") && !level) {
+            results.failed++;
+            results.errors.push({
+              matric_no: participantIdentifier,
+              full_name,
+              error: `Missing required fields (${requiredFields.join(", ")})`,
+            });
+            continue;
+          }
+
+          const { collegeDoc, deptDoc, error: structureError } =
+            await resolveParticipantStructureDocuments(req, structure);
+
+          if (structureError) {
+            results.failed++;
+            results.errors.push({
+              matric_no: participantIdentifier,
+              full_name,
+              error: structureError,
             });
             continue;
           }
 
           // Check if student already exists (by matric_no, email, or both)
           const existingStudent = await Student.findOne({
+            ...getTenantScopedFilter(req, {}),
             $or: [
-              { matric_no: matric_no.toUpperCase() },
-              { email: email.toLowerCase() },
-            ],
+              ...(identity.normalized.matric_no
+                ? [{ matric_no: identity.normalized.matric_no }]
+                : []),
+              ...(identity.normalized.member_id
+                ? [{ member_id: identity.normalized.member_id }]
+                : []),
+              ...(identity.normalized.employee_id
+                ? [{ employee_id: identity.normalized.employee_id }]
+                : []),
+              ...(identity.normalized.username
+                ? [{ username: identity.normalized.username }]
+                : []),
+              ...(email ? [{ email }] : []),
+            ].filter(Boolean),
           });
 
           if (existingStudent) {
             // Student already exists - return error with full details
             results.failed++;
             results.errors.push({
-              matric_no,
+              matric_no: participantIdentifier,
               full_name,
-              error: `Student already exists: ${existingStudent.full_name} (${existingStudent.matric_no}) in ${existingStudent.department}, ${existingStudent.college}, Level ${existingStudent.level}. Cannot upload duplicate student.`,
+              error: `Participant already exists: ${existingStudent.full_name} (${getParticipantIdentifierValue(existingStudent, req.tenant)}) in ${existingStudent.department}, ${existingStudent.college}, Level ${existingStudent.level}. Cannot upload duplicate participant.`,
             });
             continue;
           }
@@ -249,17 +598,17 @@ class AdminController {
           let photoUrl = row.photo_url || null;
 
           if (photoUrl) {
-            const faceDetection = await faceppService.detectFace(photoUrl);
+            const faceDetection = await faceProviderService.detectFace(photoUrl);
 
             if (faceDetection.success) {
               faceToken = faceDetection.face_token;
             } else {
               // Face detection failed - log warning but continue without face data
               console.warn(
-                `Face detection failed for ${matric_no}: ${faceDetection.error}`,
+                `Face detection failed for ${participantIdentifier}: ${faceDetection.error}`,
               );
               results.errors.push({
-                matric_no,
+                matric_no: participantIdentifier,
                 full_name,
                 warning: `Student created but face registration failed: ${faceDetection.error}`,
               });
@@ -268,16 +617,20 @@ class AdminController {
 
           // Create new student (only if not exists)
           const student = new Student({
-            matric_no: matric_no.toUpperCase(),
+            ...assignTenantId(req, {}),
+            matric_no: identity.normalized.matric_no,
+            member_id: identity.normalized.member_id,
+            employee_id: identity.normalized.employee_id,
+            username: identity.normalized.username,
             full_name,
-            email: email.toLowerCase(),
+            email,
             password_hash: defaultPasswordHash,
             department,
-            department_code: deptDoc.code,
+            department_code: deptDoc?.code || null,
             college,
             level,
             first_login: true,
-            photo_url: photoUrl,
+            photo_url: structure.photo_url || photoUrl,
             face_token: faceToken,
           });
 
@@ -331,15 +684,41 @@ class AdminController {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
+      const sessionQuota = await getTenantQuotaStatus(
+        req.tenant,
+        req.tenantId,
+        "active_sessions",
+        1,
+      );
+
+      if (!sessionQuota.allowed) {
+        return res.status(403).json({
+          error: buildQuotaErrorMessage(sessionQuota, "active or upcoming sessions"),
+          code: "PLAN_LIMIT_REACHED",
+          quota: sessionQuota,
+        });
+      }
+
+      const sanitizedEligibility = sanitizeSessionEligibility(req, {
+        eligible_college,
+        eligible_departments,
+        eligible_levels,
+      });
+
+      if (sanitizedEligibility.error) {
+        return res.status(400).json(sanitizedEligibility);
+      }
+
       // Create session (Face++ uses stateless verification, no pre-session setup needed)
       const session = new VotingSession({
+        ...assignTenantId(req, {}),
         title,
         description,
         start_time: new Date(start_time),
         end_time: new Date(end_time),
-        eligible_college: eligible_college || null,
-        eligible_departments: eligible_departments || null,
-        eligible_levels: eligible_levels || null,
+        eligible_college: sanitizedEligibility.eligible_college,
+        eligible_departments: sanitizedEligibility.eligible_departments,
+        eligible_levels: sanitizedEligibility.eligible_levels,
         categories: categories || [],
         location: {
           lat: location.lat,
@@ -355,6 +734,7 @@ class AdminController {
       // Create candidates if provided
       if (candidates && Array.isArray(candidates)) {
         const candidateDocs = candidates.map((c) => ({
+          ...assignTenantId(req, {}),
           session_id: session._id,
           name: c.name,
           position: c.position,
@@ -369,7 +749,7 @@ class AdminController {
       }
 
       // Invalidate cached session data
-      await cacheService.del("admin:sessions:all");
+      await invalidateSessionCaches(req, session._id.toString());
 
       res.status(201).json({
         message: "Voting session created successfully",
@@ -390,7 +770,9 @@ class AdminController {
       const { id } = req.params;
       const updates = req.body;
 
-      const session = await VotingSession.findById(id);
+      const session = await VotingSession.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      );
 
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
@@ -416,6 +798,11 @@ class AdminController {
       }
 
       // Update allowed fields
+      const sanitizedEligibility = sanitizeSessionEligibility(req, updates);
+      if (sanitizedEligibility.error) {
+        return res.status(400).json(sanitizedEligibility);
+      }
+
       const allowedUpdates = [
         "title",
         "description",
@@ -431,13 +818,25 @@ class AdminController {
 
       allowedUpdates.forEach((field) => {
         if (updates[field] !== undefined) {
+          if (field === "eligible_college") {
+            session[field] = sanitizedEligibility.eligible_college;
+            return;
+          }
+          if (field === "eligible_departments") {
+            session[field] = sanitizedEligibility.eligible_departments;
+            return;
+          }
+          if (field === "eligible_levels") {
+            session[field] = sanitizedEligibility.eligible_levels;
+            return;
+          }
           session[field] = updates[field];
         }
       });
 
       await session.save();
 
-      await invalidateSessionCaches(id);
+      await invalidateSessionCaches(req, id);
 
       res.json({
         message: "Session updated successfully",
@@ -460,7 +859,9 @@ class AdminController {
     try {
       const { id } = req.params;
 
-      const session = await VotingSession.findById(id);
+      const session = await VotingSession.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      );
 
       if (!session) {
         await mongoSession.abortTransaction();
@@ -470,30 +871,34 @@ class AdminController {
       // Face++ uses stateless verification - no cleanup needed
 
       // Delete all votes for this session
-      await Vote.deleteMany({ session_id: id }, { session: mongoSession });
+      await Vote.deleteMany(
+        getTenantScopedFilter(req, { session_id: id }),
+        { session: mongoSession },
+      );
 
       // Delete all candidates for this session
-      await Candidate.deleteMany({ session_id: id }, { session: mongoSession });
+      await Candidate.deleteMany(
+        getTenantScopedFilter(req, { session_id: id }),
+        { session: mongoSession },
+      );
 
       // Remove session from students' has_voted_sessions
       await Student.updateMany(
-        { has_voted_sessions: id },
+        getTenantScopedFilter(req, { has_voted_sessions: id }),
         { $pull: { has_voted_sessions: id } },
         { session: mongoSession },
       );
 
       // Delete the session
-      await VotingSession.findByIdAndDelete(id, { session: mongoSession });
+      await VotingSession.findOneAndDelete(
+        getTenantScopedFilter(req, { _id: id }),
+        { session: mongoSession },
+      );
 
       await mongoSession.commitTransaction();
 
       // Invalidate all cached session data
-      await cacheService.del("admin:sessions:all");
-      await cacheService.del(`admin:session_stats:${id}`);
-      await cacheService.del(`live_results:${id}`);
-      await cacheService.del(`session:${id}`);
-      await cacheService.delPattern(`vote_count:${id}:*`);
-      await cacheService.del(`total_votes:${id}`);
+      await invalidateSessionCaches(req, id);
 
       res.json({
         message: "Session deleted successfully",
@@ -517,7 +922,9 @@ class AdminController {
       const { id } = req.params;
       const { name, position, photo_url, bio, manifesto } = req.body;
 
-      const session = await VotingSession.findById(id);
+      const session = await VotingSession.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      );
 
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
@@ -537,6 +944,7 @@ class AdminController {
       }
 
       const candidate = await Candidate.create({
+        ...assignTenantId(req, {}),
         session_id: session._id,
         name,
         position,
@@ -547,7 +955,7 @@ class AdminController {
 
       session.candidates.push(candidate._id);
       await session.save();
-      await invalidateSessionCaches(session._id.toString());
+      await invalidateSessionCaches(req, session._id.toString());
 
       res.status(201).json({
         message: "Candidate created successfully",
@@ -582,7 +990,7 @@ class AdminController {
       const skip = (page - 1) * limit;
       const { session_id, position, search, status } = req.query;
 
-      const candidateFilter = {};
+      const candidateFilter = getTenantScopedFilter(req, {});
       if (session_id) {
         candidateFilter.session_id = session_id;
       }
@@ -597,7 +1005,9 @@ class AdminController {
       }
 
       if (status) {
-        const matchingSessions = await VotingSession.find({ status })
+        const matchingSessions = await VotingSession.find(
+          getTenantScopedFilter(req, { status }),
+        )
           .select("_id")
           .lean();
 
@@ -647,13 +1057,17 @@ class AdminController {
       const { id } = req.params;
       const { name, position, photo_url, bio, manifesto } = req.body;
 
-      const candidate = await Candidate.findById(id);
+      const candidate = await Candidate.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      );
 
       if (!candidate) {
         return res.status(404).json({ error: "Candidate not found" });
       }
 
-      const session = await VotingSession.findById(candidate.session_id);
+      const session = await VotingSession.findOne(
+        getTenantScopedFilter(req, { _id: candidate.session_id }),
+      );
 
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
@@ -680,7 +1094,7 @@ class AdminController {
       if (manifesto !== undefined) candidate.manifesto = manifesto;
 
       await candidate.save();
-      await invalidateSessionCaches(session._id.toString());
+      await invalidateSessionCaches(req, session._id.toString());
 
       res.json({
         message: "Candidate updated successfully",
@@ -709,7 +1123,9 @@ class AdminController {
     try {
       const { id } = req.params;
 
-      const candidate = await Candidate.findById(id);
+      const candidate = await Candidate.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      );
 
       if (!candidate) {
         return res.status(404).json({ error: "Candidate not found" });
@@ -717,7 +1133,9 @@ class AdminController {
 
       const sessionId = candidate.session_id;
 
-      const session = await VotingSession.findById(sessionId);
+      const session = await VotingSession.findOne(
+        getTenantScopedFilter(req, { _id: sessionId }),
+      );
 
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
@@ -729,13 +1147,16 @@ class AdminController {
       }
 
       // Delete the candidate
-      await Candidate.findByIdAndDelete(id);
+      await Candidate.findOneAndDelete(getTenantScopedFilter(req, { _id: id }));
 
       // Remove candidate reference from session
-      await VotingSession.findByIdAndUpdate(sessionId, {
-        $pull: { candidates: id },
-      });
-      await invalidateSessionCaches(sessionId.toString());
+      await VotingSession.updateOne(
+        getTenantScopedFilter(req, { _id: sessionId }),
+        {
+          $pull: { candidates: id },
+        },
+      );
+      await invalidateSessionCaches(req, sessionId.toString());
 
       res.json({
         message: "Candidate deleted successfully",
@@ -759,7 +1180,9 @@ class AdminController {
     try {
       const { id } = req.params;
 
-      const candidate = await Candidate.findById(id)
+      const candidate = await Candidate.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      )
         .populate("session_id", "title start_time end_time status")
         .lean();
 
@@ -791,9 +1214,11 @@ class AdminController {
         : [departments];
 
       // Delete students in specified departments
-      const result = await Student.deleteMany({
-        department: { $in: deptArray },
-      });
+      const result = await Student.deleteMany(
+        getTenantScopedFilter(req, {
+          department: { $in: deptArray },
+        }),
+      );
 
       res.json({
         message: "Department(s) removed successfully",
@@ -881,6 +1306,19 @@ class AdminController {
 
       await admin.save();
 
+      emailService
+        .sendAdminInvitation({
+          to: admin.email,
+          fullName: admin.full_name,
+          roleLabel: admin.role,
+          password,
+          platformScope: true,
+          signInUrl: `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}/auth/signin`,
+        })
+        .catch((err) => {
+          console.error("Failed to send platform admin invitation email:", err);
+        });
+
       res.status(201).json({
         message: "Admin created successfully",
         admin: {
@@ -919,7 +1357,9 @@ class AdminController {
 
       // Resolve college/department by ID when provided to support stable filtering.
       if (college_id) {
-        const collegeDoc = await College.findById(college_id).lean();
+        const collegeDoc = await College.findOne(
+          getTenantScopedFilter(req, { _id: college_id }),
+        ).lean();
         if (!collegeDoc) {
           return res.status(404).json({ error: "College not found" });
         }
@@ -962,14 +1402,16 @@ class AdminController {
       const pageNumber = Number.parseInt(page, 10) || 1;
       const limitNumber = Number.parseInt(limit, 10) || 50;
 
+      const scopedFilter = getTenantScopedFilter(req, filter);
+
       const [students, count] = await Promise.all([
-        Student.find(filter)
+        Student.find(scopedFilter)
           .select("-password_hash -active_token -embedding_vector")
           .limit(limitNumber)
           .skip((pageNumber - 1) * limitNumber)
           .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
           .lean(),
-        Student.countDocuments(filter),
+        Student.countDocuments(scopedFilter),
       ]);
 
       // Add computed field for facial data status
@@ -985,8 +1427,8 @@ class AdminController {
         page: pageNumber,
         pages: Math.ceil(count / limitNumber),
         filter: {
-          college: filter.college || college || "all",
-          department: filter.department || department || "all",
+          college: scopedFilter.college || college || "all",
+          department: scopedFilter.department || department || "all",
           level: level || "all",
           is_active: is_active || "all",
           has_facial_data: has_facial_data || "all",
@@ -1012,41 +1454,49 @@ class AdminController {
         colleges,
         by_college,
         by_department,
+        levels,
       ] = await Promise.all([
-        Student.countDocuments({}),
-        Student.countDocuments({ is_active: true }),
-        Student.countDocuments({ is_active: false }),
-        Student.countDocuments({ face_token: { $exists: true, $ne: null } }),
-        College.find({})
+        Student.countDocuments(getTenantScopedFilter(req, {})),
+        Student.countDocuments(getTenantScopedFilter(req, { is_active: true })),
+        Student.countDocuments(getTenantScopedFilter(req, { is_active: false })),
+        Student.countDocuments(
+          getTenantScopedFilter(req, { face_token: { $exists: true, $ne: null } }),
+        ),
+        College.find(getTenantScopedFilter(req, {}))
           .select("name code departments._id departments.name departments.code")
           .sort({ name: 1 })
           .lean(),
-        Student.aggregate([
-          {
-            $group: {
-              _id: "$college",
-              total: { $sum: 1 },
-              active: {
-                $sum: {
-                  $cond: [{ $eq: ["$is_active", true] }, 1, 0],
+        Student.aggregate(
+          prependTenantMatch(req, [
+            {
+              $group: {
+                _id: "$college",
+                total: { $sum: 1 },
+                active: {
+                  $sum: {
+                    $cond: [{ $eq: ["$is_active", true] }, 1, 0],
+                  },
                 },
               },
             },
-          },
-          { $sort: { total: -1 } },
-        ]),
-        Student.aggregate([
-          {
-            $group: {
-              _id: {
-                college: "$college",
-                department: "$department",
+            { $sort: { total: -1 } },
+          ]),
+        ),
+        Student.aggregate(
+          prependTenantMatch(req, [
+            {
+              $group: {
+                _id: {
+                  college: "$college",
+                  department: "$department",
+                },
+                total: { $sum: 1 },
               },
-              total: { $sum: 1 },
             },
-          },
-          { $sort: { total: -1 } },
-        ]),
+            { $sort: { total: -1 } },
+          ]),
+        ),
+        Student.distinct("level", getTenantScopedFilter(req, { level: { $ne: null } })),
       ]);
 
       res.json({
@@ -1076,6 +1526,10 @@ class AdminController {
           department: entry._id.department,
           total: entry.total,
         })),
+        levels: levels
+          .map((level) => String(level))
+          .filter(Boolean)
+          .sort((left, right) => Number(left) - Number(right)),
       });
     } catch (error) {
       console.error("Get students overview error:", error);
@@ -1094,13 +1548,15 @@ class AdminController {
 
       // First, get the college to get its name
       const College = require("../models/College");
-      const college = await College.findById(collegeId).lean();
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: collegeId }),
+      ).lean();
 
       if (!college) {
         return res.status(404).json({ error: "College not found" });
       }
 
-      const filter = { college: college.name };
+      const filter = getTenantScopedFilter(req, { college: college.name });
 
       if (department) filter.department = department;
       if (level) filter.level = level;
@@ -1118,16 +1574,18 @@ class AdminController {
           .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
           .lean(),
         Student.countDocuments(filter),
-        Student.aggregate([
-          { $match: { college: college.name } },
-          {
-            $group: {
-              _id: "$department",
-              count: { $sum: 1 },
+        Student.aggregate(
+          prependTenantMatch(req, [
+            { $match: { college: college.name } },
+            {
+              $group: {
+                _id: "$department",
+                count: { $sum: 1 },
+              },
             },
-          },
-          { $sort: { count: -1 } },
-        ]),
+            { $sort: { count: -1 } },
+          ]),
+        ),
       ]);
 
       // Add computed field for facial data status
@@ -1169,7 +1627,9 @@ class AdminController {
 
       // Get college and department
       const College = require("../models/College");
-      const college = await College.findById(collegeId).lean();
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: collegeId }),
+      ).lean();
 
       if (!college) {
         return res.status(404).json({ error: "College not found" });
@@ -1183,10 +1643,10 @@ class AdminController {
         return res.status(404).json({ error: "Department not found" });
       }
 
-      const filter = {
+      const filter = getTenantScopedFilter(req, {
         college: college.name,
         department: department.name,
-      };
+      });
 
       if (level) filter.level = level;
 
@@ -1203,21 +1663,23 @@ class AdminController {
           .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
           .lean(),
         Student.countDocuments(filter),
-        Student.aggregate([
-          {
-            $match: {
-              college: college.name,
-              department: department.name,
+        Student.aggregate(
+          prependTenantMatch(req, [
+            {
+              $match: {
+                college: college.name,
+                department: department.name,
+              },
             },
-          },
-          {
-            $group: {
-              _id: "$level",
-              count: { $sum: 1 },
+            {
+              $group: {
+                _id: "$level",
+                count: { $sum: 1 },
+              },
             },
-          },
-          { $sort: { _id: 1 } },
-        ]),
+            { $sort: { _id: 1 } },
+          ]),
+        ),
       ]);
 
       // Add computed field for facial data status
@@ -1262,11 +1724,13 @@ class AdminController {
       const { id } = req.params;
 
       // Get student data and face_token status separately
+      const studentFilter = getTenantScopedFilter(req, { _id: id });
+
       const [student, studentWithFaceToken] = await Promise.all([
-        Student.findById(id)
+        Student.findOne(studentFilter)
           .select("-password_hash -active_token -face_token -embedding_vector")
           .lean(),
-        Student.findById(id).select("face_token").lean(),
+        Student.findOne(studentFilter).select("face_token").lean(),
       ]);
 
       if (!student) {
@@ -1279,7 +1743,7 @@ class AdminController {
       );
 
       // Get voting history
-      const votes = (await Vote.find({ student_id: id })
+      const votes = (await Vote.find(getTenantScopedFilter(req, { student_id: id }))
         .populate("session_id", "title start_time end_time")
         .select("session_id timestamp status")
         .lean()).map((vote) => ({
@@ -1314,93 +1778,57 @@ class AdminController {
         photo_url,
       } = req.body;
 
-      const student = await Student.findById(id);
+      const student = await Student.findOne(getTenantScopedFilter(req, { _id: id }));
 
       if (!student) {
         return res.status(404).json({ error: "Student not found" });
       }
 
-      // Validate college and department if changing
-      if (college || department || level) {
-        const College = require("../models/College");
-        const collegeDoc = await College.findOne({
-          name: college || student.college,
-        });
+      const structure = normalizeParticipantStructurePayload(
+        req.tenant,
+        { college, department, level, photo_url },
+        {
+          college: student.college,
+          department: student.department,
+          level: student.level,
+        },
+      );
+      const { deptDoc, error: structureError } =
+        await resolveParticipantStructureDocuments(req, structure);
 
-        if (!collegeDoc) {
-          return res.status(400).json({ error: "Invalid college" });
-        }
-
-        const targetDepartment = department || student.department;
-        const deptDoc = collegeDoc.departments.find(
-          (d) => d.name === targetDepartment,
-        );
-
-        if (!deptDoc) {
-          return res.status(400).json({
-            error: `Department '${targetDepartment}' does not exist in ${collegeDoc.name}`,
-          });
-        }
-
-        // Validate level is within department's available levels
-        if (level) {
-          if (
-            !deptDoc.available_levels ||
-            deptDoc.available_levels.length === 0
-          ) {
-            return res.status(400).json({
-              error: `Department '${targetDepartment}' does not have available levels configured`,
-            });
-          }
-
-          if (!deptDoc.available_levels.includes(level)) {
-            const minLevel = Math.min(
-              ...deptDoc.available_levels.map((l) => parseInt(l)),
-            );
-            const maxLevel = Math.max(
-              ...deptDoc.available_levels.map((l) => parseInt(l)),
-            );
-            return res.status(400).json({
-              error: `Level ${level} is not offered by ${targetDepartment}. Available levels: ${deptDoc.available_levels.join(
-                ", ",
-              )} (${minLevel}-${maxLevel})`,
-            });
-          }
-        }
+      if (structureError) {
+        return res.status(400).json({ error: structureError });
       }
 
       // Update fields
       if (full_name !== undefined) student.full_name = full_name;
-      if (email !== undefined) student.email = email.toLowerCase();
-      if (department !== undefined) {
-        student.department = department;
-        // If department is changing, get the department code
-        if (college || department) {
-          const College = require("../models/College");
-          const collegeDoc = await College.findOne({
-            name: college || student.college,
-          });
-          const deptDoc = collegeDoc.departments.find(
-            (d) => d.name === department,
-          );
-          if (deptDoc) {
-            student.department_code = deptDoc.code;
-          }
-        }
+      if (email !== undefined) {
+        student.email = email ? email.toLowerCase() : null;
       }
-      if (college !== undefined) student.college = college;
-      if (level !== undefined) student.level = level;
+      if (college !== undefined || !isTenantParticipantFieldEnabled(req.tenant, "college")) {
+        student.college = structure.college;
+      }
+      if (
+        department !== undefined ||
+        !isTenantParticipantFieldEnabled(req.tenant, "department")
+      ) {
+        student.department = structure.department;
+        student.department_code = deptDoc?.code || null;
+      }
+      if (level !== undefined || !isTenantParticipantFieldEnabled(req.tenant, "level")) {
+        student.level = structure.level;
+      }
       if (is_active !== undefined) student.is_active = is_active;
 
       // Handle photo_url update with Face++ re-registration
       let faceUpdateWarning = null;
-      if (photo_url !== undefined && photo_url !== student.photo_url) {
-        student.photo_url = photo_url;
+      if (photo_url !== undefined && structure.photo_url !== student.photo_url) {
+        student.photo_url = structure.photo_url;
 
         // If photo URL is provided, re-register face with Face++
-        if (photo_url) {
+        if (structure.photo_url) {
           try {
-            const faceDetection = await faceppService.detectFace(photo_url);
+            const faceDetection = await faceProviderService.detectFace(structure.photo_url);
 
             if (faceDetection.success) {
               student.face_token = faceDetection.face_token;
@@ -1431,6 +1859,9 @@ class AdminController {
         student: {
           id: student._id,
           matric_no: student.matric_no,
+          member_id: student.member_id,
+          employee_id: student.employee_id,
+          username: student.username,
           full_name: student.full_name,
           email: student.email,
           college: student.college,
@@ -1463,7 +1894,7 @@ class AdminController {
     try {
       const { id } = req.params;
 
-      const student = await Student.findById(id);
+      const student = await Student.findOne(getTenantScopedFilter(req, { _id: id }));
       if (!student) {
         return res.status(404).json({ error: "Student not found" });
       }
@@ -1493,7 +1924,7 @@ class AdminController {
     try {
       const { id } = req.params;
 
-      const student = await Student.findById(id);
+      const student = await Student.findOne(getTenantScopedFilter(req, { _id: id }));
       if (!student) {
         return res.status(404).json({ error: "Student not found" });
       }
@@ -1526,7 +1957,7 @@ class AdminController {
       const { id } = req.params;
       const { soft = "false" } = req.query;
 
-      const student = await Student.findById(id);
+      const student = await Student.findOne(getTenantScopedFilter(req, { _id: id }));
 
       if (!student) {
         return res.status(404).json({ error: "Student not found" });
@@ -1547,8 +1978,8 @@ class AdminController {
         });
       } else {
         // Permanent deletion - also delete votes
-        await Vote.deleteMany({ student_id: id });
-        await Student.findByIdAndDelete(id);
+        await Vote.deleteMany(getTenantScopedFilter(req, { student_id: id }));
+        await Student.findOneAndDelete(getTenantScopedFilter(req, { _id: id }));
 
         res.json({
           message: "Student permanently deleted",
@@ -1603,7 +2034,7 @@ class AdminController {
       }
 
       const result = await Student.updateMany(
-        { _id: { $in: student_ids } },
+        getTenantScopedFilter(req, { _id: { $in: student_ids } }),
         { $set: updateFields },
       );
 
@@ -1627,7 +2058,7 @@ class AdminController {
       const { collegeId } = req.params;
 
       // Try cache first (10 minute TTL for college stats)
-      const cacheKey = `admin:college_stats:${collegeId}`;
+      const cacheKey = buildTenantCacheKey(req, `admin:college_stats:${collegeId}`);
       const cachedStats = await cacheService.get(cacheKey);
 
       if (cachedStats) {
@@ -1640,7 +2071,9 @@ class AdminController {
       // Cache miss - query database
       // Get college
       const College = require("../models/College");
-      const college = await College.findById(collegeId)
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: collegeId }),
+      )
         .select("name code")
         .lean();
 
@@ -1651,31 +2084,39 @@ class AdminController {
       // Run all queries in parallel for speed
       const [totalStudents, activeStudents, departmentStats, levelStats] =
         await Promise.all([
-          Student.countDocuments({ college: college.name }),
-          Student.countDocuments({ college: college.name, is_active: true }),
-          Student.aggregate([
-            { $match: { college: college.name } },
-            {
-              $group: {
-                _id: "$department",
-                total: { $sum: 1 },
-                active: {
-                  $sum: { $cond: [{ $eq: ["$is_active", true] }, 1, 0] },
+          Student.countDocuments(
+            getTenantScopedFilter(req, { college: college.name }),
+          ),
+          Student.countDocuments(
+            getTenantScopedFilter(req, { college: college.name, is_active: true }),
+          ),
+          Student.aggregate(
+            prependTenantMatch(req, [
+              { $match: { college: college.name } },
+              {
+                $group: {
+                  _id: "$department",
+                  total: { $sum: 1 },
+                  active: {
+                    $sum: { $cond: [{ $eq: ["$is_active", true] }, 1, 0] },
+                  },
                 },
               },
-            },
-            { $sort: { total: -1 } },
-          ]),
-          Student.aggregate([
-            { $match: { college: college.name } },
-            {
-              $group: {
-                _id: "$level",
-                count: { $sum: 1 },
+              { $sort: { total: -1 } },
+            ]),
+          ),
+          Student.aggregate(
+            prependTenantMatch(req, [
+              { $match: { college: college.name } },
+              {
+                $group: {
+                  _id: "$level",
+                  count: { $sum: 1 },
+                },
               },
-            },
-            { $sort: { _id: 1 } },
-          ]),
+              { $sort: { _id: 1 } },
+            ]),
+          ),
         ]);
 
       const responseData = {
@@ -1726,12 +2167,15 @@ class AdminController {
       const status = req.query.status;
       const useFresh = req.query.fresh === "true";
 
-      const filter = {};
+      const filter = getTenantScopedFilter(req, {});
       if (status && ["active", "upcoming", "ended"].includes(status)) {
         filter.status = status;
       }
 
-      const cacheKey = `admin:sessions:list:${page}:${limit}:${status || "all"}`;
+      const cacheKey = buildTenantCacheKey(
+        req,
+        `admin:sessions:list:${page}:${limit}:${status || "all"}`,
+      );
       const cachedSessions = await cacheService.get(cacheKey);
 
       if (!useFresh && cachedSessions) {
@@ -1753,45 +2197,49 @@ class AdminController {
 
       const sessionIds = sessions.map((session) => session._id);
       const [votesByCandidate, uniqueVotersPerSession] = await Promise.all([
-        Vote.aggregate([
-          {
-            $match: {
-              session_id: { $in: sessionIds },
-              status: "valid",
-            },
-          },
-          {
-            $group: {
-              _id: {
-                session_id: "$session_id",
-                candidate_id: "$candidate_id",
-              },
-              count: { $sum: 1 },
-            },
-          },
-        ]),
-        Vote.aggregate([
-          {
-            $match: {
-              session_id: { $in: sessionIds },
-              status: "valid",
-            },
-          },
-          {
-            $group: {
-              _id: {
-                session_id: "$session_id",
-                student_id: "$student_id",
+        Vote.aggregate(
+          prependTenantMatch(req, [
+            {
+              $match: {
+                session_id: { $in: sessionIds },
+                status: "valid",
               },
             },
-          },
-          {
-            $group: {
-              _id: "$_id.session_id",
-              students_voted: { $sum: 1 },
+            {
+              $group: {
+                _id: {
+                  session_id: "$session_id",
+                  candidate_id: "$candidate_id",
+                },
+                count: { $sum: 1 },
+              },
             },
-          },
-        ]),
+          ]),
+        ),
+        Vote.aggregate(
+          prependTenantMatch(req, [
+            {
+              $match: {
+                session_id: { $in: sessionIds },
+                status: "valid",
+              },
+            },
+            {
+              $group: {
+                _id: {
+                  session_id: "$session_id",
+                  student_id: "$student_id",
+                },
+              },
+            },
+            {
+              $group: {
+                _id: "$_id.session_id",
+                students_voted: { $sum: 1 },
+              },
+            },
+          ]),
+        ),
       ]);
 
       const candidateVoteMap = new Map(
@@ -1855,7 +2303,7 @@ class AdminController {
   async getSessionsSummary(req, res) {
     try {
       const useFresh = req.query.fresh === "true";
-      const cacheKey = "admin:sessions:summary";
+      const cacheKey = buildTenantCacheKey(req, "admin:sessions:summary");
       const cachedSummary = await cacheService.get(cacheKey);
 
       if (!useFresh && cachedSummary) {
@@ -1872,11 +2320,17 @@ class AdminController {
         endedSessions,
         totalVotes,
       ] = await Promise.all([
-        VotingSession.countDocuments({}),
-        VotingSession.countDocuments({ status: "active" }),
-        VotingSession.countDocuments({ status: "upcoming" }),
-        VotingSession.countDocuments({ status: "ended" }),
-        Vote.countDocuments({ status: "valid" }),
+        VotingSession.countDocuments(getTenantScopedFilter(req, {})),
+        VotingSession.countDocuments(
+          getTenantScopedFilter(req, { status: "active" }),
+        ),
+        VotingSession.countDocuments(
+          getTenantScopedFilter(req, { status: "upcoming" }),
+        ),
+        VotingSession.countDocuments(
+          getTenantScopedFilter(req, { status: "ended" }),
+        ),
+        Vote.countDocuments(getTenantScopedFilter(req, { status: "valid" })),
       ]);
 
       const summary = {
@@ -1899,6 +2353,203 @@ class AdminController {
   }
 
   /**
+   * Get advanced analytics overview
+   * GET /api/admin/analytics/overview
+   */
+  async getAnalyticsOverview(req, res) {
+    try {
+      const useFresh = req.query.fresh === "true";
+      const cacheKey = buildTenantCacheKey(req, "admin:analytics:overview");
+      const cachedOverview = await cacheService.get(cacheKey);
+
+      if (!useFresh && cachedOverview) {
+        return res.json({
+          ...cachedOverview,
+          cached: true,
+        });
+      }
+
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+      const [
+        totalStudents,
+        studentsWhoVoted,
+        totalSessions,
+        totalVotes,
+        activeSessions,
+        upcomingSessions,
+        endedSessions,
+        topVoters,
+        recentAuditLogs,
+        voteTrend,
+      ] = await Promise.all([
+        Student.countDocuments(getTenantScopedFilter(req, {})),
+        Student.countDocuments(
+          getTenantScopedFilter(req, {
+            has_voted_sessions: { $exists: true, $ne: [] },
+          }),
+        ),
+        VotingSession.countDocuments(getTenantScopedFilter(req, {})),
+        Vote.countDocuments(getTenantScopedFilter(req, { status: "valid" })),
+        VotingSession.countDocuments(
+          getTenantScopedFilter(req, { status: "active" }),
+        ),
+        VotingSession.countDocuments(
+          getTenantScopedFilter(req, { status: "upcoming" }),
+        ),
+        VotingSession.find(getTenantScopedFilter(req, { status: "ended" }))
+          .select(
+            "title status start_time end_time eligible_college eligible_departments eligible_levels",
+          )
+          .sort({ end_time: -1 })
+          .lean(),
+        Student.aggregate(
+          prependTenantMatch(req, [
+            {
+              $project: {
+                matric_no: 1,
+                member_id: 1,
+                employee_id: 1,
+                username: 1,
+                email: 1,
+                full_name: 1,
+                department: 1,
+                college: 1,
+                display_identifier: {
+                  $ifNull: [
+                    "$member_id",
+                    {
+                      $ifNull: [
+                        "$employee_id",
+                        {
+                          $ifNull: [
+                            "$username",
+                            { $ifNull: ["$matric_no", "$email"] },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                votes_cast: {
+                  $size: { $ifNull: ["$has_voted_sessions", []] },
+                },
+              },
+            },
+            { $match: { votes_cast: { $gt: 0 } } },
+            { $sort: { votes_cast: -1, full_name: 1 } },
+            { $limit: 5 },
+          ]),
+        ),
+        AuditLog.find(getTenantScopedFilter(req, { user_type: "admin" }))
+          .sort({ createdAt: -1 })
+          .limit(8)
+          .populate("user_id", "full_name email")
+          .lean(),
+        Vote.aggregate(
+          prependTenantMatch(req, [
+            {
+              $match: {
+                createdAt: { $gte: sevenDaysAgo },
+                status: "valid",
+              },
+            },
+            {
+              $group: {
+                _id: {
+                  $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+                },
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { _id: 1 } },
+          ]),
+        ),
+      ]);
+
+      const turnoutSnapshots = await Promise.all(
+        endedSessions.map(async (session) => {
+          const [eligibleStudents, validVotes] = await Promise.all([
+            countEligibleStudents(req, session),
+            Vote.countDocuments(
+              getTenantScopedFilter(req, {
+                session_id: session._id,
+                status: "valid",
+              }),
+            ),
+          ]);
+
+          return {
+            id: session._id,
+            title: session.title,
+            eligible_students: eligibleStudents,
+            valid_votes: validVotes,
+            turnout_percentage:
+              eligibleStudents > 0
+                ? Number(((validVotes / eligibleStudents) * 100).toFixed(2))
+                : 0,
+          };
+        }),
+      );
+
+      const sessionsWithEligiblePool = turnoutSnapshots.filter(
+        (entry) => entry.eligible_students > 0,
+      );
+      const averageTurnout =
+        sessionsWithEligiblePool.length > 0
+          ? Number(
+              (
+                sessionsWithEligiblePool.reduce(
+                  (sum, entry) => sum + entry.turnout_percentage,
+                  0,
+                ) / sessionsWithEligiblePool.length
+              ).toFixed(2),
+            )
+          : 0;
+      const participationRate =
+        totalStudents > 0
+          ? Number(((studentsWhoVoted / totalStudents) * 100).toFixed(2))
+          : 0;
+
+      const responseData = {
+        overview: {
+          total_students: totalStudents,
+          students_who_voted: studentsWhoVoted,
+          total_sessions: totalSessions,
+          total_votes: totalVotes,
+          active_sessions: activeSessions,
+          upcoming_sessions: upcomingSessions,
+          ended_sessions: endedSessions.length,
+          average_turnout: averageTurnout,
+          participation_rate: participationRate,
+        },
+        top_voters: topVoters,
+        recent_activities: recentAuditLogs.map((log) => ({
+          id: log._id,
+          action: log.action,
+          resource: log.resource,
+          status: log.status,
+          timestamp: log.createdAt,
+          user_name: log.user_id?.full_name || log.user_id?.email || "Unknown",
+        })),
+        vote_trend: voteTrend.map((entry) => ({
+          date: entry._id,
+          votes: entry.count,
+        })),
+        turnout_snapshots: turnoutSnapshots.slice(0, 6),
+        cached: false,
+      };
+
+      await cacheService.set(cacheKey, responseData, 120);
+
+      res.json(responseData);
+    } catch (error) {
+      console.error("Get analytics overview error:", error);
+      res.status(500).json({ error: "Failed to get analytics overview" });
+    }
+  }
+
+  /**
    * Get single session by ID
    * GET /api/admin/sessions/:id
    */
@@ -1906,7 +2557,9 @@ class AdminController {
     try {
       const { id } = req.params;
 
-      const session = await VotingSession.findById(id)
+      const session = await VotingSession.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      )
         .populate("candidates", "name position photo_url bio manifesto")
         .lean();
 
@@ -1922,74 +2575,24 @@ class AdminController {
         eligibleStudents,
         votesByCandidate,
       ] = await Promise.all([
-        Vote.countDocuments({ session_id: id, status: "valid" }),
-        Vote.countDocuments({ session_id: id, status: "duplicate" }),
-        Vote.countDocuments({ session_id: id, status: "rejected" }),
-        (async () => {
-          const eligibilityFilter = { is_active: true };
-
-          if (session.eligible_college) {
-            eligibilityFilter.college = session.eligible_college;
-          }
-
-          // Convert department IDs to department names
-          if (
-            session.eligible_departments &&
-            session.eligible_departments.length > 0
-          ) {
-            const College = require("../models/College");
-            const colleges = await College.find({})
-              .select("departments")
-              .lean();
-            const departmentNames = [];
-
-            colleges.forEach((college) => {
-              college.departments.forEach((dept) => {
-                if (
-                  session.eligible_departments.includes(dept._id.toString())
-                ) {
-                  departmentNames.push(dept.name);
-                }
-              });
-            });
-
-            if (departmentNames.length > 0) {
-              eligibilityFilter.department = { $in: departmentNames };
-            }
-          }
-
-          if (session.eligible_levels && session.eligible_levels.length > 0) {
-            eligibilityFilter.level = { $in: session.eligible_levels };
-          }
-
-          return await Student.countDocuments(eligibilityFilter);
-        })(),
-        Vote.aggregate([
-          {
-            $match: {
-              session_id: new mongoose.Types.ObjectId(id),
-              status: "valid",
-            },
-          },
-          {
-            $group: {
-              _id: "$candidate_id",
-              count: { $sum: 1 },
-            },
-          },
-        ]),
+        Vote.countDocuments(
+          getTenantScopedFilter(req, { session_id: id, status: "valid" }),
+        ),
+        Vote.countDocuments(
+          getTenantScopedFilter(req, { session_id: id, status: "duplicate" }),
+        ),
+        Vote.countDocuments(
+          getTenantScopedFilter(req, { session_id: id, status: "rejected" }),
+        ),
+        countEligibleStudents(req, session),
+        getVotesByCandidate(req, id),
       ]);
 
-      // Add vote counts to candidates
-      const candidatesWithVotes = session.candidates.map((candidate) => {
-        const voteData = votesByCandidate.find(
-          (v) => v._id.toString() === candidate._id.toString(),
-        );
-        return {
-          ...candidate,
-          vote_count: voteData ? voteData.count : 0,
-        };
-      });
+      const candidatesWithVotes = mapCandidatesWithVoteCounts(
+        session.candidates,
+        votesByCandidate,
+        totalVotes,
+      );
 
       res.json({
         session: {
@@ -2022,7 +2625,7 @@ class AdminController {
       const { id } = req.params;
 
       // Try cache first (2 minute TTL for session stats)
-      const cacheKey = `admin:session_stats:${id}`;
+      const cacheKey = buildTenantCacheKey(req, `admin:session_stats:${id}`);
       const cachedStats = await cacheService.get(cacheKey);
 
       if (cachedStats) {
@@ -2033,7 +2636,9 @@ class AdminController {
       }
 
       // Cache miss - query database
-      const session = await VotingSession.findById(id)
+      const session = await VotingSession.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      )
         .populate("candidates", "name position photo_url")
         .lean();
 
@@ -2042,51 +2647,32 @@ class AdminController {
       }
 
       // Run all stat queries in parallel
-      const [totalVotes, duplicateAttempts, rejectedVotes, eligibleStudents] =
+      const [
+        totalVotes,
+        duplicateAttempts,
+        rejectedVotes,
+        eligibleStudents,
+        votesByCandidate,
+      ] =
         await Promise.all([
-          Vote.countDocuments({ session_id: id, status: "valid" }),
-          Vote.countDocuments({ session_id: id, status: "duplicate" }),
-          Vote.countDocuments({ session_id: id, status: "rejected" }),
-          (async () => {
-            const eligibilityFilter = { is_active: true };
-
-            if (session.eligible_college) {
-              eligibilityFilter.college = session.eligible_college;
-            }
-
-            // Convert department IDs to department names
-            if (
-              session.eligible_departments &&
-              session.eligible_departments.length > 0
-            ) {
-              const College = require("../models/College");
-              const colleges = await College.find({})
-                .select("departments")
-                .lean();
-              const departmentNames = [];
-
-              colleges.forEach((college) => {
-                college.departments.forEach((dept) => {
-                  if (
-                    session.eligible_departments.includes(dept._id.toString())
-                  ) {
-                    departmentNames.push(dept.name);
-                  }
-                });
-              });
-
-              if (departmentNames.length > 0) {
-                eligibilityFilter.department = { $in: departmentNames };
-              }
-            }
-
-            if (session.eligible_levels && session.eligible_levels.length > 0) {
-              eligibilityFilter.level = { $in: session.eligible_levels };
-            }
-
-            return await Student.countDocuments(eligibilityFilter);
-          })(),
+          Vote.countDocuments(
+            getTenantScopedFilter(req, { session_id: id, status: "valid" }),
+          ),
+          Vote.countDocuments(
+            getTenantScopedFilter(req, { session_id: id, status: "duplicate" }),
+          ),
+          Vote.countDocuments(
+            getTenantScopedFilter(req, { session_id: id, status: "rejected" }),
+          ),
+          countEligibleStudents(req, session),
+          getVotesByCandidate(req, id),
         ]);
+
+      const candidatesWithVotes = mapCandidatesWithVoteCounts(
+        session.candidates,
+        votesByCandidate,
+        totalVotes,
+      );
 
       const responseData = {
         session: {
@@ -2104,7 +2690,7 @@ class AdminController {
               ? ((totalVotes / eligibleStudents) * 100).toFixed(2)
               : 0,
         },
-        candidates: session.candidates,
+        candidates: candidatesWithVotes,
         cached: false,
       };
 
@@ -2115,6 +2701,90 @@ class AdminController {
     } catch (error) {
       console.error("Get session stats error:", error);
       res.status(500).json({ error: "Failed to get session stats" });
+    }
+  }
+
+  /**
+   * Get advanced session analytics
+   * GET /api/admin/analytics/sessions/:id
+   */
+  async getAdvancedSessionAnalytics(req, res) {
+    try {
+      const { id } = req.params;
+      const cacheKey = buildTenantCacheKey(req, `admin:advanced_session_stats:${id}`);
+      const cachedStats = await cacheService.get(cacheKey);
+
+      if (cachedStats) {
+        return res.json({
+          ...cachedStats,
+          cached: true,
+        });
+      }
+
+      const session = await VotingSession.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      )
+        .populate("candidates", "name position photo_url bio manifesto")
+        .lean();
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      const [
+        totalVotes,
+        duplicateAttempts,
+        rejectedVotes,
+        eligibleStudents,
+        votesByCandidate,
+      ] = await Promise.all([
+        Vote.countDocuments(
+          getTenantScopedFilter(req, { session_id: id, status: "valid" }),
+        ),
+        Vote.countDocuments(
+          getTenantScopedFilter(req, { session_id: id, status: "duplicate" }),
+        ),
+        Vote.countDocuments(
+          getTenantScopedFilter(req, { session_id: id, status: "rejected" }),
+        ),
+        countEligibleStudents(req, session),
+        getVotesByCandidate(req, id),
+      ]);
+
+      const candidates = mapCandidatesWithVoteCounts(
+        session.candidates,
+        votesByCandidate,
+        totalVotes,
+      ).sort((left, right) => right.vote_count - left.vote_count);
+
+      const responseData = {
+        session: {
+          id: session._id,
+          title: session.title,
+          status: session.status,
+          start_time: session.start_time,
+          end_time: session.end_time,
+        },
+        stats: {
+          eligible_students: eligibleStudents,
+          total_votes: totalVotes,
+          duplicate_attempts: duplicateAttempts,
+          rejected_votes: rejectedVotes,
+          turnout_percentage:
+            eligibleStudents > 0
+              ? ((totalVotes / eligibleStudents) * 100).toFixed(2)
+              : 0,
+        },
+        candidates,
+        cached: false,
+      };
+
+      await cacheService.set(cacheKey, responseData, 120);
+
+      res.json(responseData);
+    } catch (error) {
+      console.error("Get advanced session analytics error:", error);
+      res.status(500).json({ error: "Failed to get advanced session analytics" });
     }
   }
 

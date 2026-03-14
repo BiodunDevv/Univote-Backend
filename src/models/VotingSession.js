@@ -2,6 +2,12 @@ const mongoose = require("mongoose");
 
 const votingSessionSchema = new mongoose.Schema(
   {
+    tenant_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      default: null,
+      index: true,
+    },
     title: {
       type: String,
       required: true,
@@ -85,6 +91,7 @@ votingSessionSchema.index({ status: 1, start_time: 1, end_time: 1 });
 votingSessionSchema.index({ createdAt: -1 });
 votingSessionSchema.index({ start_time: -1 });
 votingSessionSchema.index({ status: 1, createdAt: -1 });
+votingSessionSchema.index({ tenant_id: 1, status: 1, start_time: 1 });
 
 // Virtual to check if session is currently active
 votingSessionSchema.virtual("is_active").get(function () {

@@ -2,6 +2,12 @@ const mongoose = require("mongoose");
 
 const voteSchema = new mongoose.Schema(
   {
+    tenant_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      default: null,
+      index: true,
+    },
     student_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Student",
@@ -73,10 +79,11 @@ voteSchema.index({ session_id: 1, status: 1 });
 voteSchema.index({ session_id: 1, status: 1, position: 1 }); // For aggregation queries
 voteSchema.index({ status: 1, createdAt: -1 });
 voteSchema.index({ student_id: 1, status: 1, createdAt: -1 });
+voteSchema.index({ tenant_id: 1, session_id: 1, status: 1 });
 
 // Ensure student can only vote once per session per position
 voteSchema.index(
-  { student_id: 1, session_id: 1, position: 1 },
+  { tenant_id: 1, student_id: 1, session_id: 1, position: 1 },
   { unique: true },
 );
 

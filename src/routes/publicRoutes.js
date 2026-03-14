@@ -1,0 +1,115 @@
+const express = require("express");
+const { body } = require("express-validator");
+const publicController = require("../controllers/publicController");
+const { apiLimiter } = require("../middleware/rateLimiter");
+const validate = require("../middleware/validator");
+
+const router = express.Router();
+
+/**
+ * @swagger
+ * /public/landing:
+ *   get:
+ *     summary: Get public landing page data
+ *     tags: [Public]
+ *     responses:
+ *       200:
+ *         description: Public landing data retrieved successfully
+ */
+router.get("/landing", apiLimiter, publicController.getLandingData);
+router.get("/organizations", apiLimiter, publicController.listOrganizations);
+router.get("/organizations/:slug", apiLimiter, publicController.getOrganizationBySlug);
+
+/**
+ * @swagger
+ * /public/testimonials:
+ *   get:
+ *     summary: Get published testimonials
+ *     tags: [Public]
+ *     responses:
+ *       200:
+ *         description: Published testimonials retrieved successfully
+ */
+router.get("/testimonials", apiLimiter, publicController.listTestimonials);
+
+/**
+ * @swagger
+ * /public/tenant-applications:
+ *   post:
+ *     summary: Submit tenant application
+ *     tags: [Public]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [institution_name, slug, contact_name, contact_email]
+ *             properties:
+ *               institution_name:
+ *                 type: string
+ *               slug:
+ *                 type: string
+ *               primary_domain:
+ *                 type: string
+ *               plan_code:
+ *                 type: string
+ *                 enum: [pro, pro_plus, enterprise]
+ *               contact_name:
+ *                 type: string
+ *               contact_email:
+ *                 type: string
+ *                 format: email
+ *               contact_phone:
+ *                 type: string
+ *               institution_type:
+ *                 type: string
+ *                 enum: [university, college, polytechnic, faculty, organization]
+ *               student_count_estimate:
+ *                 type: integer
+ *               admin_count_estimate:
+ *                 type: integer
+ *               notes:
+ *                 type: string
+ *               demo_requested:
+ *                 type: boolean
+ *     responses:
+ *       201:
+ *         description: Tenant application submitted successfully
+ */
+router.post(
+  "/tenant-applications",
+  apiLimiter,
+  [
+    body("institution_name").notEmpty().withMessage("Institution name is required"),
+    body("slug")
+      .matches(/^[a-z0-9-]+$/)
+      .withMessage("Tenant slug must contain only lowercase letters, numbers, and hyphens"),
+    body("contact_name").notEmpty().withMessage("Contact name is required"),
+    body("contact_email").isEmail().withMessage("Contact email must be valid"),
+    body("plan_code")
+      .optional()
+      .isIn(["pro", "pro_plus", "enterprise"])
+      .withMessage("Valid plan code is required"),
+    body("institution_type")
+      .optional()
+      .isIn(["university", "college", "polytechnic", "faculty", "organization"])
+      .withMessage("Valid institution type is required"),
+    body("student_count_estimate")
+      .optional({ nullable: true, checkFalsy: true })
+      .isInt({ min: 0 })
+      .withMessage("Student estimate must be zero or greater"),
+    body("admin_count_estimate")
+      .optional({ nullable: true, checkFalsy: true })
+      .isInt({ min: 0 })
+      .withMessage("Admin estimate must be zero or greater"),
+    body("demo_requested")
+      .optional()
+      .isBoolean()
+      .withMessage("demo_requested must be boolean"),
+    validate,
+  ],
+  publicController.submitTenantApplication,
+);
+
+module.exports = router;

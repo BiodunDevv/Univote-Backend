@@ -1,6 +1,41 @@
 const College = require("../models/College");
 const Student = require("../models/Student");
 const cacheService = require("../services/cacheService");
+const {
+  getTenantScopedFilter,
+  assignTenantId,
+  getTenantCacheNamespace,
+  prependTenantMatch,
+} = require("../utils/tenantScope");
+
+function buildTenantCollegeCacheKey(req, key) {
+  return `${key}:${getTenantCacheNamespace(req)}`;
+}
+
+async function invalidateCollegeCaches(req, collegeId = null) {
+  const tenantNamespace = getTenantCacheNamespace(req);
+
+  const operations = [
+    cacheService.delPattern(`admin:colleges:all:${tenantNamespace}:*`),
+    cacheService.del(buildTenantCollegeCacheKey(req, "admin:college_statistics")),
+    cacheService.del(buildTenantCollegeCacheKey(req, "admin:departments:overview")),
+    cacheService.delPattern(`admin:departments:${tenantNamespace}:*`),
+    // Legacy cleanup during migration.
+    cacheService.delPattern("admin:colleges:all:*"),
+    cacheService.del("admin:college_statistics"),
+  ];
+
+  if (collegeId) {
+    operations.push(
+      cacheService.del(buildTenantCollegeCacheKey(req, `admin:college:${collegeId}`)),
+      cacheService.del(buildTenantCollegeCacheKey(req, `admin:college_stats:${collegeId}`)),
+      cacheService.del(`admin:college:${collegeId}`),
+      cacheService.del(`admin:college_stats:${collegeId}`),
+    );
+  }
+
+  await Promise.all(operations);
+}
 
 class CollegeController {
   /**
@@ -21,6 +56,7 @@ class CollegeController {
 
       // Check if college already exists
       const existingCollege = await College.findOne({
+        ...getTenantScopedFilter(req, {}),
         $or: [{ name: name }, { code: code.toUpperCase() }],
       });
 
@@ -44,6 +80,7 @@ class CollegeController {
 
       // Create college
       const college = new College({
+        ...assignTenantId(req, {}),
         name,
         code: code.toUpperCase(),
         description: description || "",
@@ -56,8 +93,7 @@ class CollegeController {
       await college.save();
 
       // Invalidate cached college data
-      await cacheService.del("admin:colleges:all");
-      await cacheService.del("admin:college_statistics");
+      await invalidateCollegeCaches(req, college._id.toString());
 
       res.status(201).json({
         message: "College created successfully",
@@ -78,9 +114,10 @@ class CollegeController {
       const { is_active, include_departments = "true" } = req.query;
 
       // Try cache first (5 minute TTL)
-      const cacheKey = `admin:colleges:all:${
-        is_active || "all"
-      }:${include_departments}`;
+      const cacheKey = buildTenantCollegeCacheKey(
+        req,
+        `admin:colleges:all:${is_active || "all"}:${include_departments}`,
+      );
       const cachedColleges = await cacheService.get(cacheKey);
 
       if (cachedColleges) {
@@ -90,7 +127,7 @@ class CollegeController {
         });
       }
 
-      const filter = {};
+      const filter = getTenantScopedFilter(req, {});
       if (is_active !== undefined) {
         filter.is_active = is_active === "true";
       }
@@ -107,14 +144,16 @@ class CollegeController {
       }
 
       // Get all student counts in one aggregation query
-      const studentCounts = await Student.aggregate([
-        {
-          $group: {
-            _id: { college: "$college", department: "$department" },
-            count: { $sum: 1 },
+      const studentCounts = await Student.aggregate(
+        prependTenantMatch(req, [
+          {
+            $group: {
+              _id: { college: "$college", department: "$department" },
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]);
+        ]),
+      );
 
       // Create lookup maps for fast access
       const collegeCountMap = {};
@@ -173,7 +212,7 @@ class CollegeController {
       const { id } = req.params;
 
       // Try cache first (5 minute TTL)
-      const cacheKey = `admin:college:${id}`;
+      const cacheKey = buildTenantCollegeCacheKey(req, `admin:college:${id}`);
       const cachedCollege = await cacheService.get(cacheKey);
 
       if (cachedCollege) {
@@ -183,24 +222,28 @@ class CollegeController {
         });
       }
 
-      const college = await College.findById(id).lean();
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      ).lean();
 
       if (!college) {
         return res.status(404).json({ error: "College not found" });
       }
 
       // Get student counts in one aggregation query
-      const studentCounts = await Student.aggregate([
-        {
-          $match: { college: college.name },
-        },
-        {
-          $group: {
-            _id: "$department",
-            count: { $sum: 1 },
+      const studentCounts = await Student.aggregate(
+        prependTenantMatch(req, [
+          {
+            $match: { college: college.name },
           },
-        },
-      ]);
+          {
+            $group: {
+              _id: "$department",
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+      );
 
       // Create department count map
       const deptCountMap = {};
@@ -245,7 +288,9 @@ class CollegeController {
       const { name, code, description, dean_name, dean_email, is_active } =
         req.body;
 
-      const college = await College.findById(id);
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      );
 
       if (!college) {
         return res.status(404).json({ error: "College not found" });
@@ -257,13 +302,15 @@ class CollegeController {
         if (name) duplicateQuery.name = name;
         if (code) duplicateQuery.code = code.toUpperCase();
 
-        const duplicate = await College.findOne({
-          _id: { $ne: id },
-          $or: [
-            ...(name ? [{ name }] : []),
-            ...(code ? [{ code: code.toUpperCase() }] : []),
-          ],
-        });
+        const duplicate = await College.findOne(
+          getTenantScopedFilter(req, {
+            _id: { $ne: id },
+            $or: [
+              ...(name ? [{ name }] : []),
+              ...(code ? [{ code: code.toUpperCase() }] : []),
+            ],
+          }),
+        );
 
         if (duplicate) {
           return res.status(409).json({
@@ -283,10 +330,7 @@ class CollegeController {
       await college.save();
 
       // Invalidate cached college data
-      await cacheService.delPattern("admin:colleges:all:*");
-      await cacheService.del(`admin:college:${id}`);
-      await cacheService.del(`admin:college_stats:${id}`);
-      await cacheService.del("admin:college_statistics");
+      await invalidateCollegeCaches(req, id);
 
       res.json({
         message: "College updated successfully",
@@ -307,16 +351,20 @@ class CollegeController {
       const { id } = req.params;
       const { force = "false" } = req.query;
 
-      const college = await College.findById(id);
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      );
 
       if (!college) {
         return res.status(404).json({ error: "College not found" });
       }
 
       // Check if college has students
-      const studentCount = await Student.countDocuments({
-        college: college.name,
-      });
+      const studentCount = await Student.countDocuments(
+        getTenantScopedFilter(req, {
+          college: college.name,
+        }),
+      );
 
       if (studentCount > 0 && force !== "true") {
         return res.status(400).json({
@@ -327,17 +375,16 @@ class CollegeController {
 
       // If force delete, remove all students in this college
       if (force === "true" && studentCount > 0) {
-        await Student.deleteMany({ college: college.name });
+        await Student.deleteMany(
+          getTenantScopedFilter(req, { college: college.name }),
+        );
         console.log(`Deleted ${studentCount} students from ${college.name}`);
       }
 
-      await College.findByIdAndDelete(id);
+      await College.findOneAndDelete(getTenantScopedFilter(req, { _id: id }));
 
       // Invalidate cached college data
-      await cacheService.delPattern("admin:colleges:all:*");
-      await cacheService.del(`admin:college:${id}`);
-      await cacheService.del(`admin:college_stats:${id}`);
-      await cacheService.del("admin:college_statistics");
+      await invalidateCollegeCaches(req, id);
 
       res.json({
         message:
@@ -373,7 +420,9 @@ class CollegeController {
         });
       }
 
-      const college = await College.findById(id);
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      );
 
       if (!college) {
         return res.status(404).json({ error: "College not found" });
@@ -406,9 +455,7 @@ class CollegeController {
       await college.save();
 
       // Invalidate cached college data
-      await cacheService.delPattern("admin:colleges:all:*");
-      await cacheService.del(`admin:college:${id}`);
-      await cacheService.del("admin:college_statistics");
+      await invalidateCollegeCaches(req, id);
 
       const addedDept = college.departments[college.departments.length - 1];
 
@@ -435,24 +482,28 @@ class CollegeController {
     try {
       const { id } = req.params;
 
-      const college = await College.findById(id).lean();
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      ).lean();
 
       if (!college) {
         return res.status(404).json({ error: "College not found" });
       }
 
       // Get student counts for all departments in one query
-      const studentCounts = await Student.aggregate([
-        {
-          $match: { college: college.name },
-        },
-        {
-          $group: {
-            _id: "$department",
-            count: { $sum: 1 },
+      const studentCounts = await Student.aggregate(
+        prependTenantMatch(req, [
+          {
+            $match: { college: college.name },
           },
-        },
-      ]);
+          {
+            $group: {
+              _id: "$department",
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+      );
 
       // Create department count map
       const deptCountMap = {};
@@ -488,7 +539,9 @@ class CollegeController {
     try {
       const { collegeId, deptId } = req.params;
 
-      const college = await College.findById(collegeId);
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: collegeId }),
+      );
 
       if (!college) {
         return res.status(404).json({ error: "College not found" });
@@ -501,10 +554,12 @@ class CollegeController {
       }
 
       // Update student count
-      department.student_count = await Student.countDocuments({
-        college: college.name,
-        department: department.name,
-      });
+      department.student_count = await Student.countDocuments(
+        getTenantScopedFilter(req, {
+          college: college.name,
+          department: department.name,
+        }),
+      );
 
       await college.save();
 
@@ -539,7 +594,9 @@ class CollegeController {
         is_active,
       } = req.body;
 
-      const college = await College.findById(collegeId);
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: collegeId }),
+      );
 
       if (!college) {
         return res.status(404).json({ error: "College not found" });
@@ -580,9 +637,7 @@ class CollegeController {
       await college.save();
 
       // Invalidate cached college data
-      await cacheService.delPattern("admin:colleges:all:*");
-      await cacheService.del(`admin:college:${collegeId}`);
-      await cacheService.del("admin:college_statistics");
+      await invalidateCollegeCaches(req, collegeId);
 
       res.json({
         message: "Department updated successfully",
@@ -603,7 +658,9 @@ class CollegeController {
       const { collegeId, deptId } = req.params;
       const { force = "false" } = req.query;
 
-      const college = await College.findById(collegeId);
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: collegeId }),
+      );
 
       if (!college) {
         return res.status(404).json({ error: "College not found" });
@@ -616,10 +673,12 @@ class CollegeController {
       }
 
       // Check if department has students
-      const studentCount = await Student.countDocuments({
-        college: college.name,
-        department: department.name,
-      });
+      const studentCount = await Student.countDocuments(
+        getTenantScopedFilter(req, {
+          college: college.name,
+          department: department.name,
+        }),
+      );
 
       if (studentCount > 0 && force !== "true") {
         return res.status(400).json({
@@ -630,10 +689,12 @@ class CollegeController {
 
       // If force delete, remove all students in this department
       if (force === "true" && studentCount > 0) {
-        await Student.deleteMany({
-          college: college.name,
-          department: department.name,
-        });
+        await Student.deleteMany(
+          getTenantScopedFilter(req, {
+            college: college.name,
+            department: department.name,
+          }),
+        );
         console.log(`Deleted ${studentCount} students from ${department.name}`);
       }
 
@@ -647,9 +708,7 @@ class CollegeController {
       await college.save();
 
       // Invalidate cached college data
-      await cacheService.delPattern("admin:colleges:all:*");
-      await cacheService.del(`admin:college:${collegeId}`);
-      await cacheService.del("admin:college_statistics");
+      await invalidateCollegeCaches(req, collegeId);
 
       res.json({
         message:
@@ -672,7 +731,7 @@ class CollegeController {
   async getCollegeStatistics(req, res) {
     try {
       // Try cache first (10 minute TTL)
-      const cacheKey = "admin:college_statistics";
+      const cacheKey = buildTenantCollegeCacheKey(req, "admin:college_statistics");
       const cachedStats = await cacheService.get(cacheKey);
 
       if (cachedStats) {
@@ -682,19 +741,23 @@ class CollegeController {
         });
       }
 
-      const colleges = await College.find({}).lean();
+      const colleges = await College.find(getTenantScopedFilter(req, {})).lean();
 
       // Get all student counts in one aggregation
-      const studentCounts = await Student.aggregate([
-        {
-          $group: {
-            _id: "$college",
-            count: { $sum: 1 },
+      const studentCounts = await Student.aggregate(
+        prependTenantMatch(req, [
+          {
+            $group: {
+              _id: "$college",
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]);
+        ]),
+      );
 
-      const totalStudents = await Student.countDocuments();
+      const totalStudents = await Student.countDocuments(
+        getTenantScopedFilter(req, {}),
+      );
 
       // Create college count map
       const collegeCountMap = {};
@@ -753,7 +816,7 @@ class CollegeController {
     try {
       const { id } = req.params;
 
-      const cacheKey = `admin:college_stats:${id}`;
+      const cacheKey = buildTenantCollegeCacheKey(req, `admin:college_stats:${id}`);
       const cachedStats = await cacheService.get(cacheKey);
 
       if (cachedStats) {
@@ -763,7 +826,9 @@ class CollegeController {
         });
       }
 
-      const college = await College.findById(id).lean();
+      const college = await College.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      ).lean();
       if (!college) {
         return res.status(404).json({ error: "College not found" });
       }
@@ -777,16 +842,18 @@ class CollegeController {
 
           const [totalStudents, activeStudents, levelDistributionRaw] =
             await Promise.all([
-              Student.countDocuments(studentFilter),
+              Student.countDocuments(getTenantScopedFilter(req, studentFilter)),
               Student.countDocuments({
-                ...studentFilter,
+                ...getTenantScopedFilter(req, studentFilter),
                 is_active: true,
               }),
-              Student.aggregate([
-                { $match: studentFilter },
-                { $group: { _id: "$level", count: { $sum: 1 } } },
-                { $sort: { _id: 1 } },
-              ]),
+              Student.aggregate(
+                prependTenantMatch(req, [
+                  { $match: studentFilter },
+                  { $group: { _id: "$level", count: { $sum: 1 } } },
+                  { $sort: { _id: 1 } },
+                ]),
+              ),
             ]);
 
           const level_distribution = levelDistributionRaw.reduce(
@@ -859,7 +926,7 @@ class CollegeController {
         filter._id = college_id;
       }
 
-      const colleges = await College.find(filter);
+      const colleges = await College.find(getTenantScopedFilter(req, filter));
       const results = [];
 
       for (const college of colleges) {
@@ -903,18 +970,20 @@ class CollegeController {
         collegeFilter._id = college_id;
       }
 
-      const colleges = await College.find(collegeFilter)
+      const colleges = await College.find(getTenantScopedFilter(req, collegeFilter))
         .select("name code departments")
         .lean();
 
-      const studentCounts = await Student.aggregate([
-        {
-          $group: {
-            _id: { college: "$college", department: "$department" },
-            count: { $sum: 1 },
+      const studentCounts = await Student.aggregate(
+        prependTenantMatch(req, [
+          {
+            $group: {
+              _id: { college: "$college", department: "$department" },
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]);
+        ]),
+      );
 
       const deptCountMap = {};
       studentCounts.forEach((item) => {
@@ -987,18 +1056,22 @@ class CollegeController {
   async getDepartmentOverview(req, res) {
     try {
       const [colleges, totalStudents] = await Promise.all([
-        College.find({}).select("name code departments").lean(),
-        Student.countDocuments({}),
+        College.find(getTenantScopedFilter(req, {}))
+          .select("name code departments")
+          .lean(),
+        Student.countDocuments(getTenantScopedFilter(req, {})),
       ]);
 
-      const studentCounts = await Student.aggregate([
-        {
-          $group: {
-            _id: { college: "$college", department: "$department" },
-            count: { $sum: 1 },
+      const studentCounts = await Student.aggregate(
+        prependTenantMatch(req, [
+          {
+            $group: {
+              _id: { college: "$college", department: "$department" },
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]);
+        ]),
+      );
 
       const deptCountMap = {};
       studentCounts.forEach((item) => {

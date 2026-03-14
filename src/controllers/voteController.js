@@ -3,10 +3,17 @@ const Student = require("../models/Student");
 const VotingSession = require("../models/VotingSession");
 const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
-const faceppService = require("../services/faceppService");
+const College = require("../models/College");
+const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
 const { isWithinGeofence, isValidCoordinates } = require("../utils/geofence");
 const cacheService = require("../services/cacheService");
+const {
+  getTenantScopedFilter,
+  getTenantCacheNamespace,
+  assignTenantId,
+} = require("../utils/tenantScope");
+const { getTenantEligibilityPolicy } = require("../utils/tenantSettings");
 
 class VoteController {
   /**
@@ -22,6 +29,7 @@ class VoteController {
     try {
       const { session_id, choices, image_url, lat, lng, device_id } = req.body;
       const studentId = req.studentId;
+      const tenantNamespace = getTenantCacheNamespace(req);
 
       // Validate required fields
       if (
@@ -42,7 +50,7 @@ class VoteController {
       }
 
       // ATOMIC VOTE LOCK - Prevent duplicate votes with Redis
-      voteLockKey = `vote_lock:${session_id}:${studentId}`;
+      voteLockKey = `vote_lock:${tenantNamespace}:${session_id}:${studentId}`;
       voteLockAcquired = await cacheService.setNX(
         voteLockKey,
         Date.now(),
@@ -58,7 +66,9 @@ class VoteController {
       }
 
       // Get student
-      const student = await Student.findById(studentId);
+      const student = await Student.findOne(
+        getTenantScopedFilter(req, { _id: studentId }),
+      );
       if (!student) {
         await mongoSession.abortTransaction();
         // Release lock on error
@@ -67,8 +77,9 @@ class VoteController {
       }
 
       // Get session
-      const session =
-        await VotingSession.findById(session_id).populate("candidates");
+      const session = await VotingSession.findOne(
+        getTenantScopedFilter(req, { _id: session_id }),
+      ).populate("candidates");
       if (!session) {
         await mongoSession.abortTransaction();
         // Release lock on error
@@ -100,7 +111,10 @@ class VoteController {
       }
 
       // Check eligibility (college, department, level)
+      const eligibilityPolicy = getTenantEligibilityPolicy(req.tenant);
+
       if (
+        eligibilityPolicy.college &&
         session.eligible_college &&
         student.college !== session.eligible_college
       ) {
@@ -114,11 +128,13 @@ class VoteController {
 
       // Check department eligibility (convert IDs to names)
       if (
+        eligibilityPolicy.department &&
         session.eligible_departments &&
         session.eligible_departments.length > 0
       ) {
-        const College = require("../models/College");
-        const colleges = await College.find({}).select("departments").lean();
+        const colleges = await College.find(getTenantScopedFilter(req, {}))
+          .select("departments")
+          .lean();
         const departmentNames = [];
 
         colleges.forEach((college) => {
@@ -139,7 +155,11 @@ class VoteController {
         }
       }
 
-      if (session.eligible_levels && session.eligible_levels.length > 0) {
+      if (
+        eligibilityPolicy.level &&
+        session.eligible_levels &&
+        session.eligible_levels.length > 0
+      ) {
         if (!session.eligible_levels.includes(student.level)) {
           await mongoSession.abortTransaction();
           await cacheService.del(voteLockKey);
@@ -187,7 +207,7 @@ class VoteController {
       }
 
       // Verify face matches registered face
-      const faceVerification = await faceppService.verifyFace(
+      const faceVerification = await faceProviderService.verifyFace(
         student.face_token,
         image_url,
       );
@@ -226,6 +246,7 @@ class VoteController {
       // Verify all candidates exist and belong to this session
       const candidateIds = choices.map((c) => c.candidate_id);
       const candidates = await Candidate.find({
+        ...getTenantScopedFilter(req, {}),
         _id: { $in: candidateIds },
         session_id: session_id,
       });
@@ -254,14 +275,14 @@ class VoteController {
         }
 
         // Increment vote count atomically
-        await Candidate.findByIdAndUpdate(
-          choice.candidate_id,
+        await Candidate.updateOne(
+          getTenantScopedFilter(req, { _id: choice.candidate_id }),
           { $inc: { vote_count: 1 } },
           { session: mongoSession },
         );
 
         // Create vote record
-        const voteRecord = {
+        const voteRecord = assignTenantId(req, {
           student_id: studentId,
           session_id: session_id,
           candidate_id: choice.candidate_id,
@@ -273,7 +294,7 @@ class VoteController {
           status: "valid",
           device_id: device_id || null,
           ip_address: req.ip,
-        };
+        });
 
         voteRecords.push(voteRecord);
         voteDetails.push({
@@ -289,8 +310,8 @@ class VoteController {
       // The student's face_token is already stored and was verified during this vote
 
       // Add session to student's has_voted_sessions
-      await Student.findByIdAndUpdate(
-        studentId,
+      await Student.updateOne(
+        getTenantScopedFilter(req, { _id: studentId }),
         { $push: { has_voted_sessions: session_id } },
         { session: mongoSession },
       );
@@ -300,21 +321,23 @@ class VoteController {
       // Update Redis counters atomically (after successful commit)
       for (const choice of choices) {
         await cacheService.incr(
-          `vote_count:${session_id}:${choice.candidate_id}`,
+          `vote_count:${tenantNamespace}:${session_id}:${choice.candidate_id}`,
         );
       }
-      await cacheService.incr(`total_votes:${session_id}`);
+      await cacheService.incr(`total_votes:${tenantNamespace}:${session_id}`);
 
       // Invalidate cached results for this session
-      await cacheService.del(`live_results:${session_id}`);
+      await cacheService.del(`live_results:${tenantNamespace}:${session_id}`);
 
       // Invalidate student profile cache (has_voted_sessions changed)
       await cacheService.del(`student:profile:${studentId}`);
-      await cacheService.del(`eligible_sessions:${studentId}`);
+      await cacheService.delPattern(
+        `eligible_sessions:${tenantNamespace}:${studentId}:*`,
+      );
 
       // Send vote confirmation email
       emailService
-        .sendVoteConfirmation(student, session, voteDetails)
+        .sendVoteConfirmation(student, session, voteDetails, req.tenant || null)
         .catch((err) => {
           console.error("Failed to send vote confirmation email:", err);
         });
@@ -347,7 +370,9 @@ class VoteController {
     try {
       const studentId = req.studentId;
 
-      const votes = await Vote.find({ student_id: studentId, status: "valid" })
+      const votes = await Vote.find(
+        getTenantScopedFilter(req, { student_id: studentId, status: "valid" }),
+      )
         .populate("session_id", "title description start_time end_time")
         .populate("candidate_id", "name position photo_url")
         .sort({ timestamp: -1 });
@@ -399,7 +424,7 @@ class VoteController {
     try {
       const { id } = req.params;
 
-      const vote = await Vote.findById(id)
+      const vote = await Vote.findOne(getTenantScopedFilter(req, { _id: id }))
         .populate(
           "student_id",
           "matric_no full_name email college department level",

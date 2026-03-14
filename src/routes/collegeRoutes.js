@@ -2,9 +2,34 @@ const express = require("express");
 const router = express.Router();
 const { body } = require("express-validator");
 const collegeController = require("../controllers/collegeController");
-const { authenticateAdmin, requireSuperAdmin } = require("../middleware/auth");
+const { authenticateAdmin, requireTenantAdmin } = require("../middleware/auth");
+const { requireTenantAccess } = require("../middleware/tenantContext");
+const { isTenantParticipantFieldEnabled } = require("../utils/tenantSettings");
 const validate = require("../middleware/validator");
 const auditLogger = require("../middleware/auditLogger");
+
+const tenantAdminMiddlewares = [
+  authenticateAdmin,
+  requireTenantAccess,
+  requireTenantAdmin,
+];
+
+function requireStructureField(fieldKey) {
+  return (req, res, next) => {
+    if (isTenantParticipantFieldEnabled(req.tenant, fieldKey)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      error: `${fieldKey} is disabled for this tenant`,
+      code: "STRUCTURE_FIELD_DISABLED",
+      field: fieldKey,
+    });
+  };
+}
+
+router.use("/colleges", ...tenantAdminMiddlewares, requireStructureField("college"));
+router.use("/departments", ...tenantAdminMiddlewares, requireStructureField("department"));
 
 /**
  * @swagger
@@ -58,7 +83,7 @@ const auditLogger = require("../middleware/auditLogger");
  */
 router.get(
   "/colleges/statistics",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   collegeController.getCollegeStatistics,
 );
 
@@ -102,19 +127,47 @@ router.get(
  */
 router.get(
   "/departments/search",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   collegeController.searchDepartments,
 );
 
 router.get(
   "/departments",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   collegeController.getAllDepartments,
 );
 
 router.get(
   "/departments/overview",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
+  collegeController.getDepartmentOverview,
+);
+
+router.get(
+  "/structure/colleges/statistics",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
+  collegeController.getCollegeStatistics,
+);
+
+router.get(
+  "/structure/departments/search",
+  ...tenantAdminMiddlewares,
+  requireStructureField("department"),
+  collegeController.searchDepartments,
+);
+
+router.get(
+  "/structure/departments",
+  ...tenantAdminMiddlewares,
+  requireStructureField("department"),
+  collegeController.getAllDepartments,
+);
+
+router.get(
+  "/structure/departments/overview",
+  ...tenantAdminMiddlewares,
+  requireStructureField("department"),
   collegeController.getDepartmentOverview,
 );
 
@@ -123,7 +176,7 @@ router.get(
  * /admin/colleges:
  *   post:
  *     summary: Create a new college
- *     description: Create a college with optional departments. Super admin only.
+ *     description: Create a college with optional departments for the active tenant. Tenant admins and super admins can access this route within tenant context.
  *     tags: [Colleges]
  *     security:
  *       - BearerAuth: []
@@ -181,12 +234,46 @@ router.get(
  *       400:
  *         description: College code/name already exists
  *       403:
- *         description: Super admin access required
+ *         description: Tenant access or permissions required
  */
 router.post(
   "/colleges",
-  authenticateAdmin,
-  requireSuperAdmin,
+  ...tenantAdminMiddlewares,
+  [
+    body("name").notEmpty().withMessage("College name is required"),
+    body("code")
+      .notEmpty()
+      .withMessage("College code is required")
+      .isLength({ min: 3, max: 10 })
+      .withMessage("College code must be 3-10 characters"),
+    body("description").optional().isString(),
+    body("dean_name").optional().isString(),
+    body("dean_email").optional().isEmail().withMessage("Invalid dean email"),
+    body("departments").optional().isArray(),
+    body("departments.*.name")
+      .optional()
+      .notEmpty()
+      .withMessage("Department name is required"),
+    body("departments.*.code")
+      .optional()
+      .notEmpty()
+      .withMessage("Department code is required")
+      .isLength({ min: 2, max: 5 })
+      .withMessage("Department code must be 2-5 characters"),
+    body("departments.*.available_levels")
+      .optional()
+      .isArray()
+      .withMessage("Available levels must be an array"),
+    validate,
+  ],
+  auditLogger("create_college", "colleges"),
+  collegeController.createCollege,
+);
+
+router.post(
+  "/structure/colleges",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
   [
     body("name").notEmpty().withMessage("College name is required"),
     body("code")
@@ -246,7 +333,14 @@ router.post(
  *                   items:
  *                     $ref: '#/components/schemas/College'
  */
-router.get("/colleges", authenticateAdmin, collegeController.getAllColleges);
+router.get("/colleges", ...tenantAdminMiddlewares, collegeController.getAllColleges);
+
+router.get(
+  "/structure/colleges",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
+  collegeController.getAllColleges,
+);
 
 /**
  * @swagger
@@ -278,13 +372,27 @@ router.get("/colleges", authenticateAdmin, collegeController.getAllColleges);
  */
 router.get(
   "/colleges/:id",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
+  collegeController.getCollegeById,
+);
+
+router.get(
+  "/structure/colleges/:id",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
   collegeController.getCollegeById,
 );
 
 router.get(
   "/colleges/:id/stats",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
+  collegeController.getCollegeDetailStats,
+);
+
+router.get(
+  "/structure/colleges/:id/stats",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
   collegeController.getCollegeDetailStats,
 );
 
@@ -293,7 +401,7 @@ router.get(
  * /admin/colleges/{id}:
  *   patch:
  *     summary: Update college
- *     description: Update college details. Super admin only.
+ *     description: Update college details for the active tenant.
  *     tags: [Colleges]
  *     security:
  *       - BearerAuth: []
@@ -330,12 +438,35 @@ router.get(
  *       404:
  *         description: College not found
  *       403:
- *         description: Super admin access required
+ *         description: Tenant access or permissions required
  */
 router.patch(
   "/colleges/:id",
-  authenticateAdmin,
-  requireSuperAdmin,
+  ...tenantAdminMiddlewares,
+  [
+    body("name")
+      .optional()
+      .notEmpty()
+      .withMessage("College name cannot be empty"),
+    body("code")
+      .optional()
+      .isLength({ min: 3, max: 10 })
+      .withMessage("College code must be 3-10 characters"),
+    body("dean_email").optional().isEmail().withMessage("Invalid dean email"),
+    body("is_active")
+      .optional()
+      .isBoolean()
+      .withMessage("is_active must be boolean"),
+    validate,
+  ],
+  auditLogger("update_college", "colleges"),
+  collegeController.updateCollege,
+);
+
+router.patch(
+  "/structure/colleges/:id",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
   [
     body("name")
       .optional()
@@ -361,7 +492,7 @@ router.patch(
  * /admin/colleges/{id}:
  *   delete:
  *     summary: Delete college
- *     description: Permanently delete a college and all its departments. Super admin only.
+ *     description: Permanently delete a college and all its departments for the active tenant.
  *     tags: [Colleges]
  *     security:
  *       - BearerAuth: []
@@ -377,12 +508,19 @@ router.patch(
  *       404:
  *         description: College not found
  *       403:
- *         description: Super admin access required
+ *         description: Tenant access or permissions required
  */
 router.delete(
   "/colleges/:id",
-  authenticateAdmin,
-  requireSuperAdmin,
+  ...tenantAdminMiddlewares,
+  auditLogger("delete_college", "colleges"),
+  collegeController.deleteCollege,
+);
+
+router.delete(
+  "/structure/colleges/:id",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
   auditLogger("delete_college", "colleges"),
   collegeController.deleteCollege,
 );
@@ -392,7 +530,7 @@ router.delete(
  * /admin/colleges/{id}/departments:
  *   post:
  *     summary: Add department to college
- *     description: Add a new department to an existing college. Super admin only.
+ *     description: Add a new department to an existing college for the active tenant.
  *     tags: [Colleges]
  *     security:
  *       - BearerAuth: []
@@ -436,12 +574,36 @@ router.delete(
  *       404:
  *         description: College not found
  *       403:
- *         description: Super admin access required
+ *         description: Tenant access or permissions required
  */
 router.post(
   "/colleges/:id/departments",
-  authenticateAdmin,
-  requireSuperAdmin,
+  ...tenantAdminMiddlewares,
+  [
+    body("name").notEmpty().withMessage("Department name is required"),
+    body("code")
+      .notEmpty()
+      .withMessage("Department code is required")
+      .isLength({ min: 2, max: 5 })
+      .withMessage("Department code must be 2-5 characters"),
+    body("description").optional().isString(),
+    body("hod_name").optional().isString(),
+    body("hod_email").optional().isEmail().withMessage("Invalid HOD email"),
+    body("available_levels")
+      .optional()
+      .isArray()
+      .withMessage("Available levels must be an array"),
+    validate,
+  ],
+  auditLogger("add_department", "departments"),
+  collegeController.addDepartment,
+);
+
+router.post(
+  "/structure/colleges/:id/departments",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
+  requireStructureField("department"),
   [
     body("name").notEmpty().withMessage("Department name is required"),
     body("code")
@@ -495,7 +657,15 @@ router.post(
  */
 router.get(
   "/colleges/:id/departments",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
+  collegeController.getDepartments,
+);
+
+router.get(
+  "/structure/colleges/:id/departments",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
+  requireStructureField("department"),
   collegeController.getDepartments,
 );
 
@@ -534,7 +704,15 @@ router.get(
  */
 router.get(
   "/colleges/:collegeId/departments/:deptId",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
+  collegeController.getDepartmentById,
+);
+
+router.get(
+  "/structure/colleges/:collegeId/departments/:deptId",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
+  requireStructureField("department"),
   collegeController.getDepartmentById,
 );
 
@@ -543,7 +721,7 @@ router.get(
  * /admin/colleges/{collegeId}/departments/{deptId}:
  *   patch:
  *     summary: Update department
- *     description: Update department details. Super admin only.
+ *     description: Update department details for the active tenant.
  *     tags: [Colleges]
  *     security:
  *       - BearerAuth: []
@@ -589,12 +767,40 @@ router.get(
  *       404:
  *         description: College or department not found
  *       403:
- *         description: Super admin access required
+ *         description: Tenant access or permissions required
  */
 router.patch(
   "/colleges/:collegeId/departments/:deptId",
-  authenticateAdmin,
-  requireSuperAdmin,
+  ...tenantAdminMiddlewares,
+  [
+    body("name")
+      .optional()
+      .notEmpty()
+      .withMessage("Department name cannot be empty"),
+    body("code")
+      .optional()
+      .isLength({ min: 2, max: 5 })
+      .withMessage("Department code must be 2-5 characters"),
+    body("hod_email").optional().isEmail().withMessage("Invalid HOD email"),
+    body("available_levels")
+      .optional()
+      .isArray()
+      .withMessage("Available levels must be an array"),
+    body("is_active")
+      .optional()
+      .isBoolean()
+      .withMessage("is_active must be boolean"),
+    validate,
+  ],
+  auditLogger("update_department", "departments"),
+  collegeController.updateDepartment,
+);
+
+router.patch(
+  "/structure/colleges/:collegeId/departments/:deptId",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
+  requireStructureField("department"),
   [
     body("name")
       .optional()
@@ -624,7 +830,7 @@ router.patch(
  * /admin/colleges/{collegeId}/departments/{deptId}:
  *   delete:
  *     summary: Delete department
- *     description: Permanently remove a department from a college. Super admin only.
+ *     description: Permanently remove a department from a college for the active tenant.
  *     tags: [Colleges]
  *     security:
  *       - BearerAuth: []
@@ -645,12 +851,20 @@ router.patch(
  *       404:
  *         description: College or department not found
  *       403:
- *         description: Super admin access required
+ *         description: Tenant access or permissions required
  */
 router.delete(
   "/colleges/:collegeId/departments/:deptId",
-  authenticateAdmin,
-  requireSuperAdmin,
+  ...tenantAdminMiddlewares,
+  auditLogger("delete_department", "departments"),
+  collegeController.deleteDepartment,
+);
+
+router.delete(
+  "/structure/colleges/:collegeId/departments/:deptId",
+  ...tenantAdminMiddlewares,
+  requireStructureField("college"),
+  requireStructureField("department"),
   auditLogger("delete_department", "departments"),
   collegeController.deleteDepartment,
 );

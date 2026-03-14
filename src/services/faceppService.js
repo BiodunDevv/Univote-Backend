@@ -19,6 +19,15 @@ class FacePPService {
     this.confidenceThreshold = FACE_CONFIDENCE_THRESHOLD;
   }
 
+  configure(config = {}) {
+    this.apiKey = config.api_key || FACEPP_API_KEY;
+    this.apiSecret = config.api_secret || FACEPP_API_SECRET;
+    this.baseUrl = config.base_url || FACEPP_BASE_URL;
+    this.confidenceThreshold = Number(
+      config.confidence_threshold || FACE_CONFIDENCE_THRESHOLD,
+    );
+  }
+
   /**
    * Detect face in an image and return face_token
    * @param {string} imageUrl - URL of the image

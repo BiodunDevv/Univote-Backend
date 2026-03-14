@@ -1,7 +1,22 @@
 const jwt = require("jsonwebtoken");
 const Student = require("../models/Student");
 const Admin = require("../models/Admin");
+const { getActiveAdminMembership, hasPermission } = require("../services/tenantAccessService");
 const cacheService = require("../services/cacheService");
+
+function toId(value) {
+  if (!value) return null;
+  return value.toString();
+}
+
+function isTenantMismatch(requestTenantId, tokenTenantId) {
+  if (!requestTenantId || !tokenTenantId) return false;
+  return toId(requestTenantId) !== toId(tokenTenantId);
+}
+
+function isLegacySingleTenantModeEnabled() {
+  return process.env.ALLOW_LEGACY_SINGLE_TENANT !== "false";
+}
 
 /**
  * Middleware to authenticate students using JWT
@@ -22,6 +37,13 @@ const authenticateStudent = async (req, res, next) => {
       // Check if token type is student
       if (decoded.type !== "student") {
         return res.status(403).json({ error: "Invalid token type" });
+      }
+
+      if (isTenantMismatch(req.tenantId, decoded.tenant_id)) {
+        return res.status(403).json({
+          error: "Token does not belong to this tenant",
+          code: "TENANT_MISMATCH",
+        });
       }
 
       // Check Redis session first (fast path)
@@ -67,7 +89,10 @@ const authenticateStudent = async (req, res, next) => {
       }
 
       // Cache miss - Query database (slow path)
-      const student = await Student.findById(decoded.id);
+      const student = await Student.findOne({
+        _id: decoded.id,
+        ...(decoded.tenant_id ? { tenant_id: decoded.tenant_id } : {}),
+      });
 
       if (!student) {
         return res.status(401).json({ error: "Student not found" });
@@ -122,6 +147,7 @@ const authenticateStudent = async (req, res, next) => {
       // Attach student to request
       req.student = student;
       req.studentId = student._id;
+      req.tenantId = req.tenantId || student.tenant_id || null;
       req.token = token;
 
       next();
@@ -165,6 +191,43 @@ const authenticateAdmin = async (req, res, next) => {
 
       if (!admin || !admin.is_active) {
         return res.status(401).json({ error: "Admin not found or inactive" });
+      }
+
+      if (admin.role !== "super_admin") {
+        const tenantId = req.tenantId || decoded.tenant_id;
+
+        if (!tenantId) {
+          if (!isLegacySingleTenantModeEnabled()) {
+            return res.status(400).json({
+              error: "Tenant context is required for tenant admins",
+              code: "TENANT_REQUIRED",
+            });
+          }
+
+          req.adminMembership = {
+            role: "owner",
+            permissions: ["legacy.full_access"],
+            is_legacy: true,
+          };
+        } else {
+          if (isTenantMismatch(req.tenantId, decoded.tenant_id)) {
+            return res.status(403).json({
+              error: "Token does not belong to this tenant",
+              code: "TENANT_MISMATCH",
+            });
+          }
+
+          const membership = await getActiveAdminMembership(admin._id, tenantId);
+          if (!membership) {
+            return res.status(403).json({
+              error: "Tenant admin membership not found",
+              code: "TENANT_MEMBERSHIP_REQUIRED",
+            });
+          }
+
+          req.adminMembership = membership;
+          req.tenantId = tenantId;
+        }
       }
 
       // Attach admin to request
@@ -220,8 +283,18 @@ const authenticateForPasswordChange = async (req, res, next) => {
         return res.status(403).json({ error: "Invalid token type" });
       }
 
+      if (isTenantMismatch(req.tenantId, decoded.tenant_id)) {
+        return res.status(403).json({
+          error: "Token does not belong to this tenant",
+          code: "TENANT_MISMATCH",
+        });
+      }
+
       // Find student
-      const student = await Student.findById(decoded.id);
+      const student = await Student.findOne({
+        _id: decoded.id,
+        ...(decoded.tenant_id ? { tenant_id: decoded.tenant_id } : {}),
+      });
 
       if (!student) {
         return res.status(401).json({ error: "Student not found" });
@@ -237,6 +310,7 @@ const authenticateForPasswordChange = async (req, res, next) => {
       // Attach student to request
       req.student = student;
       req.studentId = student._id;
+      req.tenantId = req.tenantId || student.tenant_id || null;
       req.token = token;
       req.tokenType = decoded.type;
 
@@ -273,7 +347,17 @@ const authenticateStudentOrAdmin = async (req, res, next) => {
 
       // Check if it's a student
       if (decoded.type === "student") {
-        const student = await Student.findById(decoded.id);
+        if (isTenantMismatch(req.tenantId, decoded.tenant_id)) {
+          return res.status(403).json({
+            error: "Token does not belong to this tenant",
+            code: "TENANT_MISMATCH",
+          });
+        }
+
+        const student = await Student.findOne({
+          _id: decoded.id,
+          ...(decoded.tenant_id ? { tenant_id: decoded.tenant_id } : {}),
+        });
         if (!student) {
           return res.status(401).json({ error: "Student not found" });
         }
@@ -295,6 +379,7 @@ const authenticateStudentOrAdmin = async (req, res, next) => {
 
         req.studentId = student._id;
         req.student = student;
+        req.tenantId = req.tenantId || student.tenant_id || null;
         return next();
       }
 
@@ -303,6 +388,35 @@ const authenticateStudentOrAdmin = async (req, res, next) => {
         const admin = await Admin.findById(decoded.id);
         if (!admin || !admin.is_active) {
           return res.status(401).json({ error: "Admin not found or inactive" });
+        }
+
+        if (admin.role !== "super_admin") {
+          const tenantId = req.tenantId || decoded.tenant_id;
+          if (!tenantId) {
+            if (!isLegacySingleTenantModeEnabled()) {
+              return res.status(400).json({
+                error: "Tenant context is required for tenant admins",
+                code: "TENANT_REQUIRED",
+              });
+            }
+
+            req.adminMembership = {
+              role: "owner",
+              permissions: ["legacy.full_access"],
+              is_legacy: true,
+            };
+          } else {
+            const membership = await getActiveAdminMembership(admin._id, tenantId);
+            if (!membership) {
+              return res.status(403).json({
+                error: "Tenant admin membership not found",
+                code: "TENANT_MEMBERSHIP_REQUIRED",
+              });
+            }
+
+            req.adminMembership = membership;
+            req.tenantId = tenantId;
+          }
         }
 
         req.adminId = admin._id;
@@ -323,10 +437,63 @@ const authenticateStudentOrAdmin = async (req, res, next) => {
   }
 };
 
+const requireTenantAdmin = (req, res, next) => {
+  if (!req.admin) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  if (req.admin.role === "super_admin") {
+    return next();
+  }
+
+  if (!req.adminMembership) {
+    return res.status(403).json({
+      error: "Tenant admin membership required",
+      code: "TENANT_MEMBERSHIP_REQUIRED",
+    });
+  }
+
+  next();
+};
+
+const requirePermission = (...permissions) => {
+  return (req, res, next) => {
+    if (!req.admin) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    if (req.admin.role === "super_admin") {
+      return next();
+    }
+
+    if (!req.adminMembership) {
+      return res.status(403).json({
+        error: "Tenant admin membership required",
+        code: "TENANT_MEMBERSHIP_REQUIRED",
+      });
+    }
+
+    const allowed = permissions.some((permission) =>
+      hasPermission(req.adminMembership, permission),
+    );
+
+    if (!allowed) {
+      return res.status(403).json({
+        error: "You do not have permission for this action",
+        code: "INSUFFICIENT_PERMISSIONS",
+      });
+    }
+
+    next();
+  };
+};
+
 module.exports = {
   authenticateStudent,
   authenticateAdmin,
   requireSuperAdmin,
+  requireTenantAdmin,
+  requirePermission,
   authenticateForPasswordChange,
   authenticateStudentOrAdmin,
 };

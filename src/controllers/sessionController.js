@@ -1,8 +1,119 @@
+const mongoose = require("mongoose");
 const VotingSession = require("../models/VotingSession");
 const Student = require("../models/Student");
 const Candidate = require("../models/Candidate");
+const Vote = require("../models/Vote");
+const College = require("../models/College");
+const cacheService = require("../services/cacheService");
+const {
+  getTenantScopedFilter,
+  getTenantCacheNamespace,
+  prependTenantMatch,
+} = require("../utils/tenantScope");
+
+function calculateSessionStatus(session) {
+  const now = new Date();
+
+  if (now < session.start_time) {
+    return "upcoming";
+  }
+
+  if (now >= session.start_time && now <= session.end_time) {
+    return "active";
+  }
+
+  return "ended";
+}
+
+function resolveEligibleDepartmentNames(eligibleDepartmentIds, colleges) {
+  if (!eligibleDepartmentIds || eligibleDepartmentIds.length === 0) {
+    return [];
+  }
+
+  const names = [];
+
+  colleges.forEach((college) => {
+    college.departments.forEach((department) => {
+      if (eligibleDepartmentIds.includes(department._id.toString())) {
+        names.push(department.name);
+      }
+    });
+  });
+
+  return names;
+}
+
+function getSessionEligibility(session, student, colleges) {
+  if (
+    session.eligible_college &&
+    session.eligible_college !== student.college
+  ) {
+    return {
+      eligible: false,
+      reason: "College not eligible",
+    };
+  }
+
+  if (session.eligible_departments && session.eligible_departments.length > 0) {
+    const departmentNames = resolveEligibleDepartmentNames(
+      session.eligible_departments,
+      colleges,
+    );
+
+    if (!departmentNames.includes(student.department)) {
+      return {
+        eligible: false,
+        reason: "Department not eligible",
+      };
+    }
+  }
+
+  if (session.eligible_levels && session.eligible_levels.length > 0) {
+    if (!session.eligible_levels.includes(student.level)) {
+      return {
+        eligible: false,
+        reason: "Level not eligible",
+      };
+    }
+  }
+
+  return {
+    eligible: true,
+    reason: null,
+  };
+}
+
+function buildCandidatesByPosition(candidates) {
+  return candidates.reduce((acc, candidate) => {
+    if (!acc[candidate.position]) {
+      acc[candidate.position] = [];
+    }
+
+    acc[candidate.position].push({
+      id: candidate._id,
+      name: candidate.name,
+      photo_url: candidate.photo_url,
+      bio: candidate.bio,
+      manifesto: candidate.manifesto,
+      vote_count: candidate.vote_count,
+    });
+
+    return acc;
+  }, {});
+}
 
 class SessionController {
+  async getStudentAndCollegeContext(req, studentId) {
+    const [student, colleges] = await Promise.all([
+      Student.findOne(getTenantScopedFilter(req, { _id: studentId })).lean(),
+      College.find(getTenantScopedFilter(req, {}))
+        .select("departments._id departments.name")
+        .lean(),
+    ]);
+
+    return { student, colleges };
+  }
+
   /**
    * Get all eligible sessions for a student
    * GET /api/sessions
@@ -11,10 +122,9 @@ class SessionController {
     try {
       const studentId = req.studentId;
       const { status } = req.query;
-      const cacheService = require("../services/cacheService");
+      const tenantNamespace = getTenantCacheNamespace(req);
 
-      // Try cache first (2 minute TTL)
-      const cacheKey = `eligible_sessions:${studentId}:${status || "all"}`;
+      const cacheKey = `eligible_sessions:${tenantNamespace}:${studentId}:${status || "all"}`;
       const cachedSessions = await cacheService.get(cacheKey);
 
       if (cachedSessions) {
@@ -24,88 +134,43 @@ class SessionController {
         });
       }
 
-      const student = await Student.findById(studentId).lean();
+      const { student, colleges } = await this.getStudentAndCollegeContext(
+        req,
+        studentId,
+      );
+
       if (!student) {
         return res.status(404).json({ error: "Student not found" });
       }
 
-      // Build filter
-      const filter = {};
-
-      // Filter by status if provided
-      if (status) {
-        filter.status = status;
-      }
-
-      // Get all sessions
-      let sessions = await VotingSession.find(filter)
+      const sessionFilter = getTenantScopedFilter(req, status ? { status } : {});
+      const sessions = await VotingSession.find(sessionFilter)
         .populate("candidates", "name position photo_url bio manifesto")
         .sort({ start_time: -1 })
         .lean();
 
-      // Filter eligible sessions (with department ID to name conversion)
-      const eligibleSessions = [];
+      const eligibleSessions = sessions.reduce((acc, rawSession) => {
+        const session = {
+          ...rawSession,
+          status: calculateSessionStatus(rawSession),
+        };
 
-      for (const session of sessions) {
-        // Update session status (calculate based on dates)
-        const now = new Date();
-        if (now < session.start_time) {
-          session.status = "upcoming";
-        } else if (now >= session.start_time && now <= session.end_time) {
-          session.status = "active";
-        } else {
-          session.status = "ended";
+        const { eligible } = getSessionEligibility(session, student, colleges);
+        if (!eligible) {
+          return acc;
         }
 
-        // Check college eligibility
-        if (
-          session.eligible_college &&
-          session.eligible_college !== student.college
-        ) {
-          continue; // Skip this session
-        }
-
-        // Check department eligibility (convert IDs to names)
-        if (
-          session.eligible_departments &&
-          session.eligible_departments.length > 0
-        ) {
-          const College = require("../models/College");
-          const colleges = await College.find({}).select("departments").lean();
-          const departmentNames = [];
-
-          colleges.forEach((college) => {
-            college.departments.forEach((dept) => {
-              if (session.eligible_departments.includes(dept._id.toString())) {
-                departmentNames.push(dept.name);
-              }
-            });
-          });
-
-          // Check if student's department is in the eligible list
-          if (!departmentNames.includes(student.department)) {
-            continue; // Skip this session
-          }
-        }
-
-        // Check level eligibility
-        if (session.eligible_levels && session.eligible_levels.length > 0) {
-          if (!session.eligible_levels.includes(student.level)) {
-            continue; // Skip this session
-          }
-        }
-
-        // Session is eligible - add has_voted flag
-        eligibleSessions.push({
+        acc.push({
           ...session,
           has_voted: student.has_voted_sessions.some(
-            (votedId) => votedId.toString() === session._id.toString()
+            (value) => value.toString() === session._id.toString(),
           ),
           candidate_count: session.candidates.length,
         });
-      }
 
-      // Cache the eligible sessions (2 minute TTL)
+        return acc;
+      }, []);
+
       await cacheService.set(cacheKey, eligibleSessions, 120);
 
       res.json({
@@ -118,133 +183,96 @@ class SessionController {
     }
   }
 
+  async buildSessionResponse(req, sessionId, studentId, cacheSuffix = "") {
+    const tenantNamespace = getTenantCacheNamespace(req);
+    const cacheKey = `session:${tenantNamespace}:${sessionId}:student:${studentId}${cacheSuffix}`;
+    const cachedSession = await cacheService.get(cacheKey);
+
+    if (cachedSession) {
+      return {
+        statusCode: 200,
+        payload: {
+          ...cachedSession,
+          cached: true,
+        },
+      };
+    }
+
+    const [session, context] = await Promise.all([
+      VotingSession.findOne(getTenantScopedFilter(req, { _id: sessionId }))
+        .populate("candidates", "name position photo_url bio manifesto")
+        .lean(),
+      this.getStudentAndCollegeContext(req, studentId),
+    ]);
+
+    if (!session) {
+      return {
+        statusCode: 404,
+        payload: { error: "Session not found" },
+      };
+    }
+
+    if (!context.student) {
+      return {
+        statusCode: 404,
+        payload: { error: "Student not found" },
+      };
+    }
+
+    const calculatedSession = {
+      ...session,
+      status: calculateSessionStatus(session),
+    };
+    const { eligible, reason } = getSessionEligibility(
+      calculatedSession,
+      context.student,
+      context.colleges,
+    );
+
+    const responseData = {
+      session: {
+        id: calculatedSession._id,
+        title: calculatedSession.title,
+        description: calculatedSession.description,
+        start_time: calculatedSession.start_time,
+        end_time: calculatedSession.end_time,
+        status: calculatedSession.status,
+        categories: calculatedSession.categories,
+        location: calculatedSession.location,
+        is_off_campus_allowed: calculatedSession.is_off_campus_allowed,
+        eligible,
+        eligibility_reason: reason,
+        has_voted: context.student.has_voted_sessions.some(
+          (value) => value.toString() === calculatedSession._id.toString(),
+        ),
+        candidates_by_position: buildCandidatesByPosition(
+          calculatedSession.candidates,
+        ),
+      },
+      cached: false,
+    };
+
+    await cacheService.set(cacheKey, responseData, 180);
+
+    return {
+      statusCode: 200,
+      payload: responseData,
+    };
+  }
+
   /**
    * Get a specific session details
    * GET /api/sessions/:id
    */
   async getSession(req, res) {
     try {
-      const { id } = req.params;
-      const studentId = req.studentId;
-      const cacheService = require("../services/cacheService");
-
-      // Try cache first (3 minute TTL)
-      const cacheKey = `session:${id}:student:${studentId}`;
-      const cachedSession = await cacheService.get(cacheKey);
-
-      if (cachedSession) {
-        return res.json({
-          ...cachedSession,
-          cached: true,
-        });
-      }
-
-      const session = await VotingSession.findById(id)
-        .populate("candidates", "name position photo_url bio manifesto")
-        .lean();
-
-      if (!session) {
-        return res.status(404).json({ error: "Session not found" });
-      }
-
-      // Update status calculation
-      const now = new Date();
-      if (now < session.start_time) {
-        session.status = "upcoming";
-      } else if (now >= session.start_time && now <= session.end_time) {
-        session.status = "active";
-      } else {
-        session.status = "ended";
-      }
-
-      const student = await Student.findById(studentId).lean();
-
-      // Check eligibility
-      let eligible = true;
-      let eligibilityReason = null;
-
-      if (
-        session.eligible_college &&
-        session.eligible_college !== student.college
-      ) {
-        eligible = false;
-        eligibilityReason = "College not eligible";
-      }
-
-      // Check department eligibility (convert IDs to names)
-      if (
-        session.eligible_departments &&
-        session.eligible_departments.length > 0
-      ) {
-        const College = require("../models/College");
-        const colleges = await College.find({}).select("departments").lean();
-        const departmentNames = [];
-
-        colleges.forEach((college) => {
-          college.departments.forEach((dept) => {
-            if (session.eligible_departments.includes(dept._id.toString())) {
-              departmentNames.push(dept.name);
-            }
-          });
-        });
-
-        if (!departmentNames.includes(student.department)) {
-          eligible = false;
-          eligibilityReason = "Department not eligible";
-        }
-      }
-
-      if (session.eligible_levels && session.eligible_levels.length > 0) {
-        if (!session.eligible_levels.includes(student.level)) {
-          eligible = false;
-          eligibilityReason = "Level not eligible";
-        }
-      }
-
-      // Group candidates by position/category
-      const candidatesByPosition = session.candidates.reduce(
-        (acc, candidate) => {
-          if (!acc[candidate.position]) {
-            acc[candidate.position] = [];
-          }
-          acc[candidate.position].push({
-            id: candidate._id,
-            name: candidate.name,
-            photo_url: candidate.photo_url,
-            bio: candidate.bio,
-            manifesto: candidate.manifesto,
-            vote_count: candidate.vote_count,
-          });
-          return acc;
-        },
-        {}
+      const result = await this.buildSessionResponse(
+        req,
+        req.params.id,
+        req.studentId,
       );
 
-      const responseData = {
-        session: {
-          id: session._id,
-          title: session.title,
-          description: session.description,
-          start_time: session.start_time,
-          end_time: session.end_time,
-          status: session.status,
-          categories: session.categories,
-          location: session.location,
-          is_off_campus_allowed: session.is_off_campus_allowed,
-          eligible,
-          eligibility_reason: eligibilityReason,
-          has_voted: student.has_voted_sessions.some(
-            (votedId) => votedId.toString() === session._id.toString()
-          ),
-          candidates_by_position: candidatesByPosition,
-        },
-        cached: false,
-      };
-
-      // Cache for 3 minutes
-      await cacheService.set(cacheKey, responseData, 180);
-
-      res.json(responseData);
+      res.status(result.statusCode).json(result.payload);
     } catch (error) {
       console.error("Get session error:", error);
       res.status(500).json({ error: "Failed to get session" });
@@ -257,127 +285,14 @@ class SessionController {
    */
   async getSessionById(req, res) {
     try {
-      const { id } = req.params;
-      const studentId = req.studentId;
-      const cacheService = require("../services/cacheService");
-
-      // Try cache first (3 minute TTL)
-      const cacheKey = `session:${id}:student:${studentId}:byid`;
-      const cachedSession = await cacheService.get(cacheKey);
-
-      if (cachedSession) {
-        return res.json({
-          ...cachedSession,
-          cached: true,
-        });
-      }
-
-      const session = await VotingSession.findById(id)
-        .populate("candidates", "name position photo_url bio manifesto")
-        .lean();
-
-      if (!session) {
-        return res.status(404).json({ error: "Session not found" });
-      }
-
-      // Update status calculation
-      const now = new Date();
-      if (now < session.start_time) {
-        session.status = "upcoming";
-      } else if (now >= session.start_time && now <= session.end_time) {
-        session.status = "active";
-      } else {
-        session.status = "ended";
-      }
-
-      const student = await Student.findById(studentId).lean();
-
-      // Check eligibility
-      let eligible = true;
-      let eligibilityReason = null;
-
-      if (
-        session.eligible_college &&
-        session.eligible_college !== student.college
-      ) {
-        eligible = false;
-        eligibilityReason = "College not eligible";
-      }
-
-      // Check department eligibility (convert IDs to names)
-      if (
-        session.eligible_departments &&
-        session.eligible_departments.length > 0
-      ) {
-        const College = require("../models/College");
-        const colleges = await College.find({}).select("departments").lean();
-        const departmentNames = [];
-
-        colleges.forEach((college) => {
-          college.departments.forEach((dept) => {
-            if (session.eligible_departments.includes(dept._id.toString())) {
-              departmentNames.push(dept.name);
-            }
-          });
-        });
-
-        if (!departmentNames.includes(student.department)) {
-          eligible = false;
-          eligibilityReason = "Department not eligible";
-        }
-      }
-
-      if (session.eligible_levels && session.eligible_levels.length > 0) {
-        if (!session.eligible_levels.includes(student.level)) {
-          eligible = false;
-          eligibilityReason = "Level not eligible";
-        }
-      }
-
-      // Group candidates by position/category
-      const candidatesByPosition = session.candidates.reduce(
-        (acc, candidate) => {
-          if (!acc[candidate.position]) {
-            acc[candidate.position] = [];
-          }
-          acc[candidate.position].push({
-            id: candidate._id,
-            name: candidate.name,
-            photo_url: candidate.photo_url,
-            bio: candidate.bio,
-            manifesto: candidate.manifesto,
-            vote_count: candidate.vote_count,
-          });
-          return acc;
-        },
-        {}
+      const result = await this.buildSessionResponse(
+        req,
+        req.params.id,
+        req.studentId,
+        ":byid",
       );
 
-      const responseData = {
-        session: {
-          id: session._id,
-          title: session.title,
-          description: session.description,
-          start_time: session.start_time,
-          end_time: session.end_time,
-          status: session.status,
-          categories: session.categories,
-          location: session.location,
-          is_off_campus_allowed: session.is_off_campus_allowed,
-          eligible,
-          eligibility_reason: eligibilityReason,
-          has_voted: student.has_voted_sessions.some(
-            (votedId) => votedId.toString() === session._id.toString()
-          ),
-          candidates_by_position: candidatesByPosition,
-        },
-        cached: false,
-      };
-
-      // Cache for 3 minutes
-      await cacheService.set(cacheKey, responseData, 180);
-
-      res.json(responseData);
+      res.status(result.statusCode).json(result.payload);
     } catch (error) {
       console.error("Get session by ID error:", error);
       res.status(500).json({ error: "Failed to get session" });
@@ -391,10 +306,8 @@ class SessionController {
   async getCandidateById(req, res) {
     try {
       const { id } = req.params;
-      const cacheService = require("../services/cacheService");
-
-      // Try cache first (5 minute TTL)
-      const cacheKey = `candidate:${id}`;
+      const tenantNamespace = getTenantCacheNamespace(req);
+      const cacheKey = `candidate:${tenantNamespace}:${id}`;
       const cachedCandidate = await cacheService.get(cacheKey);
 
       if (cachedCandidate) {
@@ -404,7 +317,9 @@ class SessionController {
         });
       }
 
-      const candidate = await Candidate.findById(id)
+      const candidate = await Candidate.findOne(
+        getTenantScopedFilter(req, { _id: id }),
+      )
         .populate("session_id", "title description start_time end_time status")
         .lean();
 
@@ -412,21 +327,9 @@ class SessionController {
         return res.status(404).json({ error: "Candidate not found" });
       }
 
-      // Get session details to check status
       const session = candidate.session_id;
+      const sessionStatus = calculateSessionStatus(session);
 
-      // Update session status calculation
-      const now = new Date();
-      let sessionStatus = session.status;
-      if (now < session.start_time) {
-        sessionStatus = "upcoming";
-      } else if (now >= session.start_time && now <= session.end_time) {
-        sessionStatus = "active";
-      } else {
-        sessionStatus = "ended";
-      }
-
-      // Return full candidate details
       const responseData = {
         candidate: {
           id: candidate._id,
@@ -450,7 +353,6 @@ class SessionController {
         cached: false,
       };
 
-      // Cache for 5 minutes
       await cacheService.set(cacheKey, responseData, 300);
 
       res.json(responseData);
@@ -467,75 +369,65 @@ class SessionController {
   async getLiveResults(req, res) {
     try {
       const { id } = req.params;
-      const Vote = require("../models/Vote");
-      const mongoose = require("mongoose");
-      const cacheService = require("../services/cacheService");
-
-      // Try to get cached results first (30 second cache)
-      const cacheKey = `live_results:${id}`;
+      const tenantNamespace = getTenantCacheNamespace(req);
+      const cacheKey = `live_results:${tenantNamespace}:${id}`;
       const cachedResults = await cacheService.get(cacheKey);
 
       if (cachedResults) {
-        // Return cached results with cache indicator
         return res.json({
           ...cachedResults,
           cached: true,
         });
       }
 
-      // Cache miss - Query database
-      // Parallel queries for maximum performance
+      const sessionObjectId = new mongoose.Types.ObjectId(id);
+
       const [session, votesByCandidate, totalVotes] = await Promise.all([
-        VotingSession.findById(id)
+        VotingSession.findOne(getTenantScopedFilter(req, { _id: id }))
           .select("title description start_time end_time status results_public")
           .lean(),
-
-        // Efficient aggregation for vote counts
-        Vote.aggregate([
-          {
-            $match: {
-              session_id: new mongoose.Types.ObjectId(id),
-              status: "valid",
+        Vote.aggregate(
+          prependTenantMatch(req, [
+            {
+              $match: {
+                session_id: sessionObjectId,
+                status: "valid",
+              },
             },
-          },
-          {
-            $group: {
-              _id: "$candidate_id",
-              count: { $sum: 1 },
+            {
+              $group: {
+                _id: "$candidate_id",
+                count: { $sum: 1 },
+              },
             },
-          },
-        ]),
-
-        // Count total valid votes
-        Vote.countDocuments({
-          session_id: id,
-          status: "valid",
-        }),
+          ]),
+        ),
+        Vote.countDocuments(
+          getTenantScopedFilter(req, {
+            session_id: id,
+            status: "valid",
+          }),
+        ),
       ]);
 
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      // Update session status
-      const now = new Date();
-      if (now < session.start_time) {
-        session.status = "upcoming";
-      } else if (now >= session.start_time && now <= session.end_time) {
-        session.status = "active";
-      } else {
-        session.status = "ended";
-      }
+      const calculatedSession = {
+        ...session,
+        status: calculateSessionStatus(session),
+      };
 
-      // Get candidates with minimal data for performance
-      const candidates = await Candidate.find({ session_id: id })
+      const candidates = await Candidate.find(
+        getTenantScopedFilter(req, { session_id: id }),
+      )
         .select("name position photo_url")
         .lean();
 
-      // Add vote counts to candidates
       const candidatesWithVotes = candidates.map((candidate) => {
         const voteData = votesByCandidate.find(
-          (v) => v._id.toString() === candidate._id.toString()
+          (entry) => entry._id.toString() === candidate._id.toString(),
         );
         const voteCount = voteData ? voteData.count : 0;
         const percentage =
@@ -551,7 +443,6 @@ class SessionController {
         };
       });
 
-      // Group by position
       const resultsByPosition = candidatesWithVotes.reduce((acc, candidate) => {
         if (!acc[candidate.position]) {
           acc[candidate.position] = {
@@ -567,27 +458,25 @@ class SessionController {
         return acc;
       }, {});
 
-      // Sort candidates by vote count within each position
       Object.values(resultsByPosition).forEach((position) => {
         const maxVotes = Math.max(
-          ...position.candidates.map((c) => c.vote_count)
+          ...position.candidates.map((candidate) => candidate.vote_count),
         );
-        position.candidates.forEach((c) => {
-          c.is_leading = c.vote_count === maxVotes && maxVotes > 0;
+        position.candidates.forEach((candidate) => {
+          candidate.is_leading = candidate.vote_count === maxVotes && maxVotes > 0;
         });
         position.candidates.sort((a, b) => b.vote_count - a.vote_count);
       });
 
-      // Prepare response data
       const responseData = {
         session: {
-          id: session._id,
-          title: session.title,
-          description: session.description,
-          status: session.status,
-          start_time: session.start_time,
-          end_time: session.end_time,
-          is_live: session.status === "active",
+          id: calculatedSession._id,
+          title: calculatedSession.title,
+          description: calculatedSession.description,
+          status: calculatedSession.status,
+          start_time: calculatedSession.start_time,
+          end_time: calculatedSession.end_time,
+          is_live: calculatedSession.status === "active",
         },
         total_votes: totalVotes,
         last_updated: new Date().toISOString(),
@@ -595,13 +484,11 @@ class SessionController {
         cached: false,
       };
 
-      // Cache the results for 30 seconds
       await cacheService.set(cacheKey, responseData, 30);
 
-      // Cache control headers for performance
       res.set({
-        "Cache-Control": "public, max-age=30", // Cache for 30 seconds
-        ETag: `"${id}-${totalVotes}"`, // ETag based on session and vote count
+        "Cache-Control": "public, max-age=30",
+        ETag: `"${tenantNamespace}-${id}-${totalVotes}"`,
       });
 
       res.json(responseData);

@@ -1,15 +1,19 @@
+const mongoose = require("mongoose");
 const VotingSession = require("../models/VotingSession");
 const Vote = require("../models/Vote");
 const Student = require("../models/Student");
 const College = require("../models/College");
-const mongoose = require("mongoose");
+const {
+  getTenantScopedFilter,
+  prependTenantMatch,
+} = require("../utils/tenantScope");
 
-async function resolveEligibleDepartmentNames(departmentIds) {
+async function resolveEligibleDepartmentNames(req, departmentIds) {
   if (!departmentIds || departmentIds.length === 0) {
     return [];
   }
 
-  const colleges = await College.find({})
+  const colleges = await College.find(getTenantScopedFilter(req, {}))
     .select("departments._id departments.name")
     .lean();
 
@@ -26,6 +30,24 @@ async function resolveEligibleDepartmentNames(departmentIds) {
   return matchedNames;
 }
 
+function buildEligibilityFilter(req, session, departmentNames) {
+  const filter = getTenantScopedFilter(req, { is_active: true });
+
+  if (session.eligible_college) {
+    filter.college = session.eligible_college;
+  }
+
+  if (departmentNames.length > 0) {
+    filter.department = { $in: departmentNames };
+  }
+
+  if (session.eligible_levels && session.eligible_levels.length > 0) {
+    filter.level = { $in: session.eligible_levels };
+  }
+
+  return filter;
+}
+
 class ResultController {
   /**
    * Get results for a voting session
@@ -37,10 +59,10 @@ class ResultController {
       const studentId = req.studentId;
 
       const [session, student] = await Promise.all([
-        VotingSession.findById(session_id)
+        VotingSession.findOne(getTenantScopedFilter(req, { _id: session_id }))
           .populate("candidates", "name position photo_url bio manifesto")
           .lean(),
-        Student.findById(studentId)
+        Student.findOne(getTenantScopedFilter(req, { _id: studentId }))
           .select("college department level has_voted_sessions")
           .lean(),
       ]);
@@ -53,12 +75,15 @@ class ResultController {
         return res.status(404).json({ error: "Student not found" });
       }
 
-      // Check if results are available
-      // Results available when session has ended (status automatically set by scheduler)
       const now = new Date();
       const sessionEnded = now > session.end_time;
+      const sessionStatus = sessionEnded
+        ? "ended"
+        : now >= session.start_time && now <= session.end_time
+          ? "active"
+          : "upcoming";
 
-      if (!sessionEnded && session.status !== "ended") {
+      if (!sessionEnded && sessionStatus !== "ended") {
         return res.status(403).json({
           error: "Results are not yet available",
           message:
@@ -66,7 +91,11 @@ class ResultController {
         });
       }
 
-      // Check eligibility
+      const departmentNames =
+        session.eligible_departments && session.eligible_departments.length > 0
+          ? await resolveEligibleDepartmentNames(req, session.eligible_departments)
+          : [];
+
       let isEligible = true;
       if (
         session.eligible_college &&
@@ -74,55 +103,53 @@ class ResultController {
       ) {
         isEligible = false;
       }
-      if (
-        session.eligible_departments &&
-        session.eligible_departments.length > 0
-      ) {
-        const departmentNames = await resolveEligibleDepartmentNames(
-          session.eligible_departments,
-        );
 
-        if (!departmentNames.includes(student.department)) {
-          isEligible = false;
-        }
+      if (departmentNames.length > 0 && !departmentNames.includes(student.department)) {
+        isEligible = false;
       }
+
       if (session.eligible_levels && session.eligible_levels.length > 0) {
         if (!session.eligible_levels.includes(student.level)) {
           isEligible = false;
         }
       }
 
-      // Check if student voted in this session
       const hasVoted = (student.has_voted_sessions || []).some(
         (value) => value.toString() === session_id,
       );
 
-      // Get vote breakdown by candidate using aggregation
-      const votesByCandidate = await Vote.aggregate([
-        {
-          $match: {
-            session_id: new mongoose.Types.ObjectId(session_id),
+      const sessionObjectId = new mongoose.Types.ObjectId(session_id);
+      const [votesByCandidate, totalVotes, totalEligible] = await Promise.all([
+        Vote.aggregate(
+          prependTenantMatch(req, [
+            {
+              $match: {
+                session_id: sessionObjectId,
+                status: "valid",
+              },
+            },
+            {
+              $group: {
+                _id: "$candidate_id",
+                count: { $sum: 1 },
+              },
+            },
+          ]),
+        ),
+        Vote.countDocuments(
+          getTenantScopedFilter(req, {
+            session_id,
             status: "valid",
-          },
-        },
-        {
-          $group: {
-            _id: "$candidate_id",
-            count: { $sum: 1 },
-          },
-        },
+          }),
+        ),
+        Student.countDocuments(
+          buildEligibilityFilter(req, session, departmentNames),
+        ),
       ]);
 
-      // Calculate total valid votes
-      const totalVotes = await Vote.countDocuments({
-        session_id,
-        status: "valid",
-      });
-
-      // Add vote counts to candidates
       const candidatesWithVotes = session.candidates.map((candidate) => {
         const voteData = votesByCandidate.find(
-          (v) => v._id.toString() === candidate._id.toString()
+          (entry) => entry._id.toString() === candidate._id.toString(),
         );
         const voteCount = voteData ? voteData.count : 0;
         const percentage =
@@ -139,29 +166,6 @@ class ResultController {
         };
       });
 
-      const eligibilityFilter = { is_active: true };
-
-      if (session.eligible_college) {
-        eligibilityFilter.college = session.eligible_college;
-      }
-
-      if (session.eligible_departments && session.eligible_departments.length) {
-        const departmentNames = await resolveEligibleDepartmentNames(
-          session.eligible_departments,
-        );
-
-        if (departmentNames.length > 0) {
-          eligibilityFilter.department = { $in: departmentNames };
-        }
-      }
-
-      if (session.eligible_levels && session.eligible_levels.length > 0) {
-        eligibilityFilter.level = { $in: session.eligible_levels };
-      }
-
-      const totalEligible = await Student.countDocuments(eligibilityFilter);
-
-      // Group results by position
       const resultsByPosition = candidatesWithVotes.reduce((acc, candidate) => {
         if (!acc[candidate.position]) {
           acc[candidate.position] = {
@@ -177,15 +181,13 @@ class ResultController {
         return acc;
       }, {});
 
-      // Determine winners (highest vote count per position)
       Object.values(resultsByPosition).forEach((position) => {
         const maxVotes = Math.max(
-          ...position.candidates.map((c) => c.vote_count)
+          ...position.candidates.map((candidate) => candidate.vote_count),
         );
-        position.candidates.forEach((c) => {
-          c.is_winner = c.vote_count === maxVotes && maxVotes > 0;
+        position.candidates.forEach((candidate) => {
+          candidate.is_winner = candidate.vote_count === maxVotes && maxVotes > 0;
         });
-        // Sort candidates by vote count descending
         position.candidates.sort((a, b) => b.vote_count - a.vote_count);
       });
 
@@ -194,7 +196,7 @@ class ResultController {
           id: session._id,
           title: session.title,
           description: session.description,
-          status: session.status,
+          status: sessionStatus,
           start_time: session.start_time,
           end_time: session.end_time,
           results_public: session.results_public,
@@ -217,62 +219,52 @@ class ResultController {
    */
   async getOverallStats(req, res) {
     try {
-      const totalSessions = await VotingSession.countDocuments();
-      const upcomingSessions = await VotingSession.countDocuments({
-        status: "upcoming",
-      });
-      const activeSessions = await VotingSession.countDocuments({
-        status: "active",
-      });
-      const endedSessions = await VotingSession.countDocuments({
-        status: "ended",
-      });
-      const totalStudents = await Student.countDocuments({ is_active: true });
-      const totalVotes = await Vote.countDocuments({ status: "valid" });
-      const duplicateAttempts = await Vote.countDocuments({
-        status: "duplicate",
-      });
-      const rejectedVotes = await Vote.countDocuments({ status: "rejected" });
+      const endedSessions = await VotingSession.find(
+        getTenantScopedFilter(req, { status: "ended" }),
+      ).lean();
 
-      // Calculate average turnout
-      const sessionsWithVotes = await VotingSession.find({
-        status: "ended",
-      });
+      const [
+        totalSessions,
+        upcomingSessions,
+        activeSessions,
+        totalStudents,
+        totalVotes,
+        duplicateAttempts,
+        rejectedVotes,
+      ] = await Promise.all([
+        VotingSession.countDocuments(getTenantScopedFilter(req, {})),
+        VotingSession.countDocuments(
+          getTenantScopedFilter(req, { status: "upcoming" }),
+        ),
+        VotingSession.countDocuments(
+          getTenantScopedFilter(req, { status: "active" }),
+        ),
+        Student.countDocuments(getTenantScopedFilter(req, { is_active: true })),
+        Vote.countDocuments(getTenantScopedFilter(req, { status: "valid" })),
+        Vote.countDocuments(getTenantScopedFilter(req, { status: "duplicate" })),
+        Vote.countDocuments(getTenantScopedFilter(req, { status: "rejected" })),
+      ]);
 
       let totalTurnout = 0;
       let sessionsWithTurnout = 0;
 
-      for (const session of sessionsWithVotes) {
-        const eligibilityFilter = { is_active: true };
+      for (const session of endedSessions) {
+        const departmentNames =
+          session.eligible_departments && session.eligible_departments.length > 0
+            ? await resolveEligibleDepartmentNames(req, session.eligible_departments)
+            : [];
 
-        if (session.eligible_college) {
-          eligibilityFilter.college = session.eligible_college;
-        }
-
-        if (
-          session.eligible_departments &&
-          session.eligible_departments.length > 0
-        ) {
-          const departmentNames = await resolveEligibleDepartmentNames(
-            session.eligible_departments,
-          );
-
-          if (departmentNames.length > 0) {
-            eligibilityFilter.department = { $in: departmentNames };
-          }
-        }
-
-        if (session.eligible_levels && session.eligible_levels.length > 0) {
-          eligibilityFilter.level = { $in: session.eligible_levels };
-        }
-
-        const eligibleStudents = await Student.countDocuments(
-          eligibilityFilter
-        );
-        const sessionVotes = await Vote.countDocuments({
-          session_id: session._id,
-          status: "valid",
-        });
+        const [eligibleStudents, sessionVotes] = await Promise.all([
+          Student.countDocuments(
+            buildEligibilityFilter(req, session, departmentNames),
+          ),
+          Vote.countDocuments(
+            getTenantScopedFilter(req, {
+              session_id: session._id,
+              status: "valid",
+            }),
+          ),
+        ]);
 
         if (eligibleStudents > 0) {
           totalTurnout += (sessionVotes / eligibleStudents) * 100;
@@ -290,7 +282,7 @@ class ResultController {
           total_sessions: totalSessions,
           upcoming_sessions: upcomingSessions,
           active_sessions: activeSessions,
-          ended_sessions: endedSessions,
+          ended_sessions: endedSessions.length,
           total_students: totalStudents,
           total_votes_cast: totalVotes,
           duplicate_attempts: duplicateAttempts,

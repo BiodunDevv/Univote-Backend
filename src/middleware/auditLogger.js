@@ -25,6 +25,7 @@ const auditLogger = (action, resource) => {
       // Log the action
       if (userType && userId) {
         const logEntry = {
+          tenant_id: req.tenantId || req.tenant?._id || null,
           user_type: userType,
           user_id: userId,
           action,

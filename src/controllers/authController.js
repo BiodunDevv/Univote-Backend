@@ -1,6 +1,12 @@
 const bcrypt = require("bcryptjs");
 const Student = require("../models/Student");
 const Admin = require("../models/Admin");
+const Tenant = require("../models/Tenant");
+const {
+  getActiveAdminMembership,
+  getActiveAdminMemberships,
+} = require("../services/tenantAccessService");
+const { getTenantEntitlements } = require("../services/planAccessService");
 const {
   generateStudentToken,
   generateAdminToken,
@@ -9,6 +15,159 @@ const {
 } = require("../utils/jwt");
 const emailService = require("../services/emailService");
 const cacheService = require("../services/cacheService");
+const {
+  buildParticipantLookupFilter,
+  getTenantEligibilityPolicy,
+  getParticipantLabelSet,
+  getTenantIdentityMetadata,
+  getTenantParticipantFieldMetadata,
+  getTenantSettings,
+} = require("../utils/tenantSettings");
+
+function serializeTenant(tenant) {
+  if (!tenant) return null;
+
+  const settings = getTenantSettings(tenant);
+
+  return {
+    id: tenant._id || tenant.id,
+    name: tenant.name,
+    slug: tenant.slug,
+    primary_domain: tenant.primary_domain || null,
+    status: tenant.status,
+    subscription_status: tenant.subscription_status,
+    plan_code: tenant.plan_code,
+    branding: tenant.branding || {},
+    labels: settings.labels,
+    identity: getTenantIdentityMetadata(tenant),
+    auth_policy: settings.auth,
+    participant_fields: getTenantParticipantFieldMetadata(tenant),
+    eligibility_policy: getTenantEligibilityPolicy(tenant),
+    entitlements: getTenantEntitlements(tenant),
+  };
+}
+
+function serializeStudent(student) {
+  const displayIdentifier =
+    student.member_id ||
+    student.employee_id ||
+    student.username ||
+    student.matric_no ||
+    student.email;
+
+  return {
+    id: student._id,
+    tenant_id: student.tenant_id || null,
+    matric_no: student.matric_no,
+    member_id: student.member_id || null,
+    employee_id: student.employee_id || null,
+    username: student.username || null,
+    display_identifier: displayIdentifier || null,
+    full_name: student.full_name,
+    email: student.email,
+    department: student.department,
+    department_code: student.department_code,
+    college: student.college,
+    level: student.level,
+    photo_url: student.photo_url,
+    has_facial_data: !!student.face_token,
+    created_at: student.createdAt || student.created_at,
+    last_login_at: student.last_login_at,
+  };
+}
+
+function serializeAdmin(admin, membership = null) {
+  return {
+    id: admin._id,
+    email: admin.email,
+    full_name: admin.full_name,
+    role: admin.role,
+    tenant_role: membership?.role || null,
+    permissions: membership?.permissions || [],
+  };
+}
+
+function isLegacySingleTenantModeEnabled() {
+  return process.env.ALLOW_LEGACY_SINGLE_TENANT !== "false";
+}
+
+function normalizeStudentLookupIdentifier(identifier) {
+  return String(identifier || "").trim();
+}
+
+function buildScopedStudentLookup(req, identifierKey, identifierValue) {
+  const lookup = buildParticipantLookupFilter(identifierKey, identifierValue);
+  if (!lookup) {
+    return null;
+  }
+
+  return {
+    ...(req.tenantId ? { tenant_id: req.tenantId } : {}),
+    ...lookup,
+  };
+}
+
+function buildRecoveryFilters(req, tenant) {
+  const settings = getTenantSettings(tenant);
+  return settings.identity.recovery_identifiers;
+}
+
+function normalizeTenantLookupSlug(slug) {
+  return String(slug || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "");
+}
+
+async function resolveTenantChoices(memberships = []) {
+  if (!memberships.length) return [];
+
+  const tenantIds = memberships.map((membership) => membership.tenant_id);
+  const tenants = await Tenant.find({
+    _id: { $in: tenantIds },
+    is_active: true,
+  })
+    .select(
+      "_id name slug status plan_code subscription_status primary_domain",
+    )
+    .lean();
+
+  const tenantMap = new Map(tenants.map((tenant) => [String(tenant._id), tenant]));
+
+  return memberships
+    .map((membership) => {
+      const tenant = tenantMap.get(String(membership.tenant_id));
+      if (!tenant) return null;
+
+      return {
+        tenant_id: tenant._id,
+        name: tenant.name,
+        slug: tenant.slug,
+        role: membership.role,
+        status: tenant.status,
+        plan_code: tenant.plan_code,
+        subscription_status: tenant.subscription_status,
+        primary_domain: tenant.primary_domain || null,
+      };
+    })
+    .filter(Boolean);
+}
+
+async function findAdminInTenantScope(email, tenantId) {
+  const admin = await Admin.findOne({ email: email.toLowerCase() });
+  if (!admin) return null;
+
+  if (!tenantId || admin.role === "super_admin") {
+    return { admin, membership: null };
+  }
+
+  const membership = await getActiveAdminMembership(admin._id, tenantId);
+  if (!membership) {
+    return null;
+  }
+
+  return { admin, membership };
+}
 
 class AuthController {
   /**
@@ -17,12 +176,31 @@ class AuthController {
    */
   async login(req, res) {
     try {
-      const { matric_no, password, device_id } = req.body;
+      const { identifier, password, device_id } = req.body;
 
-      // Find student
-      const student = await Student.findOne({
-        matric_no: matric_no.toUpperCase(),
-      });
+      if (req.tenantSlug && !req.tenant) {
+        return res.status(404).json({
+          error: "Tenant not found",
+          code: "TENANT_NOT_FOUND",
+        });
+      }
+
+      const tenantIdentity = getTenantIdentityMetadata(req.tenant);
+      const participantLabels = getParticipantLabelSet(req.tenant);
+      const lookupFilter = buildScopedStudentLookup(
+        req,
+        tenantIdentity.primary_identifier,
+        identifier,
+      );
+
+      if (!lookupFilter) {
+        return res.status(400).json({
+          error: `${tenantIdentity.login.label} is required`,
+          code: "IDENTIFIER_REQUIRED",
+        });
+      }
+
+      const student = await Student.findOne(lookupFilter);
 
       if (!student) {
         return res.status(401).json({ error: "Invalid credentials" });
@@ -50,7 +228,7 @@ class AuthController {
         const firstLoginToken = generateFirstLoginToken(student);
         return res.status(403).json({
           error: "Password change required",
-          message: "You must change your password on first login",
+          message: `You must change your password on first ${participantLabels.lowerSingular} sign in`,
           code: "FIRST_LOGIN",
           token: firstLoginToken,
         });
@@ -97,6 +275,7 @@ class AuthController {
         `student:profile:${student._id}`,
         {
           _id: student._id,
+          tenant_id: student.tenant_id || null,
           matric_no: student.matric_no,
           full_name: student.full_name,
           email: student.email,
@@ -114,7 +293,7 @@ class AuthController {
 
       // Send new device alert if device changed
       if (isNewDevice) {
-        emailService.sendNewDeviceAlert(student, deviceInfo).catch((err) => {
+        emailService.sendNewDeviceAlert(student, deviceInfo, req.tenant || null).catch((err) => {
           console.error("Failed to send device alert:", err);
         });
       }
@@ -122,20 +301,8 @@ class AuthController {
       res.json({
         message: "Login successful",
         token,
-        student: {
-          id: student._id,
-          matric_no: student.matric_no,
-          full_name: student.full_name,
-          email: student.email,
-          department: student.department,
-          department_code: student.department_code,
-          college: student.college,
-          level: student.level,
-          photo_url: student.photo_url,
-          has_facial_data: !!student.face_token,
-          created_at: student.created_at,
-          last_login_at: student.last_login_at,
-        },
+        student: serializeStudent(student),
+        tenant: serializeTenant(req.tenant),
         new_device: isNewDevice,
       });
     } catch (error) {
@@ -151,6 +318,13 @@ class AuthController {
   async adminLogin(req, res) {
     try {
       const { email, password } = req.body;
+
+      if (req.tenantSlug && !req.tenant) {
+        return res.status(404).json({
+          error: "Tenant not found",
+          code: "TENANT_NOT_FOUND",
+        });
+      }
 
       // Find admin
       const admin = await Admin.findOne({ email: email.toLowerCase() });
@@ -169,8 +343,58 @@ class AuthController {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
+      let membership = null;
+      let tenant = req.tenant || null;
+      let tenantId = req.tenantId || null;
+      let organizations = [];
+      if (admin.role !== "super_admin") {
+        if (!tenantId) {
+          const memberships = await getActiveAdminMemberships(admin._id);
+
+          if (memberships.length === 1) {
+            membership = memberships[0];
+            tenantId = membership.tenant_id;
+            tenant = await Tenant.findById(tenantId);
+            if (!tenant) {
+              return res.status(403).json({
+                error: "Tenant context could not be resolved for this admin",
+                code: "TENANT_NOT_FOUND",
+              });
+            }
+            organizations = await resolveTenantChoices(memberships);
+          } else if (memberships.length > 1) {
+            const tenantChoices = await resolveTenantChoices(memberships);
+            return res.status(409).json({
+              error: "Multiple tenant memberships found for this account",
+              code: "TENANT_SELECTION_REQUIRED",
+              tenants: tenantChoices,
+            });
+          } else if (!isLegacySingleTenantModeEnabled()) {
+            return res.status(400).json({
+              error: "Tenant context is required for tenant admins",
+              code: "TENANT_REQUIRED",
+            });
+          }
+        } else {
+          membership = await getActiveAdminMembership(admin._id, tenantId);
+          if (!membership) {
+            return res.status(403).json({
+              error: "Tenant admin membership not found",
+              code: "TENANT_MEMBERSHIP_REQUIRED",
+            });
+          }
+
+          const memberships = await getActiveAdminMemberships(admin._id);
+          organizations = await resolveTenantChoices(memberships);
+        }
+      }
+
       // Generate token
-      const token = generateAdminToken(admin);
+      const token = generateAdminToken(admin, {
+        tenant_id: tenantId || null,
+        tenant_role: membership?.role || null,
+        permissions: membership?.permissions || [],
+      });
 
       // Update last login
       admin.last_login_at = new Date();
@@ -179,12 +403,16 @@ class AuthController {
       res.json({
         message: "Admin login successful",
         token,
-        admin: {
-          id: admin._id,
-          email: admin.email,
-          full_name: admin.full_name,
-          role: admin.role,
-        },
+        admin: serializeAdmin(admin, membership),
+        tenant: serializeTenant(tenant),
+        organizations,
+        membership: membership
+          ? {
+              id: membership._id,
+              role: membership.role,
+              permissions: membership.permissions || [],
+            }
+          : null,
       });
     } catch (error) {
       console.error("Admin login error:", error);
@@ -253,7 +481,7 @@ class AuthController {
 
       // Send welcome email after first password change
       if (isFirstLogin) {
-        emailService.sendWelcomeEmail(student).catch((err) => {
+        emailService.sendWelcomeEmail(student, req.tenant || null).catch((err) => {
           console.error("Failed to send welcome email:", err);
         });
       }
@@ -261,18 +489,8 @@ class AuthController {
       res.json({
         message: "Password changed successfully",
         token: newToken,
-        student: {
-          id: student._id,
-          matric_no: student.matric_no,
-          full_name: student.full_name,
-          email: student.email,
-          department: student.department,
-          department_code: student.department_code,
-          college: student.college,
-          level: student.level,
-          photo_url: student.photo_url,
-          has_facial_data: !!student.face_token,
-        },
+        student: serializeStudent(student),
+        tenant: serializeTenant(req.tenant),
       });
     } catch (error) {
       console.error("Change password error:", error);
@@ -337,7 +555,11 @@ class AuthController {
         student: studentProfile,
         profile: {
           id: student._id,
+          tenant_id: student.tenant_id || null,
           matric_no: student.matric_no,
+          member_id: student.member_id || null,
+          employee_id: student.employee_id || null,
+          username: student.username || null,
           full_name: student.full_name,
           email: student.email,
           department: student.department,
@@ -352,6 +574,7 @@ class AuthController {
           created_at: student.created_at,
           has_voted_sessions: student.has_voted_sessions,
         },
+        tenant: serializeTenant(req.tenant),
       });
     } catch (error) {
       console.error("Get profile error:", error);
@@ -398,6 +621,7 @@ class AuthController {
         const normalizedEmail = email.trim().toLowerCase();
         const existingStudent = await Student.findOne({
           email: normalizedEmail,
+          ...(student.tenant_id ? { tenant_id: student.tenant_id } : {}),
           _id: { $ne: student._id },
         }).select("_id");
 
@@ -422,7 +646,11 @@ class AuthController {
         message: "Profile updated successfully",
         profile: {
           id: student._id,
+          tenant_id: student.tenant_id || null,
           matric_no: student.matric_no,
+          member_id: student.member_id || null,
+          employee_id: student.employee_id || null,
+          username: student.username || null,
           full_name: student.full_name,
           email: student.email,
           department: student.department,
@@ -437,6 +665,7 @@ class AuthController {
           created_at: student.createdAt,
           has_voted_sessions: student.has_voted_sessions,
         },
+        tenant: serializeTenant(req.tenant),
       });
     } catch (error) {
       console.error("Update student profile error:", error);
@@ -526,6 +755,171 @@ class AuthController {
   }
 
   /**
+   * Request student password reset (forgot password)
+   * POST /api/auth/forgot-password
+   */
+  async forgotPassword(req, res) {
+    try {
+      const identifier = normalizeStudentLookupIdentifier(req.body.identifier);
+
+      if (req.tenantSlug && !req.tenant) {
+        return res.status(404).json({
+          error: "Tenant not found",
+          code: "TENANT_NOT_FOUND",
+        });
+      }
+
+      const tenantIdentity = getTenantIdentityMetadata(req.tenant);
+      const participantLabels = getParticipantLabelSet(req.tenant);
+      const recoveryFilters = buildRecoveryFilters(req, req.tenant)
+        .map((identifierKey) =>
+          buildScopedStudentLookup(req, identifierKey, identifier),
+        )
+        .filter(Boolean);
+
+      const student = recoveryFilters.length
+        ? await Student.findOne({ $or: recoveryFilters })
+        : null;
+
+      const successMessage = `If a ${participantLabels.lowerSingular} account exists for that ${tenantIdentity.recovery[0]?.label?.toLowerCase() || "recovery identifier"}, a reset code has been sent.`;
+
+      // Always return success to avoid account enumeration.
+      if (!student || !student.is_active) {
+        return res.json({
+          message: successMessage,
+        });
+      }
+
+      const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const salt = await bcrypt.genSalt(10);
+      const hashedCode = await bcrypt.hash(resetCode, salt);
+
+      student.reset_password_code = hashedCode;
+      student.reset_password_expires = new Date(Date.now() + 60 * 60 * 1000);
+      await student.save();
+
+      await emailService.sendPasswordReset(student, resetCode, req.tenant || null);
+
+      return res.json({
+        message: successMessage,
+      });
+    } catch (error) {
+      console.error("Student forgot password error:", error);
+      return res.status(500).json({ error: "Failed to process request" });
+    }
+  }
+
+  /**
+   * Reset student password using code
+   * POST /api/auth/reset-password
+   */
+  async resetPassword(req, res) {
+    try {
+      const identifier = normalizeStudentLookupIdentifier(req.body.identifier);
+      const { reset_code, new_password } = req.body;
+
+      if (req.tenantSlug && !req.tenant) {
+        return res.status(404).json({
+          error: "Tenant not found",
+          code: "TENANT_NOT_FOUND",
+        });
+      }
+
+      if (!identifier || !reset_code || !new_password) {
+        return res.status(400).json({
+          error: "Identifier, reset code, and new password are required",
+        });
+      }
+
+      if (new_password.length < 8) {
+        return res.status(400).json({
+          error: "New password must be at least 8 characters long",
+        });
+      }
+
+      const recoveryFilters = buildRecoveryFilters(req, req.tenant)
+        .map((identifierKey) =>
+          buildScopedStudentLookup(req, identifierKey, identifier),
+        )
+        .filter(Boolean);
+
+      const student = recoveryFilters.length
+        ? await Student.findOne({ $or: recoveryFilters })
+        : null;
+
+      if (!student || !student.is_active) {
+        return res.status(400).json({
+          error: "Invalid reset code or account details",
+        });
+      }
+
+      if (!student.reset_password_code || !student.reset_password_expires) {
+        return res.status(400).json({
+          error: "Invalid reset code or account details",
+        });
+      }
+
+      if (new Date() > student.reset_password_expires) {
+        return res.status(400).json({
+          error: "Reset code has expired. Please request a new one.",
+        });
+      }
+
+      const isCodeValid = await bcrypt.compare(
+        String(reset_code),
+        student.reset_password_code,
+      );
+
+      if (!isCodeValid) {
+        return res.status(400).json({
+          error: "Invalid reset code or account details",
+        });
+      }
+
+      const isSamePassword = await bcrypt.compare(
+        new_password,
+        student.password_hash,
+      );
+
+      if (isSamePassword) {
+        return res.status(400).json({
+          error: "New password cannot be the same as the current password",
+        });
+      }
+
+      const salt = await bcrypt.genSalt(
+        parseInt(process.env.BCRYPT_ROUNDS || 10),
+      );
+      const hashedPassword = await bcrypt.hash(new_password, salt);
+
+      if (student.active_token) {
+        await cacheService.set(`blacklist:${student.active_token}`, true, 86400);
+      }
+
+      await Promise.all([
+        cacheService.del(`session:student:${student._id}`),
+        cacheService.del(`student:profile:${student._id}`),
+      ]);
+
+      student.password_hash = hashedPassword;
+      student.first_login = false;
+      student.is_logged_in = false;
+      student.active_token = null;
+      student.reset_password_code = null;
+      student.reset_password_expires = null;
+      await student.save();
+
+      return res.json({
+        message:
+          "Password reset successfully. You can now sign in with your new password.",
+      });
+    } catch (error) {
+      console.error("Student reset password error:", error);
+      return res.status(500).json({ error: "Failed to reset password" });
+    }
+  }
+
+  /**
    * Request admin password reset (forgot password)
    * POST /api/auth/admin-forgot-password
    */
@@ -533,8 +927,15 @@ class AuthController {
     try {
       const { email } = req.body;
 
-      // Find admin
-      const admin = await Admin.findOne({ email: email.toLowerCase() });
+      if (req.tenantSlug && !req.tenant) {
+        return res.json({
+          message:
+            "If an admin account exists with this email, a reset code has been sent.",
+        });
+      }
+
+      const scopedAdmin = await findAdminInTenantScope(email, req.tenantId);
+      const admin = scopedAdmin?.admin || null;
 
       // Always return success to prevent email enumeration
       if (!admin || !admin.is_active) {
@@ -557,7 +958,7 @@ class AuthController {
       await admin.save();
 
       // Send email with reset code
-      await emailService.sendAdminPasswordReset(admin, resetCode);
+      await emailService.sendAdminPasswordReset(admin, resetCode, req.tenant || null);
 
       res.json({
         message:
@@ -584,14 +985,18 @@ class AuthController {
         });
       }
 
+      if (req.tenantSlug && !req.tenant) {
+        return res.status(400).json({ error: "Invalid reset code or email" });
+      }
+
       if (new_password.length < 8) {
         return res.status(400).json({
           error: "New password must be at least 8 characters long",
         });
       }
 
-      // Find admin
-      const admin = await Admin.findOne({ email: email.toLowerCase() });
+      const scopedAdmin = await findAdminInTenantScope(email, req.tenantId);
+      const admin = scopedAdmin?.admin || null;
 
       if (!admin || !admin.is_active) {
         return res.status(400).json({ error: "Invalid reset code or email" });
@@ -637,6 +1042,76 @@ class AuthController {
     } catch (error) {
       console.error("Admin reset password error:", error);
       res.status(500).json({ error: "Failed to reset password" });
+    }
+  }
+
+  /**
+   * Switch tenant context for a logged-in tenant admin
+   * POST /api/auth/switch-tenant
+   */
+  async switchTenant(req, res) {
+    try {
+      if (!req.admin) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      if (req.admin.role === "super_admin") {
+        return res.status(403).json({
+          error: "Super admins do not use tenant switching",
+          code: "SUPER_ADMIN_NO_TENANT_SWITCH",
+        });
+      }
+
+      const targetSlug = normalizeTenantLookupSlug(req.body.tenant_slug);
+      if (!targetSlug) {
+        return res.status(400).json({
+          error: "tenant_slug is required",
+        });
+      }
+
+      const tenant = await Tenant.findOne({
+        slug: targetSlug,
+        is_active: true,
+      });
+
+      if (!tenant) {
+        return res.status(404).json({
+          error: "Tenant not found",
+          code: "TENANT_NOT_FOUND",
+        });
+      }
+
+      const membership = await getActiveAdminMembership(req.admin._id, tenant._id);
+      if (!membership) {
+        return res.status(403).json({
+          error: "Tenant admin membership not found",
+          code: "TENANT_MEMBERSHIP_REQUIRED",
+        });
+      }
+
+      const memberships = await getActiveAdminMemberships(req.admin._id);
+      const organizations = await resolveTenantChoices(memberships);
+      const token = generateAdminToken(req.admin, {
+        tenant_id: tenant._id,
+        tenant_role: membership.role || null,
+        permissions: membership.permissions || [],
+      });
+
+      return res.json({
+        message: "Tenant switched successfully",
+        token,
+        admin: serializeAdmin(req.admin, membership),
+        tenant: serializeTenant(tenant),
+        organizations,
+        membership: {
+          id: membership._id,
+          role: membership.role,
+          permissions: membership.permissions || [],
+        },
+      });
+    } catch (error) {
+      console.error("Switch tenant error:", error);
+      return res.status(500).json({ error: "Failed to switch tenant" });
     }
   }
 }

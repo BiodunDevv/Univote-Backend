@@ -2,10 +2,34 @@ const express = require("express");
 const router = express.Router();
 const { body } = require("express-validator");
 const adminController = require("../controllers/adminController");
-const { authenticateAdmin, requireSuperAdmin } = require("../middleware/auth");
+const billingController = require("../controllers/billingController");
+const tenantAdminController = require("../controllers/tenantAdminController");
+const {
+  authenticateAdmin,
+  requireSuperAdmin,
+  requireTenantAdmin,
+  requirePermission,
+} = require("../middleware/auth");
+const {
+  requireTenantAccess,
+  requireTenantContext,
+  requireTenantFeature,
+} = require("../middleware/tenantContext");
 const { adminLimiter } = require("../middleware/rateLimiter");
 const validate = require("../middleware/validator");
 const auditLogger = require("../middleware/auditLogger");
+
+const tenantAdminMiddlewares = [
+  authenticateAdmin,
+  requireTenantAccess,
+  requireTenantAdmin,
+];
+
+const tenantBillingMiddlewares = [
+  authenticateAdmin,
+  requireTenantContext,
+  requireTenantAdmin,
+];
 
 /**
  * @swagger
@@ -69,7 +93,7 @@ const auditLogger = require("../middleware/auditLogger");
  */
 router.post(
   "/upload-students",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   adminLimiter,
   [
     body("csv_data").isArray().withMessage("CSV data must be an array"),
@@ -159,7 +183,7 @@ router.post(
  */
 router.post(
   "/create-session",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   [
     body("title").notEmpty().withMessage("Title is required"),
     body("description").notEmpty().withMessage("Description is required"),
@@ -221,7 +245,7 @@ router.post(
  */
 router.patch(
   "/update-session/:id",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   auditLogger("update_session", "sessions"),
   adminController.updateSession,
 );
@@ -252,7 +276,7 @@ router.patch(
  */
 router.delete(
   "/delete-session/:id",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   auditLogger("delete_session", "sessions"),
   adminController.deleteSession,
 );
@@ -301,7 +325,7 @@ router.delete(
  */
 router.post(
   "/sessions/:id/candidates",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   [
     body("name").notEmpty().withMessage("Candidate name is required"),
     body("position").notEmpty().withMessage("Candidate position is required"),
@@ -351,7 +375,7 @@ router.post(
  *       200:
  *         description: Candidate directory response
  */
-router.get("/candidates", authenticateAdmin, adminController.listCandidates);
+router.get("/candidates", ...tenantAdminMiddlewares, adminController.listCandidates);
 
 /**
  * @swagger
@@ -384,7 +408,7 @@ router.get("/candidates", authenticateAdmin, adminController.listCandidates);
  */
 router.get(
   "/candidates/:id",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   adminController.getCandidateById,
 );
 
@@ -423,7 +447,7 @@ router.get(
  */
 router.patch(
   "/candidates/:id",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   auditLogger("update_candidate", "candidates"),
   adminController.updateCandidate,
 );
@@ -451,7 +475,7 @@ router.patch(
  */
 router.delete(
   "/candidates/:id",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   auditLogger("delete_candidate", "candidates"),
   adminController.deleteCandidate,
 );
@@ -486,7 +510,7 @@ router.delete(
  */
 router.delete(
   "/remove-department",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   [
     body("departments").notEmpty().withMessage("Departments required"),
     validate,
@@ -636,11 +660,24 @@ router.post(
  *                 pagination:
  *                   $ref: '#/components/schemas/Pagination'
  */
-router.get("/students", authenticateAdmin, adminController.getStudents);
+router.get("/students", ...tenantAdminMiddlewares, adminController.getStudents);
+router.get("/participants", ...tenantAdminMiddlewares, adminController.getStudents);
 router.get(
   "/students/overview",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   adminController.getStudentsOverview,
+);
+router.get(
+  "/participants/overview",
+  ...tenantAdminMiddlewares,
+  adminController.getStudentsOverview,
+);
+
+router.patch(
+  "/participants/bulk-update",
+  ...tenantAdminMiddlewares,
+  auditLogger("bulk_update_students", "students"),
+  adminController.bulkUpdateStudents,
 );
 
 /**
@@ -671,7 +708,12 @@ router.get(
  *       404:
  *         description: Student not found
  */
-router.get("/students/:id", authenticateAdmin, adminController.getStudentById);
+router.get("/students/:id", ...tenantAdminMiddlewares, adminController.getStudentById);
+router.get(
+  "/participants/:id",
+  ...tenantAdminMiddlewares,
+  adminController.getStudentById,
+);
 
 /**
  * @swagger
@@ -712,7 +754,29 @@ router.get("/students/:id", authenticateAdmin, adminController.getStudentById);
  */
 router.patch(
   "/students/:id",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
+  [
+    body("full_name")
+      .optional()
+      .notEmpty()
+      .withMessage("Full name cannot be empty"),
+    body("email").optional().isEmail().withMessage("Valid email is required"),
+    body("level")
+      .optional()
+      .isIn(["100", "200", "300", "400", "500", "600"])
+      .withMessage("Invalid level"),
+    body("is_active")
+      .optional()
+      .isBoolean()
+      .withMessage("is_active must be boolean"),
+    validate,
+  ],
+  auditLogger("update_student", "students"),
+  adminController.updateStudent,
+);
+router.patch(
+  "/participants/:id",
+  ...tenantAdminMiddlewares,
   [
     body("full_name")
       .optional()
@@ -756,7 +820,13 @@ router.patch(
  */
 router.patch(
   "/students/:id/activate",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
+  auditLogger("activate_student", "students"),
+  adminController.activateStudent,
+);
+router.patch(
+  "/participants/:id/activate",
+  ...tenantAdminMiddlewares,
   auditLogger("activate_student", "students"),
   adminController.activateStudent,
 );
@@ -784,7 +854,13 @@ router.patch(
  */
 router.patch(
   "/students/:id/deactivate",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
+  auditLogger("deactivate_student", "students"),
+  adminController.deactivateStudent,
+);
+router.patch(
+  "/participants/:id/deactivate",
+  ...tenantAdminMiddlewares,
   auditLogger("deactivate_student", "students"),
   adminController.deactivateStudent,
 );
@@ -812,7 +888,13 @@ router.patch(
  */
 router.delete(
   "/students/:id",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
+  auditLogger("delete_student", "students"),
+  adminController.deleteStudent,
+);
+router.delete(
+  "/participants/:id",
+  ...tenantAdminMiddlewares,
   auditLogger("delete_student", "students"),
   adminController.deleteStudent,
 );
@@ -852,7 +934,7 @@ router.delete(
  */
 router.patch(
   "/students/bulk-update",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   auditLogger("bulk_update_students", "students"),
   adminController.bulkUpdateStudents,
 );
@@ -888,7 +970,7 @@ router.patch(
  */
 router.get(
   "/colleges/:collegeId/students",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   adminController.getStudentsByCollege,
 );
 
@@ -915,7 +997,7 @@ router.get(
  */
 router.get(
   "/colleges/:collegeId/students/statistics",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   adminController.getStudentStatisticsByCollege,
 );
 
@@ -955,7 +1037,7 @@ router.get(
  */
 router.get(
   "/colleges/:collegeId/departments/:departmentId/students",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   adminController.getStudentsByDepartment,
 );
 
@@ -997,12 +1079,34 @@ router.get(
  *                 pagination:
  *                   $ref: '#/components/schemas/Pagination'
  */
-router.get("/sessions", authenticateAdmin, adminController.getSessions);
+router.get("/sessions", ...tenantAdminMiddlewares, adminController.getSessions);
 
 router.get(
   "/sessions/summary",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   adminController.getSessionsSummary,
+);
+
+/**
+ * @swagger
+ * /admin/analytics/overview:
+ *   get:
+ *     summary: Get advanced analytics overview
+ *     description: Retrieve turnout, participation, top voter, and recent activity analytics. Requires a plan with advanced analytics.
+ *     tags: [Admin - Analytics]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Advanced analytics overview
+ *       403:
+ *         description: Feature not enabled for the tenant plan
+ */
+router.get(
+  "/analytics/overview",
+  ...tenantAdminMiddlewares,
+  requireTenantFeature("advanced_analytics"),
+  adminController.getAnalyticsOverview,
 );
 
 /**
@@ -1035,7 +1139,7 @@ router.get(
  *       404:
  *         description: Session not found
  */
-router.get("/sessions/:id", authenticateAdmin, adminController.getSessionById);
+router.get("/sessions/:id", ...tenantAdminMiddlewares, adminController.getSessionById);
 
 /**
  * @swagger
@@ -1060,8 +1164,309 @@ router.get("/sessions/:id", authenticateAdmin, adminController.getSessionById);
  */
 router.get(
   "/session-stats/:id",
-  authenticateAdmin,
+  ...tenantAdminMiddlewares,
   adminController.getSessionStats,
+);
+
+/**
+ * @swagger
+ * /admin/analytics/sessions/{id}:
+ *   get:
+ *     summary: Get advanced analytics for a session
+ *     description: Retrieve detailed per-session analytics and candidate breakdown for advanced analytics tenants.
+ *     tags: [Admin - Analytics]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Advanced session analytics
+ *       403:
+ *         description: Feature not enabled for the tenant plan
+ */
+router.get(
+  "/analytics/sessions/:id",
+  ...tenantAdminMiddlewares,
+  requireTenantFeature("advanced_analytics"),
+  adminController.getAdvancedSessionAnalytics,
+);
+
+router.get(
+  "/billing/summary",
+  ...tenantBillingMiddlewares,
+  billingController.getTenantBillingSummary,
+);
+
+router.get(
+  "/billing/invoices",
+  ...tenantBillingMiddlewares,
+  billingController.getTenantInvoices,
+);
+
+router.post(
+  "/billing/checkout",
+  ...tenantBillingMiddlewares,
+  requirePermission("billing.manage", "tenant.manage"),
+  [
+    body("plan_code")
+      .isIn(["pro", "pro_plus", "enterprise"])
+      .withMessage("Valid plan_code is required"),
+    validate,
+  ],
+  auditLogger("tenant_billing_checkout", "billing"),
+  billingController.checkout,
+);
+
+router.post(
+  "/billing/cancel-change",
+  ...tenantBillingMiddlewares,
+  requirePermission("billing.manage", "tenant.manage"),
+  auditLogger("tenant_billing_cancel_change", "billing"),
+  billingController.cancelScheduledChange,
+);
+
+/**
+ * @swagger
+ * /admin/admin-users/roles-catalog:
+ *   get:
+ *     summary: Get tenant admin role catalog
+ *     description: Returns the supported tenant admin roles and their default permission bundles for the active tenant.
+ *     tags: [Admin - Tenant Admin Users]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tenant admin role catalog
+ */
+router.get(
+  "/admin-users/roles-catalog",
+  ...tenantAdminMiddlewares,
+  tenantAdminController.getRoleCatalog,
+);
+
+/**
+ * @swagger
+ * /admin/admin-users/overview:
+ *   get:
+ *     summary: Get tenant admin overview
+ *     description: Returns tenant-scoped admin membership totals and current role distribution.
+ *     tags: [Admin - Tenant Admin Users]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tenant admin overview
+ */
+router.get(
+  "/admin-users/overview",
+  ...tenantAdminMiddlewares,
+  tenantAdminController.getOverview,
+);
+
+/**
+ * @swagger
+ * /admin/admin-users:
+ *   get:
+ *     summary: List tenant admin users
+ *     description: Returns tenant-scoped admin memberships with optional search, role, active state, and pagination filters.
+ *     tags: [Admin - Tenant Admin Users]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: role
+ *         schema:
+ *           type: string
+ *           enum: [owner, admin, support, analyst]
+ *       - in: query
+ *         name: is_active
+ *         schema:
+ *           type: boolean
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Tenant admin membership list
+ *   post:
+ *     summary: Create or attach a tenant admin user
+ *     description: Creates a new global admin identity if the email does not exist, then attaches it to the active tenant with the chosen role and permissions.
+ *     tags: [Admin - Tenant Admin Users]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, full_name]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               full_name:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *                 description: Required when creating a brand-new admin identity.
+ *               role:
+ *                 type: string
+ *                 enum: [owner, admin, support, analyst]
+ *               permissions:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       201:
+ *         description: Tenant admin user created
+ *       409:
+ *         description: Admin already assigned to the active tenant
+ */
+router.get(
+  "/admin-users",
+  ...tenantAdminMiddlewares,
+  tenantAdminController.listMembers,
+);
+
+router.get(
+  "/admin-users/:id",
+  ...tenantAdminMiddlewares,
+  tenantAdminController.getMemberById,
+);
+
+router.post(
+  "/admin-users",
+  ...tenantAdminMiddlewares,
+  requirePermission("admins.manage", "tenant.manage"),
+  [
+    body("email").isEmail().withMessage("Valid email is required"),
+    body("password")
+      .optional()
+      .isLength({ min: 6 })
+      .withMessage("Password must be at least 6 characters"),
+    body("full_name").notEmpty().withMessage("Full name is required"),
+    body("role")
+      .optional()
+      .isIn(["owner", "admin", "support", "analyst"])
+      .withMessage("Valid tenant role is required"),
+    body("permissions").optional().isArray(),
+    validate,
+  ],
+  auditLogger("create_tenant_admin_member", "admin_users"),
+  tenantAdminController.createMember,
+);
+
+/**
+ * @swagger
+ * /admin/admin-users/{id}:
+ *   get:
+ *     summary: Get tenant admin user by membership ID
+ *     description: Returns a single tenant-scoped admin membership and its linked admin identity data.
+ *     tags: [Admin - Tenant Admin Users]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Tenant admin membership details
+ *       404:
+ *         description: Membership not found
+ *   patch:
+ *     summary: Update tenant admin membership
+ *     description: Updates tenant role, permissions, activation state, or linked admin full name for the active tenant.
+ *     tags: [Admin - Tenant Admin Users]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               full_name:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [owner, admin, support, analyst]
+ *               permissions:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               is_active:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Tenant admin membership updated
+ *       404:
+ *         description: Membership not found
+ *   delete:
+ *     summary: Remove tenant admin membership
+ *     description: Removes tenant access for the linked admin identity within the active tenant.
+ *     tags: [Admin - Tenant Admin Users]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Tenant admin membership removed
+ *       404:
+ *         description: Membership not found
+ */
+router.patch(
+  "/admin-users/:id",
+  ...tenantAdminMiddlewares,
+  requirePermission("admins.manage", "tenant.manage"),
+  [
+    body("full_name").optional().notEmpty().withMessage("Full name cannot be empty"),
+    body("role")
+      .optional()
+      .isIn(["owner", "admin", "support", "analyst"])
+      .withMessage("Valid tenant role is required"),
+    body("permissions").optional().isArray(),
+    body("is_active").optional().isBoolean().withMessage("is_active must be boolean"),
+    validate,
+  ],
+  auditLogger("update_tenant_admin_member", "admin_users"),
+  tenantAdminController.updateMember,
+);
+
+router.delete(
+  "/admin-users/:id",
+  ...tenantAdminMiddlewares,
+  requirePermission("admins.manage", "tenant.manage"),
+  auditLogger("delete_tenant_admin_member", "admin_users"),
+  tenantAdminController.deleteMember,
 );
 
 /**

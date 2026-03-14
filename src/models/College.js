@@ -42,16 +42,20 @@ const departmentSchema = new mongoose.Schema(
 
 const collegeSchema = new mongoose.Schema(
   {
+    tenant_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      default: null,
+      index: true,
+    },
     name: {
       type: String,
       required: true,
-      unique: true,
       trim: true,
     },
     code: {
       type: String,
       required: true,
-      unique: true,
       uppercase: true,
       trim: true,
     },
@@ -86,9 +90,18 @@ const collegeSchema = new mongoose.Schema(
   }
 );
 
-// Indexes for performance (name and code already have unique indexes)
+// Indexes for performance
+collegeSchema.index(
+  { tenant_id: 1, name: 1 },
+  { unique: true, partialFilterExpression: { tenant_id: { $type: "objectId" } } },
+);
+collegeSchema.index(
+  { tenant_id: 1, code: 1 },
+  { unique: true, partialFilterExpression: { tenant_id: { $type: "objectId" } } },
+);
 collegeSchema.index({ "departments.code": 1 });
 collegeSchema.index({ is_active: 1 });
+collegeSchema.index({ tenant_id: 1, is_active: 1 });
 
 // Method to add department
 collegeSchema.methods.addDepartment = function (departmentData) {

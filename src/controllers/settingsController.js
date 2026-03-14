@@ -4,9 +4,104 @@ const VotingSession = require("../models/VotingSession");
 const Vote = require("../models/Vote");
 const AuditLog = require("../models/AuditLog");
 const College = require("../models/College");
+const Tenant = require("../models/Tenant");
+const TenantAdminMembership = require("../models/TenantAdminMembership");
+const PlatformSetting = require("../models/PlatformSetting");
 const bcrypt = require("bcryptjs");
-const faceppService = require("../services/faceppService");
+const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
+const {
+  getTenantScopedFilter,
+  prependTenantMatch,
+} = require("../utils/tenantScope");
+const {
+  DEFAULT_PARTICIPANT_FIELDS,
+  getTenantEligibilityPolicy,
+  getTenantIdentityMetadata,
+  getTenantParticipantFieldMetadata,
+  getTenantSettings,
+  getTenantSettingsCatalog,
+  mergeTenantSettings,
+  normalizeIdentifierKey,
+} = require("../utils/tenantSettings");
+const { getTenantEntitlements, hasTenantFeature } = require("../services/planAccessService");
+
+function serializeTenantSettingsPayload(tenant) {
+  const settings = getTenantSettings(tenant);
+  return {
+    tenant: {
+      id: tenant._id,
+      name: tenant.name,
+      slug: tenant.slug,
+      status: tenant.status,
+      plan_code: tenant.plan_code,
+      subscription_status: tenant.subscription_status,
+      branding: tenant.branding || {},
+    },
+    labels: settings.labels,
+    identity: getTenantIdentityMetadata(tenant),
+    auth_policy: settings.auth,
+    participant_fields: getTenantParticipantFieldMetadata(tenant),
+    eligibility_policy: getTenantEligibilityPolicy(tenant),
+    support: settings.support,
+    notifications: settings.notifications,
+    voting: settings.voting,
+    features: settings.features,
+    entitlements: getTenantEntitlements(tenant),
+  };
+}
+
+async function getOrCreatePlatformSetting() {
+  let platformSetting = await PlatformSetting.findOne({ key: "defaults" });
+  if (!platformSetting) {
+    platformSetting = await PlatformSetting.create({ key: "defaults" });
+  }
+  return platformSetting;
+}
+
+function buildAuditLogFilter(req, overrides = {}) {
+  return getTenantScopedFilter(req, {
+    user_type: "admin",
+    ...overrides,
+  });
+}
+
+async function buildTenantAdminExportRows(req, filters = {}) {
+  const membershipFilter = getTenantScopedFilter(req, {
+    ...(filters.is_active !== undefined ? { is_active: filters.is_active } : {}),
+    ...(filters.role ? { role: filters.role } : {}),
+  });
+
+  const memberships = await TenantAdminMembership.find(membershipFilter)
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const adminIds = memberships.map((membership) => membership.admin_id);
+  const admins = await Admin.find({ _id: { $in: adminIds } })
+    .select("email full_name role is_active last_login_at createdAt updatedAt")
+    .lean();
+  const adminMap = new Map(
+    admins.map((admin) => [admin._id.toString(), admin]),
+  );
+
+  return memberships.map((membership) => {
+    const admin = adminMap.get(membership.admin_id.toString());
+    return {
+      membership_id: membership._id,
+      admin_id: membership.admin_id,
+      email: admin?.email || null,
+      full_name: admin?.full_name || null,
+      global_role: admin?.role || null,
+      global_is_active: admin?.is_active || false,
+      tenant_role: membership.role,
+      permissions: membership.permissions,
+      tenant_is_active: membership.is_active,
+      last_login_at: admin?.last_login_at || null,
+      created_at: membership.createdAt,
+      updated_at: membership.updatedAt,
+    };
+  });
+}
 
 class SettingsController {
   /**
@@ -156,20 +251,34 @@ class SettingsController {
         studentsWithFacialData,
         recentAuditLogs,
       ] = await Promise.all([
-        Student.countDocuments(),
-        Student.countDocuments({ is_active: true }),
-        College.countDocuments(),
-        College.aggregate([
-          { $project: { department_count: { $size: "$departments" } } },
-          { $group: { _id: null, total: { $sum: "$department_count" } } },
-        ]),
-        VotingSession.countDocuments(),
-        VotingSession.countDocuments({ status: "active" }),
-        VotingSession.countDocuments({ status: "ended" }),
-        Vote.countDocuments({ status: "valid" }),
-        Admin.countDocuments(),
-        Student.countDocuments({ face_token: { $exists: true, $ne: null } }),
-        AuditLog.find({ user_type: "admin" })
+        Student.countDocuments(getTenantScopedFilter(req, {})),
+        Student.countDocuments(getTenantScopedFilter(req, { is_active: true })),
+        College.countDocuments(getTenantScopedFilter(req, {})),
+        College.aggregate(
+          prependTenantMatch(req, [
+            { $project: { department_count: { $size: "$departments" } } },
+            { $group: { _id: null, total: { $sum: "$department_count" } } },
+          ]),
+        ),
+        VotingSession.countDocuments(getTenantScopedFilter(req, {})),
+        VotingSession.countDocuments(
+          getTenantScopedFilter(req, { status: "active" }),
+        ),
+        VotingSession.countDocuments(
+          getTenantScopedFilter(req, { status: "ended" }),
+        ),
+        Vote.countDocuments(getTenantScopedFilter(req, { status: "valid" })),
+        req.tenantId
+          ? TenantAdminMembership.countDocuments(
+              getTenantScopedFilter(req, { is_active: true }),
+            )
+          : Admin.countDocuments(),
+        Student.countDocuments(
+          getTenantScopedFilter(req, {
+            face_token: { $exists: true, $ne: null },
+          }),
+        ),
+        AuditLog.find(buildAuditLogFilter(req))
           .sort({ createdAt: -1 })
           .limit(10)
           .lean(),
@@ -182,27 +291,29 @@ class SettingsController {
           : 0;
 
       // Get recent sessions with vote counts using grouped aggregation (faster than $lookup of full vote arrays)
-      const recentSessions = await VotingSession.find({})
+      const recentSessions = await VotingSession.find(getTenantScopedFilter(req, {}))
         .select("title status start_time end_time")
         .sort({ start_time: -1 })
         .limit(5)
         .lean();
 
       const sessionIds = recentSessions.map((session) => session._id);
-      const voteCounts = await Vote.aggregate([
-        {
-          $match: {
-            status: "valid",
-            session_id: { $in: sessionIds },
+      const voteCounts = await Vote.aggregate(
+        prependTenantMatch(req, [
+          {
+            $match: {
+              status: "valid",
+              session_id: { $in: sessionIds },
+            },
           },
-        },
-        {
-          $group: {
-            _id: "$session_id",
-            count: { $sum: 1 },
+          {
+            $group: {
+              _id: "$session_id",
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]);
+        ]),
+      );
 
       const voteCountMap = new Map(
         voteCounts.map((item) => [item._id.toString(), item.count]),
@@ -216,7 +327,9 @@ class SettingsController {
       // Get admin details for recent audit logs
       const adminIds = [
         ...new Set(
-          recentAuditLogs.map((log) => log.user_id.toString()).filter(Boolean),
+          recentAuditLogs
+            .map((log) => log.user_id?.toString())
+            .filter(Boolean),
         ),
       ];
       const admins = await Admin.find({ _id: { $in: adminIds } })
@@ -254,7 +367,9 @@ class SettingsController {
           },
           recent_sessions: votingStats,
           recent_audit_logs: recentAuditLogs.map((log) => {
-            const admin = adminMap[log.user_id.toString()];
+            const admin = log.user_id
+              ? adminMap[log.user_id.toString()]
+              : null;
             return {
               action: log.action,
               details: log.details,
@@ -283,7 +398,7 @@ class SettingsController {
   async getSystemConfig(req, res) {
     try {
       // Get Face++ configuration status
-      const faceppStatus = faceppService.getStatus();
+      const faceppStatus = await faceProviderService.getStatus();
 
       // Get email service configuration (Brevo)
       const emailConfig = {
@@ -323,6 +438,15 @@ class SettingsController {
           database: dbConfig,
           jwt: jwtConfig,
           other: otherConfig,
+          tenant: req.tenant
+            ? {
+                id: req.tenant._id,
+                name: req.tenant.name,
+                slug: req.tenant.slug,
+                plan_code: req.tenant.plan_code,
+                subscription_status: req.tenant.subscription_status,
+              }
+            : null,
         },
       });
     } catch (error) {
@@ -340,16 +464,20 @@ class SettingsController {
       const {
         action,
         admin_id,
+        tenant_id,
         start_date,
         end_date,
         page = 1,
         limit = 50,
       } = req.query;
 
-      const filter = { user_type: "admin" };
+      const filter = buildAuditLogFilter(req);
 
       if (action) filter.action = action;
       if (admin_id) filter.user_id = admin_id;
+      if (tenant_id && req.admin?.role === "super_admin") {
+        filter.tenant_id = tenant_id;
+      }
 
       // Date range filter
       if (start_date || end_date) {
@@ -369,18 +497,26 @@ class SettingsController {
 
       // Get admin details separately
       const adminIds = [
-        ...new Set(logs.map((log) => log.user_id.toString()).filter(Boolean)),
+        ...new Set(logs.map((log) => log.user_id?.toString()).filter(Boolean)),
       ];
-      const admins = await Admin.find({ _id: { $in: adminIds } })
-        .select("full_name email role")
-        .lean();
+      const tenantIds = [
+        ...new Set(logs.map((log) => log.tenant_id?.toString()).filter(Boolean)),
+      ];
+      const [admins, tenants] = await Promise.all([
+        Admin.find({ _id: { $in: adminIds } }).select("full_name email role").lean(),
+        Tenant.find({ _id: { $in: tenantIds } }).select("name slug").lean(),
+      ]);
       const adminMap = Object.fromEntries(
         admins.map((admin) => [admin._id.toString(), admin]),
+      );
+      const tenantMap = Object.fromEntries(
+        tenants.map((tenant) => [tenant._id.toString(), tenant]),
       );
 
       res.json({
         audit_logs: logs.map((log) => {
-          const admin = adminMap[log.user_id.toString()];
+          const admin = log.user_id ? adminMap[log.user_id.toString()] : null;
+          const tenant = log.tenant_id ? tenantMap[log.tenant_id.toString()] : null;
           return {
             id: log._id,
             action: log.action,
@@ -391,6 +527,13 @@ class SettingsController {
                   name: admin.full_name,
                   email: admin.email,
                   role: admin.role,
+                }
+              : null,
+            tenant: tenant
+              ? {
+                  id: log.tenant_id,
+                  name: tenant.name,
+                  slug: tenant.slug,
                 }
               : null,
             timestamp: log.createdAt,
@@ -417,7 +560,7 @@ class SettingsController {
    */
   async getAuditActions(req, res) {
     try {
-      const actions = await AuditLog.distinct("action");
+      const actions = await AuditLog.distinct("action", buildAuditLogFilter(req));
 
       res.json({
         actions: actions.sort(),
@@ -496,22 +639,12 @@ class SettingsController {
       const admin = await Admin.findById(req.adminId).select("full_name email");
 
       // Send test email
-      await emailService.sendEmail(
-        recipient_email,
-        "Univote Email Test",
-        `
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-          <h2 style="color: #4CAF50;">Email Configuration Test</h2>
-          <p>This is a test email from Univote Backend.</p>
-          <p><strong>Sent by:</strong> ${admin.full_name} (${admin.email})</p>
-          <p><strong>Timestamp:</strong> ${new Date().toLocaleString()}</p>
-          <hr style="margin: 20px 0; border: 1px solid #ddd;">
-          <p style="color: #666; font-size: 12px;">
-            If you received this email, your email configuration is working correctly.
-          </p>
-        </div>
-        `,
-      );
+      await emailService.sendOperationalTestEmail({
+        to: recipient_email,
+        senderName: admin.full_name,
+        senderEmail: admin.email,
+        tenant: req.tenant || null,
+      });
 
       res.json({
         message: "Test email sent successfully",
@@ -541,7 +674,7 @@ class SettingsController {
       }
 
       // Get Face++ status
-      const status = faceppService.getStatus();
+      const status = await faceProviderService.getStatus();
 
       if (!status.configured) {
         return res.status(400).json({
@@ -552,7 +685,7 @@ class SettingsController {
       }
 
       // Test face detection
-      const result = await faceppService.detectFace(image_url);
+      const result = await faceProviderService.testConnection(image_url);
 
       if (result.success) {
         res.json({
@@ -596,57 +729,77 @@ class SettingsController {
         collegeStats,
         auditLogStats,
       ] = await Promise.all([
-        Student.aggregate([
-          {
-            $group: {
-              _id: null,
-              total: { $sum: 1 },
-              with_face_token: {
-                $sum: {
-                  $cond: [
-                    { $and: [{ $ifNull: ["$face_token", false] }] },
-                    1,
-                    0,
-                  ],
+        Student.aggregate(
+          prependTenantMatch(req, [
+            {
+              $group: {
+                _id: null,
+                total: { $sum: 1 },
+                with_face_token: {
+                  $sum: {
+                    $cond: [
+                      { $and: [{ $ifNull: ["$face_token", false] }] },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+                with_photo: {
+                  $sum: {
+                    $cond: [{ $and: [{ $ifNull: ["$photo_url", false] }] }, 1, 0],
+                  },
+                },
+                active: {
+                  $sum: { $cond: [{ $eq: ["$is_active", true] }, 1, 0] },
                 },
               },
-              with_photo: {
-                $sum: {
-                  $cond: [{ $and: [{ $ifNull: ["$photo_url", false] }] }, 1, 0],
+            },
+          ]),
+        ),
+        Vote.aggregate(
+          prependTenantMatch(req, [
+            {
+              $group: {
+                _id: "$status",
+                count: { $sum: 1 },
+              },
+            },
+          ]),
+        ),
+        VotingSession.aggregate(
+          prependTenantMatch(req, [
+            {
+              $group: {
+                _id: "$status",
+                count: { $sum: 1 },
+              },
+            },
+          ]),
+        ),
+        req.tenantId
+          ? TenantAdminMembership.aggregate([
+              {
+                $match: {
+                  tenant_id: req.tenantId,
                 },
               },
-              active: {
-                $sum: { $cond: [{ $eq: ["$is_active", true] }, 1, 0] },
+              {
+                $group: {
+                  _id: "$role",
+                  count: { $sum: 1 },
+                },
               },
-            },
-          },
-        ]),
-        Vote.aggregate([
-          {
-            $group: {
-              _id: "$status",
-              count: { $sum: 1 },
-            },
-          },
-        ]),
-        VotingSession.aggregate([
-          {
-            $group: {
-              _id: "$status",
-              count: { $sum: 1 },
-            },
-          },
-        ]),
-        Admin.aggregate([
-          {
-            $group: {
-              _id: "$role",
-              count: { $sum: 1 },
-            },
-          },
-        ]),
-        College.countDocuments(),
-        AuditLog.countDocuments(),
+            ])
+          : Admin.aggregate([
+              {
+                $group: {
+                  _id: "$role",
+                  count: { $sum: 1 },
+                },
+              },
+            ]),
+        College.countDocuments(getTenantScopedFilter(req, {})),
+        AuditLog.countDocuments(getTenantScopedFilter(req, {})),
       ]);
 
       res.json({
@@ -695,10 +848,11 @@ class SettingsController {
 
       let data;
       let filename;
+      const scopedFilters = getTenantScopedFilter(req, filters);
 
       switch (data_type) {
         case "students":
-          data = await Student.find(filters)
+          data = await Student.find(scopedFilters)
             .select(
               "-password_hash -active_token -face_token -embedding_vector",
             )
@@ -707,7 +861,7 @@ class SettingsController {
           break;
 
         case "votes":
-          data = await Vote.find(filters)
+          data = await Vote.find(scopedFilters)
             .populate("student_id", "matric_no full_name")
             .populate("session_id", "title")
             .lean();
@@ -715,25 +869,29 @@ class SettingsController {
           break;
 
         case "sessions":
-          data = await VotingSession.find(filters)
+          data = await VotingSession.find(scopedFilters)
             .populate("candidates")
             .lean();
           filename = `sessions_export_${Date.now()}.${format}`;
           break;
 
         case "admins":
-          data = await Admin.find(filters)
-            .select("-password_hash -reset_password_code")
-            .lean();
+          if (req.tenantId) {
+            data = await buildTenantAdminExportRows(req, filters);
+          } else {
+            data = await Admin.find(filters)
+              .select("-password_hash -reset_password_code")
+              .lean();
+          }
           filename = `admins_export_${Date.now()}.${format}`;
           break;
 
         case "audit_logs":
-          data = await AuditLog.find({ user_type: "admin", ...filters }).lean();
+          data = await AuditLog.find(buildAuditLogFilter(req, filters)).lean();
           // Get admin details for audit logs
           const adminIds = [
             ...new Set(
-              data.map((log) => log.user_id.toString()).filter(Boolean),
+              data.map((log) => log.user_id?.toString()).filter(Boolean),
             ),
           ];
           const admins = await Admin.find({ _id: { $in: adminIds } })
@@ -744,7 +902,7 @@ class SettingsController {
           );
           // Map admin details to logs
           data = data.map((log) => {
-            const admin = adminMap[log.user_id.toString()];
+            const admin = log.user_id ? adminMap[log.user_id.toString()] : null;
             return {
               ...log,
               admin_name: admin ? admin.full_name : null,
@@ -828,7 +986,7 @@ class SettingsController {
 
       // Database check
       try {
-        await Student.findOne().limit(1);
+        await Student.findOne(getTenantScopedFilter(req, {})).limit(1);
         health.checks.database = { status: "healthy", message: "Connected" };
       } catch (error) {
         health.checks.database = {
@@ -839,7 +997,7 @@ class SettingsController {
       }
 
       // Face++ check
-      const faceppStatus = faceppService.getStatus();
+      const faceppStatus = await faceProviderService.getStatus();
       health.checks.facepp = {
         status: faceppStatus.configured ? "healthy" : "not_configured",
         message: faceppStatus.configured
@@ -866,6 +1024,14 @@ class SettingsController {
         message: jwtConfigured ? "Configured" : "JWT secret not configured",
       };
 
+      if (req.tenant) {
+        health.checks.tenant = {
+          status: "healthy",
+          message: `${req.tenant.name} is on ${req.tenant.plan_code}`,
+          subscription_status: req.tenant.subscription_status,
+        };
+      }
+
       res.json({ health });
     } catch (error) {
       console.error("Get system health error:", error);
@@ -876,6 +1042,558 @@ class SettingsController {
           error: error.message,
         },
       });
+    }
+  }
+
+  async getTenantProfile(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const tenant = await Tenant.findById(req.tenantId).lean();
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      res.json(serializeTenantSettingsPayload(tenant));
+    } catch (error) {
+      console.error("Get tenant profile settings error:", error);
+      res.status(500).json({ error: "Failed to fetch tenant settings" });
+    }
+  }
+
+  async updateTenantProfile(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const tenant = await Tenant.findById(req.tenantId);
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      const {
+        name,
+        primary_domain,
+        support_email,
+        primary_color,
+        accent_color,
+        logo_url,
+        contact_name,
+        contact_email,
+        contact_phone,
+      } = req.body;
+
+      if (name !== undefined) tenant.name = String(name || "").trim() || tenant.name;
+      if (primary_domain !== undefined) {
+        tenant.primary_domain = primary_domain
+          ? String(primary_domain).trim().toLowerCase()
+          : null;
+      }
+
+      tenant.branding = {
+        ...(tenant.branding?.toObject?.() || tenant.branding || {}),
+        ...(support_email !== undefined
+          ? { support_email: support_email ? String(support_email).trim().toLowerCase() : null }
+          : {}),
+        ...(primary_color !== undefined ? { primary_color } : {}),
+        ...(accent_color !== undefined ? { accent_color } : {}),
+        ...(logo_url !== undefined ? { logo_url: logo_url || null } : {}),
+      };
+
+      tenant.onboarding = {
+        ...(tenant.onboarding?.toObject?.() || tenant.onboarding || {}),
+        ...(contact_name !== undefined ? { contact_name } : {}),
+        ...(contact_email !== undefined
+          ? { contact_email: contact_email ? String(contact_email).trim().toLowerCase() : null }
+          : {}),
+        ...(contact_phone !== undefined ? { contact_phone } : {}),
+      };
+
+      await tenant.save();
+
+      res.json({
+        message: "Tenant profile updated successfully",
+        ...serializeTenantSettingsPayload(tenant),
+      });
+    } catch (error) {
+      console.error("Update tenant profile settings error:", error);
+      res.status(500).json({ error: "Failed to update tenant settings" });
+    }
+  }
+
+  async getIdentitySettings(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const [tenant, platformSetting] = await Promise.all([
+        Tenant.findById(req.tenantId).lean(),
+        getOrCreatePlatformSetting(),
+      ]);
+
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      res.json({
+        identity: getTenantIdentityMetadata(tenant),
+        labels: getTenantSettings(tenant).labels,
+        catalog: getTenantSettingsCatalog(),
+        platform: platformSetting.identity_catalog,
+        entitlements: getTenantEntitlements(tenant),
+      });
+    } catch (error) {
+      console.error("Get identity settings error:", error);
+      res.status(500).json({ error: "Failed to fetch identity settings" });
+    }
+  }
+
+  async updateIdentitySettings(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const tenant = await Tenant.findById(req.tenantId);
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      const currentSettings = getTenantSettings(tenant);
+      const {
+        primary_identifier,
+        allowed_identifiers,
+        recovery_identifiers,
+        display_identifier,
+      } = req.body;
+
+      const nextPrimary = normalizeIdentifierKey(
+        primary_identifier || currentSettings.identity.primary_identifier,
+      );
+
+      if (
+        nextPrimary !== "matric_no" &&
+        !hasTenantFeature(tenant, "custom_identity_policy")
+      ) {
+        return res.status(403).json({
+          error: "Your current plan does not allow a custom participant login identifier",
+          code: "PLAN_FEATURE_UNAVAILABLE",
+          required_feature: "custom_identity_policy",
+        });
+      }
+
+      const merged = mergeTenantSettings({
+        ...currentSettings,
+        identity: {
+          ...currentSettings.identity,
+          ...(primary_identifier !== undefined
+            ? { primary_identifier: nextPrimary }
+            : {}),
+          ...(allowed_identifiers !== undefined
+            ? { allowed_identifiers }
+            : {}),
+          ...(recovery_identifiers !== undefined
+            ? { recovery_identifiers }
+            : {}),
+          ...(display_identifier !== undefined
+            ? { display_identifier }
+            : {}),
+        },
+      });
+
+      tenant.settings = merged;
+      await tenant.save();
+
+      res.json({
+        message: "Identity policy updated successfully",
+        identity: getTenantIdentityMetadata(tenant),
+        labels: merged.labels,
+        entitlements: getTenantEntitlements(tenant),
+      });
+    } catch (error) {
+      console.error("Update identity settings error:", error);
+      res.status(500).json({ error: "Failed to update identity settings" });
+    }
+  }
+
+  async getLabelSettings(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const tenant = await Tenant.findById(req.tenantId).lean();
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      res.json({
+        labels: getTenantSettings(tenant).labels,
+        entitlements: getTenantEntitlements(tenant),
+      });
+    } catch (error) {
+      console.error("Get label settings error:", error);
+      res.status(500).json({ error: "Failed to fetch label settings" });
+    }
+  }
+
+  async updateLabelSettings(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const tenant = await Tenant.findById(req.tenantId);
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      if (!hasTenantFeature(tenant, "custom_terminology")) {
+        return res.status(403).json({
+          error: "Your current plan does not allow custom participant terminology",
+          code: "PLAN_FEATURE_UNAVAILABLE",
+          required_feature: "custom_terminology",
+        });
+      }
+
+      const currentSettings = getTenantSettings(tenant);
+      tenant.settings = mergeTenantSettings({
+        ...currentSettings,
+        labels: {
+          ...currentSettings.labels,
+          ...(req.body.participant_singular !== undefined
+            ? { participant_singular: String(req.body.participant_singular).trim() }
+            : {}),
+          ...(req.body.participant_plural !== undefined
+            ? { participant_plural: String(req.body.participant_plural).trim() }
+            : {}),
+        },
+      });
+
+      await tenant.save();
+
+      res.json({
+        message: "Participant terminology updated successfully",
+        labels: getTenantSettings(tenant).labels,
+        entitlements: getTenantEntitlements(tenant),
+      });
+    } catch (error) {
+      console.error("Update label settings error:", error);
+      res.status(500).json({ error: "Failed to update label settings" });
+    }
+  }
+
+  async getAuthPolicySettings(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const tenant = await Tenant.findById(req.tenantId).lean();
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      const settings = getTenantSettings(tenant);
+      res.json({
+        auth_policy: settings.auth,
+        support: settings.support,
+        notifications: settings.notifications,
+        voting: settings.voting,
+        participant_fields: getTenantParticipantFieldMetadata(tenant),
+        eligibility_policy: getTenantEligibilityPolicy(tenant),
+        entitlements: getTenantEntitlements(tenant),
+      });
+    } catch (error) {
+      console.error("Get auth policy settings error:", error);
+      res.status(500).json({ error: "Failed to fetch auth policy settings" });
+    }
+  }
+
+  async updateAuthPolicySettings(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const tenant = await Tenant.findById(req.tenantId);
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      const currentSettings = getTenantSettings(tenant);
+      const nextRequireFaceVerification = Boolean(
+        req.body.require_face_verification ??
+          currentSettings.auth.require_face_verification,
+      );
+
+      if (nextRequireFaceVerification && !hasTenantFeature(tenant, "face_verification")) {
+        return res.status(403).json({
+          error: "Your current plan does not allow mandatory face verification",
+          code: "PLAN_FEATURE_UNAVAILABLE",
+          required_feature: "face_verification",
+        });
+      }
+
+      tenant.settings = mergeTenantSettings({
+        ...currentSettings,
+        auth: {
+          ...currentSettings.auth,
+          ...(req.body.require_email !== undefined
+            ? { require_email: Boolean(req.body.require_email) }
+            : {}),
+          ...(req.body.require_photo !== undefined
+            ? { require_photo: Boolean(req.body.require_photo) }
+            : {}),
+          ...(req.body.require_face_verification !== undefined
+            ? { require_face_verification: nextRequireFaceVerification }
+            : {}),
+        },
+        support: {
+          ...currentSettings.support,
+          ...(req.body.allow_participant_tickets !== undefined
+            ? { allow_participant_tickets: Boolean(req.body.allow_participant_tickets) }
+            : {}),
+        },
+        notifications: {
+          ...currentSettings.notifications,
+          ...(req.body.email_enabled !== undefined
+            ? { email_enabled: Boolean(req.body.email_enabled) }
+            : {}),
+          ...(req.body.in_app_enabled !== undefined
+            ? { in_app_enabled: Boolean(req.body.in_app_enabled) }
+            : {}),
+          ...(req.body.push_enabled !== undefined
+            ? { push_enabled: Boolean(req.body.push_enabled) }
+            : {}),
+        },
+        voting: {
+          ...currentSettings.voting,
+          ...(req.body.voting_require_face_verification !== undefined
+            ? {
+                require_face_verification: Boolean(
+                  req.body.voting_require_face_verification,
+                ),
+              }
+            : {}),
+        },
+      });
+
+      await tenant.save();
+
+      res.json({
+        message: "Authentication and policy settings updated successfully",
+        auth_policy: getTenantSettings(tenant).auth,
+        support: getTenantSettings(tenant).support,
+        notifications: getTenantSettings(tenant).notifications,
+        voting: getTenantSettings(tenant).voting,
+        participant_fields: getTenantParticipantFieldMetadata(tenant),
+        eligibility_policy: getTenantEligibilityPolicy(tenant),
+        entitlements: getTenantEntitlements(tenant),
+      });
+    } catch (error) {
+      console.error("Update auth policy settings error:", error);
+      res.status(500).json({ error: "Failed to update auth policy settings" });
+    }
+  }
+
+  async getParticipantFields(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const [tenant, platformSetting] = await Promise.all([
+        Tenant.findById(req.tenantId).lean(),
+        getOrCreatePlatformSetting(),
+      ]);
+
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      res.json({
+        participant_fields: getTenantParticipantFieldMetadata(tenant),
+        eligibility_policy: getTenantEligibilityPolicy(tenant),
+        defaults: DEFAULT_PARTICIPANT_FIELDS,
+        platform: {
+          allowed_eligibility_dimensions:
+            platformSetting.identity_catalog?.allowed_eligibility_dimensions || [
+              "college",
+              "department",
+              "level",
+            ],
+        },
+        entitlements: getTenantEntitlements(tenant),
+      });
+    } catch (error) {
+      console.error("Get participant fields error:", error);
+      res.status(500).json({ error: "Failed to fetch participant field policy" });
+    }
+  }
+
+  async updateParticipantFields(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const tenant = await Tenant.findById(req.tenantId);
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      if (!hasTenantFeature(tenant, "custom_participant_structure")) {
+        return res.status(403).json({
+          error: "Your current plan does not allow configurable participant structure",
+          code: "PLAN_FEATURE_UNAVAILABLE",
+          required_feature: "custom_participant_structure",
+        });
+      }
+
+      const currentSettings = getTenantSettings(tenant);
+      const nextFieldsInput = req.body.participant_fields || {};
+
+      const participantFields = Object.fromEntries(
+        Object.entries(currentSettings.participant_fields || {}).map(
+          ([fieldKey, fieldValue]) => [
+            fieldKey,
+            {
+              ...fieldValue,
+              ...((nextFieldsInput && nextFieldsInput[fieldKey]) || {}),
+            },
+          ],
+        ),
+      );
+
+      participantFields.full_name = {
+        ...participantFields.full_name,
+        enabled: true,
+        required: true,
+      };
+
+      const primaryIdentifier =
+        currentSettings.identity.primary_identifier || "matric_no";
+      participantFields[primaryIdentifier] = {
+        ...participantFields[primaryIdentifier],
+        enabled: true,
+        required: true,
+      };
+
+      if (!participantFields.email?.enabled) {
+        participantFields.email = {
+          ...participantFields.email,
+          required: false,
+        };
+      }
+
+      if (participantFields.department?.enabled && !participantFields.college?.enabled) {
+        return res.status(400).json({
+          error: "College must remain enabled when department is enabled",
+          code: "INVALID_PARTICIPANT_FIELD_POLICY",
+        });
+      }
+
+      if (participantFields.department?.required && !participantFields.college?.required) {
+        participantFields.college = {
+          ...participantFields.college,
+          required: true,
+        };
+      }
+
+      if (participantFields.level?.required && !participantFields.department?.enabled) {
+        return res.status(400).json({
+          error: "Level cannot be required when department is disabled",
+          code: "INVALID_PARTICIPANT_FIELD_POLICY",
+        });
+      }
+
+      tenant.settings = mergeTenantSettings({
+        ...currentSettings,
+        participant_fields: participantFields,
+        auth: {
+          ...currentSettings.auth,
+          require_email:
+            participantFields.email?.enabled &&
+            participantFields.email?.required,
+        },
+      });
+
+      await tenant.save();
+
+      res.json({
+        message: "Participant field policy updated successfully",
+        participant_fields: getTenantParticipantFieldMetadata(tenant),
+        eligibility_policy: getTenantEligibilityPolicy(tenant),
+        entitlements: getTenantEntitlements(tenant),
+      });
+    } catch (error) {
+      console.error("Update participant fields error:", error);
+      res.status(500).json({ error: "Failed to update participant field policy" });
+    }
+  }
+
+  async getFeatureAccess(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const tenant = await Tenant.findById(req.tenantId).lean();
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      res.json({
+        features: {
+          custom_terminology: hasTenantFeature(tenant, "custom_terminology"),
+          custom_identity_policy: hasTenantFeature(
+            tenant,
+            "custom_identity_policy",
+          ),
+          custom_participant_structure: hasTenantFeature(
+            tenant,
+            "custom_participant_structure",
+          ),
+          custom_branding: hasTenantFeature(tenant, "custom_branding"),
+          advanced_analytics: hasTenantFeature(tenant, "advanced_analytics"),
+          advanced_reports: hasTenantFeature(tenant, "advanced_reports"),
+          realtime_support: hasTenantFeature(tenant, "realtime_support"),
+          push_notifications: hasTenantFeature(tenant, "push_notifications"),
+          face_verification: hasTenantFeature(tenant, "face_verification"),
+        },
+        entitlements: getTenantEntitlements(tenant),
+      });
+    } catch (error) {
+      console.error("Get feature access error:", error);
+      res.status(500).json({ error: "Failed to fetch feature access" });
+    }
+  }
+
+  async getPlanEntitlements(req, res) {
+    try {
+      if (!req.tenantId) {
+        return res.status(400).json({ error: "Tenant context is required" });
+      }
+
+      const tenant = await Tenant.findById(req.tenantId).lean();
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      res.json({
+        entitlements: getTenantEntitlements(tenant),
+        settings: getTenantSettings(tenant),
+        participant_fields: getTenantParticipantFieldMetadata(tenant),
+        eligibility_policy: getTenantEligibilityPolicy(tenant),
+      });
+    } catch (error) {
+      console.error("Get plan entitlements error:", error);
+      res.status(500).json({ error: "Failed to fetch tenant entitlements" });
     }
   }
 

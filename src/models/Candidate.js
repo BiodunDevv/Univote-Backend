@@ -2,6 +2,12 @@ const mongoose = require("mongoose");
 
 const candidateSchema = new mongoose.Schema(
   {
+    tenant_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      default: null,
+      index: true,
+    },
     session_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "VotingSession",
@@ -42,6 +48,7 @@ const candidateSchema = new mongoose.Schema(
 
 // Index for efficient queries
 candidateSchema.index({ session_id: 1, position: 1 });
+candidateSchema.index({ tenant_id: 1, session_id: 1, position: 1 });
 
 // Method to increment vote count atomically
 candidateSchema.methods.incrementVote = async function () {

@@ -3,6 +3,7 @@ const router = express.Router();
 const { body } = require("express-validator");
 const authController = require("../controllers/authController");
 const {
+  authenticateAdmin,
   authenticateStudent,
   authenticateForPasswordChange,
   authenticateStudentOrAdmin,
@@ -16,7 +17,7 @@ const auditLogger = require("../middleware/auditLogger");
  * /auth/login:
  *   post:
  *     summary: Student login
- *     description: Authenticate a student with matric number and password. Returns JWT token. Handles first-login password change flow and new-device detection.
+ *     description: Authenticate a tenant participant with the tenant-configured primary identifier and password. Returns JWT token. Handles first-login password change flow and new-device detection.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -24,9 +25,9 @@ const auditLogger = require("../middleware/auditLogger");
  *         application/json:
  *           schema:
  *             type: object
- *             required: [matric_no, password]
+ *             required: [identifier, password]
  *             properties:
- *               matric_no:
+ *               identifier:
  *                 type: string
  *                 example: BU22CSC1005
  *               password:
@@ -73,7 +74,7 @@ router.post(
   "/login",
   authLimiter,
   [
-    body("matric_no").notEmpty().withMessage("Matric number is required"),
+    body("identifier").notEmpty().withMessage("Identifier is required"),
     body("password").notEmpty().withMessage("Password is required"),
     validate,
   ],
@@ -86,7 +87,7 @@ router.post(
  * /auth/admin-login:
  *   post:
  *     summary: Admin login
- *     description: Authenticate an admin with email and password. Returns JWT token with admin role.
+ *     description: Authenticate an admin with email and password. Tenant admins can sign in from the root host; if the account belongs to exactly one tenant, Univote resolves the tenant automatically. If it belongs to multiple tenants, the client should prompt the admin to choose a tenant slug and retry.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -118,6 +119,8 @@ router.post(
  *                   $ref: '#/components/schemas/Admin'
  *       401:
  *         description: Invalid credentials
+ *       409:
+ *         description: Multiple tenant memberships require explicit tenant selection
  */
 router.post(
   "/admin-login",
@@ -129,6 +132,40 @@ router.post(
   ],
   auditLogger("admin_login", "auth"),
   authController.adminLogin,
+);
+
+/**
+ * @swagger
+ * /auth/switch-tenant:
+ *   post:
+ *     summary: Switch tenant workspace for a logged-in tenant admin
+ *     description: Issues a fresh tenant-scoped admin token for another tenant the current admin belongs to.
+ *     tags: [Auth]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [tenant_slug]
+ *             properties:
+ *               tenant_slug:
+ *                 type: string
+ *                 example: bowen-demo
+ *     responses:
+ *       200:
+ *         description: Tenant switched successfully
+ *       403:
+ *         description: Admin does not belong to the requested tenant
+ */
+router.post(
+  "/switch-tenant",
+  authenticateAdmin,
+  [body("tenant_slug").notEmpty().withMessage("tenant_slug is required"), validate],
+  auditLogger("switch_tenant", "auth"),
+  authController.switchTenant,
 );
 
 /**
@@ -331,6 +368,91 @@ router.patch(
   ],
   auditLogger("update_password", "auth"),
   authController.updatePassword,
+);
+
+/**
+ * @swagger
+ * /auth/forgot-password:
+ *   post:
+ *     summary: Request student password reset
+ *     description: Sends a 6-digit reset code to the student's email. Accepts either email or matric number and always returns success to prevent account enumeration.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [identifier]
+ *             properties:
+ *               identifier:
+ *                 type: string
+ *                 description: Student email or matric number
+ *     responses:
+ *       200:
+ *         description: Reset code sent (if account exists)
+ */
+router.post(
+  "/forgot-password",
+  authLimiter,
+  [
+    body("identifier")
+      .notEmpty()
+      .withMessage("Email or matric number is required"),
+    validate,
+  ],
+  auditLogger("student_forgot_password", "auth"),
+  authController.forgotPassword,
+);
+
+/**
+ * @swagger
+ * /auth/reset-password:
+ *   post:
+ *     summary: Reset student password with code
+ *     description: Reset a student's password using the 6-digit code received by email. Accepts email or matric number as the identifier.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [identifier, reset_code, new_password]
+ *             properties:
+ *               identifier:
+ *                 type: string
+ *                 description: Student email or matric number
+ *               reset_code:
+ *                 type: string
+ *                 minLength: 6
+ *                 maxLength: 6
+ *               new_password:
+ *                 type: string
+ *                 minLength: 8
+ *     responses:
+ *       200:
+ *         description: Password reset successfully
+ *       400:
+ *         description: Invalid or expired reset code
+ */
+router.post(
+  "/reset-password",
+  authLimiter,
+  [
+    body("identifier")
+      .notEmpty()
+      .withMessage("Email or matric number is required"),
+    body("reset_code")
+      .isLength({ min: 6, max: 6 })
+      .withMessage("Reset code must be 6 digits"),
+    body("new_password")
+      .isLength({ min: 8 })
+      .withMessage("New password must be at least 8 characters long"),
+    validate,
+  ],
+  auditLogger("student_reset_password", "auth"),
+  authController.resetPassword,
 );
 
 /**

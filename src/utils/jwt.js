@@ -9,6 +9,7 @@ function generateStudentToken(student) {
   const payload = {
     id: student._id,
     matric_no: student.matric_no,
+    tenant_id: student.tenant_id || null,
     type: "student",
   };
 
@@ -22,11 +23,14 @@ function generateStudentToken(student) {
  * @param {Object} admin - Admin object
  * @returns {string} JWT token
  */
-function generateAdminToken(admin) {
+function generateAdminToken(admin, context = {}) {
   const payload = {
     id: admin._id,
     email: admin.email,
     role: admin.role,
+    tenant_id: context.tenant_id || null,
+    tenant_role: context.tenant_role || null,
+    permissions: context.permissions || [],
     type: "admin",
   };
 
@@ -44,6 +48,7 @@ function generateFirstLoginToken(student) {
   const payload = {
     id: student._id,
     matric_no: student.matric_no,
+    tenant_id: student.tenant_id || null,
     type: "first_login",
     purpose: "password_change",
   };

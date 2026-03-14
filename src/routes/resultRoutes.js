@@ -4,7 +4,9 @@ const resultController = require("../controllers/resultController");
 const {
   authenticateStudent,
   authenticateAdmin,
+  requireTenantAdmin,
 } = require("../middleware/auth");
+const { requireTenantAccess } = require("../middleware/tenantContext");
 const { apiLimiter } = require("../middleware/rateLimiter");
 
 /**
@@ -67,6 +69,8 @@ const { apiLimiter } = require("../middleware/rateLimiter");
 router.get(
   "/stats/overview",
   authenticateAdmin,
+  requireTenantAdmin,
+  requireTenantAccess,
   resultController.getOverallStats,
 );
 
@@ -94,6 +98,7 @@ router.get(
 router.get(
   "/:session_id",
   authenticateStudent,
+  requireTenantAccess,
   apiLimiter,
   resultController.getResults,
 );

@@ -59,8 +59,7 @@ const authLimiter = createRedisRateLimiter({
   message: "Too many login attempts, please try again after 15 minutes.",
   skipSuccessfulRequests: true,
   keyGenerator: (req) => {
-    // Use matric_no or email for student/admin login attempts
-    return req.body.matric_no || req.body.email || req.ip;
+    return req.body.identifier || req.body.matric_no || req.body.email || req.ip;
   },
 });
 

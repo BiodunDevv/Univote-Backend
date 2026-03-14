@@ -1,11 +1,22 @@
 const express = require("express");
 const router = express.Router();
 const settingsController = require("../controllers/settingsController");
-const { authenticateAdmin, requireSuperAdmin } = require("../middleware/auth");
+const {
+  authenticateAdmin,
+  requireSuperAdmin,
+  requireTenantAdmin,
+} = require("../middleware/auth");
+const {
+  requireTenantAccess,
+  requireTenantContext,
+} = require("../middleware/tenantContext");
 const auditLogger = require("../middleware/auditLogger");
 
 // All routes require admin authentication
 router.use(authenticateAdmin);
+
+const tenantSettingsContext = [requireTenantContext, requireTenantAdmin];
+const tenantSettingsAccess = [requireTenantAccess, requireTenantAdmin];
 
 /**
  * @swagger
@@ -27,7 +38,7 @@ router.use(authenticateAdmin);
  *                 admin:
  *                   $ref: '#/components/schemas/Admin'
  */
-router.get("/profile", settingsController.getProfile);
+router.get("/profile", ...tenantSettingsContext, settingsController.getProfile);
 
 /**
  * @swagger
@@ -76,8 +87,73 @@ router.get("/profile", settingsController.getProfile);
  */
 router.patch(
   "/profile",
+  ...tenantSettingsContext,
   auditLogger("update_admin_profile", "admin_profile"),
   settingsController.updateProfile,
+);
+
+router.get(
+  "/tenant-profile",
+  ...tenantSettingsAccess,
+  settingsController.getTenantProfile,
+);
+
+router.patch(
+  "/tenant-profile",
+  ...tenantSettingsAccess,
+  auditLogger("update_tenant_profile_settings", "tenant_settings"),
+  settingsController.updateTenantProfile,
+);
+
+router.get("/identity", ...tenantSettingsAccess, settingsController.getIdentitySettings);
+router.patch(
+  "/identity",
+  ...tenantSettingsAccess,
+  auditLogger("update_tenant_identity_settings", "tenant_settings"),
+  settingsController.updateIdentitySettings,
+);
+
+router.get("/labels", ...tenantSettingsAccess, settingsController.getLabelSettings);
+router.patch(
+  "/labels",
+  ...tenantSettingsAccess,
+  auditLogger("update_tenant_label_settings", "tenant_settings"),
+  settingsController.updateLabelSettings,
+);
+
+router.get(
+  "/auth-policy",
+  ...tenantSettingsAccess,
+  settingsController.getAuthPolicySettings,
+);
+router.patch(
+  "/auth-policy",
+  ...tenantSettingsAccess,
+  auditLogger("update_tenant_auth_policy", "tenant_settings"),
+  settingsController.updateAuthPolicySettings,
+);
+
+router.get(
+  "/participant-fields",
+  ...tenantSettingsAccess,
+  settingsController.getParticipantFields,
+);
+router.patch(
+  "/participant-fields",
+  ...tenantSettingsAccess,
+  auditLogger("update_tenant_participant_fields", "tenant_settings"),
+  settingsController.updateParticipantFields,
+);
+
+router.get(
+  "/feature-access",
+  ...tenantSettingsAccess,
+  settingsController.getFeatureAccess,
+);
+router.get(
+  "/plan-entitlements",
+  ...tenantSettingsAccess,
+  settingsController.getPlanEntitlements,
 );
 
 /**
@@ -112,6 +188,7 @@ router.patch(
  */
 router.patch(
   "/change-password",
+  ...tenantSettingsContext,
   auditLogger("change_admin_password", "admin_password"),
   settingsController.changePassword,
 );
@@ -186,7 +263,7 @@ router.patch(
  *                       items:
  *                         $ref: '#/components/schemas/AuditLog'
  */
-router.get("/dashboard", settingsController.getDashboard);
+router.get("/dashboard", ...tenantSettingsAccess, settingsController.getDashboard);
 
 /**
  * @swagger
@@ -212,7 +289,11 @@ router.get("/dashboard", settingsController.getDashboard);
  *                 storage_size:
  *                   type: string
  */
-router.get("/database-stats", settingsController.getDatabaseStats);
+router.get(
+  "/database-stats",
+  ...tenantSettingsAccess,
+  settingsController.getDatabaseStats,
+);
 
 /**
  * @swagger
@@ -238,7 +319,7 @@ router.get("/database-stats", settingsController.getDatabaseStats);
  *                 features:
  *                   type: object
  */
-router.get("/system", settingsController.getSystemConfig);
+router.get("/system", ...tenantSettingsAccess, settingsController.getSystemConfig);
 
 /**
  * @swagger
@@ -271,7 +352,7 @@ router.get("/system", settingsController.getSystemConfig);
  *                     facepp:
  *                       type: string
  */
-router.get("/health", settingsController.getSystemHealth);
+router.get("/health", ...tenantSettingsAccess, settingsController.getSystemHealth);
 
 /**
  * @swagger
@@ -308,7 +389,7 @@ router.get("/health", settingsController.getSystemHealth);
  *       500:
  *         description: Email configuration error
  */
-router.post("/test-email", settingsController.testEmail);
+router.post("/test-email", ...tenantSettingsAccess, settingsController.testEmail);
 
 /**
  * @swagger
@@ -347,7 +428,7 @@ router.post("/test-email", settingsController.testEmail);
  *       500:
  *         description: Face++ configuration error
  */
-router.post("/test-facepp", settingsController.testFacepp);
+router.post("/test-facepp", ...tenantSettingsAccess, settingsController.testFacepp);
 
 /**
  * @swagger
@@ -404,7 +485,7 @@ router.post("/test-facepp", settingsController.testFacepp);
  *                 pagination:
  *                   $ref: '#/components/schemas/Pagination'
  */
-router.get("/audit-logs", settingsController.getAuditLogs);
+router.get("/audit-logs", ...tenantSettingsAccess, settingsController.getAuditLogs);
 
 /**
  * @swagger
@@ -432,7 +513,11 @@ router.get("/audit-logs", settingsController.getAuditLogs);
  *                   items:
  *                     type: string
  */
-router.get("/audit-actions", settingsController.getAuditActions);
+router.get(
+  "/audit-actions",
+  ...tenantSettingsAccess,
+  settingsController.getAuditActions,
+);
 
 /**
  * @swagger
@@ -507,6 +592,7 @@ router.delete(
  */
 router.post(
   "/export",
+  ...tenantSettingsAccess,
   auditLogger("export_data", "system_data"),
   settingsController.exportData,
 );
@@ -531,7 +617,11 @@ router.post(
  *                 notification_preferences:
  *                   type: object
  */
-router.get("/notifications", settingsController.getNotificationPreferences);
+router.get(
+  "/notifications",
+  ...tenantSettingsContext,
+  settingsController.getNotificationPreferences,
+);
 
 /**
  * @swagger
@@ -569,6 +659,7 @@ router.get("/notifications", settingsController.getNotificationPreferences);
  */
 router.patch(
   "/notifications",
+  ...tenantSettingsContext,
   auditLogger("update_notification_preferences", "admin_notifications"),
   settingsController.updateNotificationPreferences,
 );

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const sessionController = require("../controllers/sessionController");
 const { authenticateStudent } = require("../middleware/auth");
+const { requireTenantAccess } = require("../middleware/tenantContext");
 const { apiLimiter } = require("../middleware/rateLimiter");
 
 /**
@@ -31,6 +32,7 @@ const { apiLimiter } = require("../middleware/rateLimiter");
 router.get(
   "/",
   authenticateStudent,
+  requireTenantAccess,
   apiLimiter,
   sessionController.listEligibleSessions,
 );
@@ -66,7 +68,7 @@ router.get(
  *       404:
  *         description: Session not found
  */
-router.get("/:id", authenticateStudent, sessionController.getSession);
+router.get("/:id", authenticateStudent, requireTenantAccess, sessionController.getSession);
 
 /**
  * @swagger
@@ -121,6 +123,7 @@ router.get("/:id", authenticateStudent, sessionController.getSession);
 router.get(
   "/:id/live-results",
   authenticateStudent,
+  requireTenantAccess,
   apiLimiter,
   sessionController.getLiveResults,
 );
@@ -156,6 +159,7 @@ router.get(
 router.get(
   "/candidates/:id",
   authenticateStudent,
+  requireTenantAccess,
   apiLimiter,
   sessionController.getCandidateById,
 );
