@@ -33,6 +33,7 @@ const ENV = process.env.NODE_ENV || "development";
 const SERVER_URL = process.env.SERVER_URL || `http://localhost:${PORT}`;
 
 app.set("trust proxy", 1);
+app.disable("x-powered-by");
 
 // ── Services ────────────────────────────────────────────
 createRedisClient();
@@ -52,6 +53,20 @@ connectDB()
 
 // ── Middleware ───────────────────────────────────────────
 app.use(cors());
+app.use((req, res, next) => {
+  const startedAt = process.hrtime.bigint();
+  res.setHeader("X-Request-Id", req.headers["x-request-id"] || `${Date.now()}`);
+  const originalEnd = res.end;
+  res.end = function patchedEnd(...args) {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    if (!res.headersSent) {
+      res.setHeader("X-Response-Time-Ms", durationMs.toFixed(1));
+    }
+    return originalEnd.apply(this, args);
+  };
+
+  next();
+});
 app.use(
   express.json({
     limit: "10mb",
@@ -82,6 +97,7 @@ app.use(
 
 app.get("/api-docs.json", (req, res) => {
   res.setHeader("Content-Type", "application/json");
+  res.setHeader("Cache-Control", "public, max-age=300");
   res.send(swaggerSpec);
 });
 

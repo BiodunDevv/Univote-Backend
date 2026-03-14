@@ -1,4 +1,5 @@
 const swaggerJsdoc = require("swagger-jsdoc");
+const path = require("path");
 
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:5000";
 
@@ -9,7 +10,7 @@ const options = {
       title: "Univote API",
       version: "1.0.0",
       description:
-        "University Voting System Backend API — Secure elections with Face++ biometric verification, geofencing, and real-time results.",
+        "Multi-tenant voting and participant management API with organization discovery, participant identity policy, announcements, billing, support, biometric verification, geofencing, and real-time results.",
       contact: {
         name: "Univote Support",
         email: "support@univote.online",
@@ -35,21 +36,159 @@ const options = {
           type: "object",
           properties: {
             error: { type: "string", description: "Error message" },
+            code: { type: "string", nullable: true },
+            required_feature: { type: "string", nullable: true },
+          },
+        },
+        TenantBranding: {
+          type: "object",
+          properties: {
+            logo_url: { type: "string", nullable: true },
+            primary_color: { type: "string", nullable: true },
+            accent_color: { type: "string", nullable: true },
+            support_email: { type: "string", format: "email", nullable: true },
+          },
+        },
+        TenantContext: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            name: { type: "string" },
+            slug: { type: "string" },
+            primary_domain: { type: "string", nullable: true },
+            plan_code: { type: "string", nullable: true },
+            branding: { $ref: "#/components/schemas/TenantBranding" },
+          },
+        },
+        ParticipantFieldPolicy: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean" },
+            required: { type: "boolean" },
+            show_in_profile: { type: "boolean" },
+            show_in_filters: { type: "boolean" },
+            allow_in_eligibility: { type: "boolean" },
+          },
+        },
+        TenantIdentityMetadata: {
+          type: "object",
+          properties: {
+            primary_identifier: { type: "string" },
+            allowed_identifiers: {
+              type: "array",
+              items: { type: "string" },
+            },
+            recovery_identifiers: {
+              type: "array",
+              items: { type: "string" },
+            },
+            display_identifier: { type: "string" },
+            login: {
+              type: "object",
+              properties: {
+                key: { type: "string" },
+                label: { type: "string" },
+                placeholder: { type: "string" },
+              },
+            },
+          },
+        },
+        OrganizationDiscoveryItem: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            name: { type: "string" },
+            slug: { type: "string" },
+            primary_domain: { type: "string", nullable: true },
+            branding: { $ref: "#/components/schemas/TenantBranding" },
+            labels: {
+              type: "object",
+              properties: {
+                participant_singular: { type: "string" },
+                participant_plural: { type: "string" },
+              },
+            },
+            identity: { $ref: "#/components/schemas/TenantIdentityMetadata" },
+          },
+        },
+        Announcement: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            owner_scope: {
+              type: "string",
+              enum: ["tenant", "platform"],
+            },
+            audience_scope: { type: "string" },
+            channels: {
+              type: "array",
+              items: {
+                type: "string",
+                enum: ["in_app", "email"],
+              },
+            },
+            title: { type: "string" },
+            body: { type: "string" },
+            cta_link: { type: "string", nullable: true },
+            status: { type: "string" },
+            created_at: { type: "string", format: "date-time" },
+            published_at: { type: "string", format: "date-time", nullable: true },
+          },
+        },
+        BillingPlan: {
+          type: "object",
+          properties: {
+            code: { type: "string" },
+            name: { type: "string" },
+            monthly_price: { type: "number", nullable: true },
+            yearly_price: { type: "number", nullable: true },
+            participant_quota: { type: "integer", nullable: true },
+            admin_quota: { type: "integer", nullable: true },
+            active_session_quota: { type: "integer", nullable: true },
+            entitlements: {
+              type: "object",
+              additionalProperties: { type: "boolean" },
+            },
+          },
+        },
+        BiometricProviderConfig: {
+          type: "object",
+          properties: {
+            active_provider: { type: "string", example: "facepp" },
+            providers: {
+              type: "object",
+              additionalProperties: {
+                type: "object",
+                properties: {
+                  enabled: { type: "boolean" },
+                  configured: { type: "boolean" },
+                  base_url: { type: "string", nullable: true },
+                  confidence_threshold: { type: "number", nullable: true },
+                  api_key_masked: { type: "string", nullable: true },
+                  api_secret_masked: { type: "string", nullable: true },
+                },
+              },
+            },
           },
         },
         Student: {
           type: "object",
           properties: {
             id: { type: "string" },
-            matric_no: { type: "string", example: "BU22CSC1005" },
+            matric_no: { type: "string", example: "BU22CSC1005", nullable: true },
+            member_id: { type: "string", example: "MEM-1005", nullable: true },
+            employee_id: { type: "string", example: "EMP-1005", nullable: true },
+            username: { type: "string", example: "john.doe", nullable: true },
+            display_identifier: { type: "string", nullable: true },
             full_name: { type: "string", example: "John Doe" },
-            email: { type: "string", format: "email" },
-            department: { type: "string", example: "Computer Science" },
-            department_code: { type: "string", example: "CSC" },
-            college: { type: "string", example: "College of Computing" },
+            email: { type: "string", format: "email", nullable: true },
+            department: { type: "string", example: "Computer Science", nullable: true },
+            department_code: { type: "string", example: "CSC", nullable: true },
+            college: { type: "string", example: "College of Computing", nullable: true },
             level: {
               type: "string",
               enum: ["100", "200", "300", "400", "500", "600"],
+              nullable: true,
             },
             photo_url: { type: "string", nullable: true },
             has_facial_data: { type: "boolean" },
@@ -146,7 +285,7 @@ const options = {
             face_verification_passed: { type: "boolean" },
             status: {
               type: "string",
-              enum: ["valid", "duplicate", "rejected"],
+              enum: ["valid", "duplicate", "rejected", "accepted"],
             },
             device_id: { type: "string", nullable: true },
             timestamp: { type: "string", format: "date-time" },
@@ -222,7 +361,12 @@ const options = {
       {
         name: "Auth",
         description:
-          "Authentication — student and admin login/logout, password management",
+          "Participant and admin authentication, password management, session bootstrap, and organization-aware portal login",
+      },
+      {
+        name: "Public",
+        description:
+          "Public landing data, organization discovery, testimonials, and tenant application endpoints",
       },
       {
         name: "Admin - Sessions",
@@ -231,7 +375,7 @@ const options = {
       {
         name: "Admin - Students",
         description:
-          "Admin management of students (CRUD, CSV upload, bulk operations)",
+          "Admin management of participants (CRUD, CSV upload, bulk operations, identity-aware data entry)",
       },
       {
         name: "Admin - Candidates",
@@ -245,10 +389,13 @@ const options = {
         name: "Admin - System",
         description: "System-level admin operations (cleanup)",
       },
-      { name: "Colleges", description: "College and department management" },
+      {
+        name: "Colleges",
+        description: "Tenant structure management for colleges, departments, and canonical structure aliases",
+      },
       {
         name: "Sessions",
-        description: "Student-facing session browsing and live results",
+        description: "Participant-facing session browsing, ballot details, and live session visibility",
       },
       {
         name: "Voting",
@@ -257,16 +404,36 @@ const options = {
       { name: "Results", description: "Election results and statistics" },
       {
         name: "Dashboard",
-        description: "Dashboard data for admin and student portals",
+        description: "Dashboard data for admin and participant portals",
       },
       {
         name: "Settings",
-        description: "Admin settings, system config, audit logs, exports",
+        description: "Tenant settings, platform settings, system config, audit logs, exports, and participant structure policy",
+      },
+      {
+        name: "Support",
+        description: "Support tickets, threaded conversations, and support queue management",
+      },
+      {
+        name: "Notifications",
+        description: "In-app notification inbox, unread summaries, and notification state updates",
+      },
+      {
+        name: "Announcements",
+        description: "Tenant and platform announcement publishing, listing, and broadcast delivery",
+      },
+      {
+        name: "Billing",
+        description: "Plan catalog, invoices, checkout, subscription changes, and entitlement visibility",
+      },
+      {
+        name: "Platform",
+        description: "Super-admin platform controls including biometric provider configuration and plan catalog management",
       },
       { name: "Health", description: "Server health checks and keep-alive" },
     ],
   },
-  apis: ["./src/routes/*.js"],
+  apis: [path.join(__dirname, "../routes/*.js")],
 };
 
 const swaggerSpec = swaggerJsdoc(options);

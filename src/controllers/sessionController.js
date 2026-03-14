@@ -12,6 +12,11 @@ const {
 } = require("../utils/tenantScope");
 const { getTenantEligibilityPolicy } = require("../utils/tenantSettings");
 
+const SESSION_LIST_SELECT =
+  "_id title description start_time end_time categories location is_off_campus_allowed eligible_college eligible_departments eligible_levels results_public candidates";
+const SESSION_DETAIL_SELECT =
+  "_id title description start_time end_time categories location is_off_campus_allowed eligible_college eligible_departments eligible_levels results_public candidates";
+
 function calculateSessionStatus(session) {
   const now = new Date();
 
@@ -183,9 +188,9 @@ class SessionController {
         return res.status(404).json({ error: "Student not found" });
       }
 
-      const sessionFilter = getTenantScopedFilter(req, status ? { status } : {});
+      const sessionFilter = getTenantScopedFilter(req, {});
       const sessions = await VotingSession.find(sessionFilter)
-        .populate("candidates", "name position photo_url bio manifesto")
+        .select(SESSION_LIST_SELECT)
         .sort({ start_time: -1 })
         .lean();
 
@@ -194,6 +199,10 @@ class SessionController {
           ...rawSession,
           status: calculateSessionStatus(rawSession),
         };
+
+        if (status && session.status !== status) {
+          return acc;
+        }
 
         const { eligible } = getSessionEligibility(session, student, colleges);
         if (!eligible) {
@@ -205,7 +214,9 @@ class SessionController {
           has_voted: student.has_voted_sessions.some(
             (value) => value.toString() === session._id.toString(),
           ),
-          candidate_count: session.candidates.length,
+          candidate_count: Array.isArray(session.candidates)
+            ? session.candidates.length
+            : 0,
         });
 
         return acc;
@@ -240,7 +251,8 @@ class SessionController {
 
     const [session, context] = await Promise.all([
       VotingSession.findOne(getTenantScopedFilter(req, { _id: sessionId }))
-        .populate("candidates", "name position photo_url bio manifesto")
+        .select(SESSION_DETAIL_SELECT)
+        .populate("candidates", "name position photo_url bio manifesto vote_count")
         .lean(),
       this.getStudentAndCollegeContext(req, studentId),
     ]);

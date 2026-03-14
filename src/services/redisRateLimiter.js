@@ -2,6 +2,30 @@ const rateLimit = require("express-rate-limit");
 const RedisStore = require("rate-limit-redis");
 const { getRedisClient } = require("../config/redis");
 
+function resolveRequestIp(req) {
+  const forwardedFor = req.headers?.["x-forwarded-for"];
+  if (typeof forwardedFor === "string" && forwardedFor.trim()) {
+    return forwardedFor.split(",")[0].trim();
+  }
+
+  if (Array.isArray(forwardedFor) && forwardedFor.length > 0) {
+    return String(forwardedFor[0]).trim();
+  }
+
+  return (
+    req.ip ||
+    req.socket?.remoteAddress ||
+    req.connection?.remoteAddress ||
+    req.info?.remoteAddress ||
+    null
+  );
+}
+
+function resolveClientKey(req, fallbackPrefix = "ip") {
+  const ipAddress = resolveRequestIp(req);
+  return ipAddress ? `${fallbackPrefix}:${ipAddress}` : `${fallbackPrefix}:unknown`;
+}
+
 /**
  * Create a rate limiter with Redis store
  * Lazily connects to Redis to avoid initialization timing issues
@@ -22,6 +46,7 @@ const createRedisRateLimiter = (options) => {
     skipSuccessfulRequests,
     standardHeaders: true,
     legacyHeaders: false,
+    validate: false,
   };
 
   // Add custom key generator if provided
@@ -50,6 +75,7 @@ const apiLimiter = createRedisRateLimiter({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW || 15) * 60 * 1000, // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_MAX || 300), // 300 requests per window
   message: "Too many requests from this IP, please try again later.",
+  keyGenerator: (req) => resolveClientKey(req, "api"),
 });
 
 // Strict limiter for authentication endpoints
@@ -59,7 +85,12 @@ const authLimiter = createRedisRateLimiter({
   message: "Too many login attempts, please try again after 15 minutes.",
   skipSuccessfulRequests: true,
   keyGenerator: (req) => {
-    return req.body.identifier || req.body.matric_no || req.body.email || req.ip;
+    return (
+      req.body.identifier ||
+      req.body.matric_no ||
+      req.body.email ||
+      resolveClientKey(req, "auth")
+    );
   },
 });
 
@@ -70,7 +101,7 @@ const voteLimiter = createRedisRateLimiter({
   message: "Too many vote attempts, please slow down.",
   keyGenerator: (req) => {
     // Use studentId if authenticated, otherwise IP
-    return req.studentId ? `student:${req.studentId}` : req.ip;
+    return req.studentId ? `student:${req.studentId}` : resolveClientKey(req, "vote");
   },
 });
 
@@ -81,7 +112,7 @@ const adminLimiter = createRedisRateLimiter({
   message: "Too many admin requests, please try again later.",
   keyGenerator: (req) => {
     // Use adminId if authenticated, otherwise IP
-    return req.adminId ? `admin:${req.adminId}` : req.ip;
+    return req.adminId ? `admin:${req.adminId}` : resolveClientKey(req, "admin");
   },
 });
 
@@ -92,7 +123,7 @@ const faceLimiter = createRedisRateLimiter({
   message: "Face verification rate limit exceeded, please try again later.",
   keyGenerator: (req) => {
     // Use studentId for face verification attempts
-    return req.studentId ? `face:${req.studentId}` : req.ip;
+    return req.studentId ? `face:${req.studentId}` : resolveClientKey(req, "face");
   },
 });
 
@@ -103,4 +134,6 @@ module.exports = {
   adminLimiter,
   faceLimiter,
   createRedisRateLimiter,
+  resolveRequestIp,
+  resolveClientKey,
 };

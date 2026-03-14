@@ -14,6 +14,7 @@ const {
   getTenantSettings,
 } = require("../utils/tenantSettings");
 const emailService = require("../services/emailService");
+const cacheService = require("../services/cacheService");
 
 function buildTenantApplicationPayload(body) {
   return {
@@ -48,6 +49,16 @@ class PublicController {
   async listOrganizations(req, res) {
     try {
       const search = String(req.query.search || "").trim();
+      const cacheKey = `public:organizations:${search.toLowerCase() || "all"}`;
+      const cached = await cacheService.get(cacheKey);
+
+      if (cached) {
+        return res.json({
+          ...cached,
+          cached: true,
+        });
+      }
+
       const filter = {
         status: "active",
         is_active: true,
@@ -68,7 +79,7 @@ class PublicController {
         .limit(30)
         .lean();
 
-      return res.json({
+      const payload = {
         organizations: tenants.map((tenant) => {
           const settings = getTenantSettings(tenant);
           return {
@@ -81,6 +92,13 @@ class PublicController {
             identity: getTenantIdentityMetadata(tenant),
           };
         }),
+      };
+
+      await cacheService.set(cacheKey, payload, search ? 120 : 300);
+
+      return res.json({
+        ...payload,
+        cached: false,
       });
     } catch (error) {
       console.error("List public organizations error:", error);
@@ -90,8 +108,19 @@ class PublicController {
 
   async getOrganizationBySlug(req, res) {
     try {
+      const slug = String(req.params.slug || "").trim().toLowerCase();
+      const cacheKey = `public:organization:${slug}`;
+      const cached = await cacheService.get(cacheKey);
+
+      if (cached) {
+        return res.json({
+          ...cached,
+          cached: true,
+        });
+      }
+
       const tenant = await Tenant.findOne({
-        slug: String(req.params.slug || "").trim().toLowerCase(),
+        slug,
         status: "active",
         is_active: true,
       })
@@ -105,7 +134,7 @@ class PublicController {
       }
 
       const settings = getTenantSettings(tenant);
-      return res.json({
+      const payload = {
         organization: {
           id: tenant._id,
           name: tenant.name,
@@ -115,6 +144,13 @@ class PublicController {
           labels: settings.labels,
           identity: getTenantIdentityMetadata(tenant),
         },
+      };
+
+      await cacheService.set(cacheKey, payload, 300);
+
+      return res.json({
+        ...payload,
+        cached: false,
       });
     } catch (error) {
       console.error("Get public organization error:", error);
@@ -124,6 +160,16 @@ class PublicController {
 
   async getLandingData(_req, res) {
     try {
+      const cacheKey = "public:landing";
+      const cached = await cacheService.get(cacheKey);
+
+      if (cached) {
+        return res.json({
+          ...cached,
+          cached: true,
+        });
+      }
+
       const [plans, testimonials, activeTenants, activeStudents, acceptedVotes] =
         await Promise.all([
           Promise.resolve(serializePlanCatalog()),
@@ -136,7 +182,7 @@ class PublicController {
           Vote.countDocuments({ status: "accepted" }),
         ]);
 
-      return res.json({
+      const payload = {
         stats: {
           active_tenants: activeTenants,
           active_students: activeStudents,
@@ -144,6 +190,13 @@ class PublicController {
         },
         plans,
         testimonials: testimonials.map(serializeTestimonial),
+      };
+
+      await cacheService.set(cacheKey, payload, 300);
+
+      return res.json({
+        ...payload,
+        cached: false,
       });
     } catch (error) {
       console.error("Get public landing data error:", error);
@@ -153,13 +206,30 @@ class PublicController {
 
   async listTestimonials(_req, res) {
     try {
+      const cacheKey = "public:testimonials";
+      const cached = await cacheService.get(cacheKey);
+
+      if (cached) {
+        return res.json({
+          ...cached,
+          cached: true,
+        });
+      }
+
       const testimonials = await Testimonial.find({ status: "published" })
         .sort({ highlighted: -1, sort_order: 1, published_at: -1, createdAt: -1 })
         .limit(24)
         .lean();
 
-      return res.json({
+      const payload = {
         testimonials: testimonials.map(serializeTestimonial),
+      };
+
+      await cacheService.set(cacheKey, payload, 600);
+
+      return res.json({
+        ...payload,
+        cached: false,
       });
     } catch (error) {
       console.error("List public testimonials error:", error);

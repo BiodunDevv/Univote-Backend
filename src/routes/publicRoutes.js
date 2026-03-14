@@ -17,7 +17,59 @@ const router = express.Router();
  *         description: Public landing data retrieved successfully
  */
 router.get("/landing", apiLimiter, publicController.getLandingData);
+
+/**
+ * @swagger
+ * /public/organizations:
+ *   get:
+ *     summary: List active organizations for portal selection
+ *     tags: [Public]
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Optional organization search term
+ *     responses:
+ *       200:
+ *         description: Organization discovery payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 organizations:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/OrganizationDiscoveryItem'
+ */
 router.get("/organizations", apiLimiter, publicController.listOrganizations);
+
+/**
+ * @swagger
+ * /public/organizations/{slug}:
+ *   get:
+ *     summary: Get a single organization by slug
+ *     tags: [Public]
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Organization discovery payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 organization:
+ *                   $ref: '#/components/schemas/OrganizationDiscoveryItem'
+ *       404:
+ *         description: Organization not found
+ */
 router.get("/organizations/:slug", apiLimiter, publicController.getOrganizationBySlug);
 
 /**
