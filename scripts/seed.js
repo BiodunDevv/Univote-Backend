@@ -21,6 +21,15 @@ const { cloneDefaultTenantSettings } = require("../src/utils/tenantSettings");
 const { clonePlanCatalog } = require("../src/config/billingPlans");
 
 const DEFAULT_PASSWORD = "123456";
+const DEPLOY_ROOT_DOMAIN = String(
+  process.env.SEED_ROOT_DOMAIN ||
+    process.env.APP_ROOT_DOMAIN ||
+    process.env.NEXT_PUBLIC_ROOT_DOMAIN ||
+    "univote.online",
+)
+  .trim()
+  .toLowerCase()
+  .replace(/^\./, "");
 const SUPER_ADMIN_EMAIL = "super@gmail.com";
 const TENANT_ADMIN_EMAIL = "tenant@gmail.com";
 const TENANT_SLUG = "bowen-demo";
@@ -32,6 +41,10 @@ const STUDENT_PHOTO_URL =
 
 function generateSeedFaceToken(tenantSlug, index) {
   return `seed-face-${tenantSlug}-${String(index).padStart(4, "0")}`;
+}
+
+function buildSeedTenantDomain(slug) {
+  return `${slug}.${DEPLOY_ROOT_DOMAIN}`;
 }
 
 // College and Department mappings (Bowen University) with department codes
@@ -450,7 +463,7 @@ async function createActiveDemoTenants(tenantAdminId) {
     {
       name: "Bowen University Demo",
       slug: TENANT_SLUG,
-      primary_domain: "bowen-demo.univote.test",
+      primary_domain: buildSeedTenantDomain(TENANT_SLUG),
       plan_code: "pro_plus",
       status: "active",
       subscription_status: "active",
@@ -500,7 +513,7 @@ async function createActiveDemoTenants(tenantAdminId) {
     {
       name: "Summit Institute Demo",
       slug: SECONDARY_TENANT_SLUG,
-      primary_domain: "summit-demo.univote.test",
+      primary_domain: buildSeedTenantDomain(SECONDARY_TENANT_SLUG),
       plan_code: "pro",
       status: "active",
       subscription_status: "active",
@@ -700,7 +713,7 @@ async function createPipelineTenants() {
     {
       name: "Lakeside Polytechnic",
       slug: "lakeside-poly",
-      primary_domain: "lakeside.univote.test",
+      primary_domain: buildSeedTenantDomain("lakeside"),
       plan_code: "pro",
       status: "pending_payment",
       subscription_status: "trial",
@@ -724,7 +737,7 @@ async function createPipelineTenants() {
     {
       name: "Northfield College",
       slug: "northfield-college",
-      primary_domain: "northfield.univote.test",
+      primary_domain: buildSeedTenantDomain("northfield"),
       plan_code: "enterprise",
       status: "pending_approval",
       subscription_status: "active",

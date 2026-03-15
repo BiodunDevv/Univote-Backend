@@ -86,7 +86,7 @@ function getFrontendBaseUrl() {
     normalizeBaseUrl(process.env.APP_ROOT_DOMAIN) ||
     normalizeBaseUrl(process.env.WEB_APP_URL) ||
     normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL) ||
-    "https://univote.test"
+    "https://univote.online"
   );
 }
 

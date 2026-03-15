@@ -25,9 +25,21 @@ function getTenantSlugFromHost(hostHeader) {
     return slug && slug !== "www" && slug !== "api" ? normalizeSlug(slug) : null;
   }
 
-  if (process.env.APP_ROOT_DOMAIN && host.endsWith(process.env.APP_ROOT_DOMAIN)) {
-    const suffix = `.${process.env.APP_ROOT_DOMAIN}`;
-    const slug = host.replace(suffix, "");
+  if (process.env.APP_ROOT_DOMAIN) {
+    const rootDomain = String(process.env.APP_ROOT_DOMAIN)
+      .toLowerCase()
+      .replace(/^\./, "");
+
+    if (host === rootDomain) {
+      return null;
+    }
+
+    if (!host.endsWith(`.${rootDomain}`)) {
+      return null;
+    }
+
+    const suffix = `.${rootDomain}`;
+    const slug = host.slice(0, -suffix.length);
     return slug && slug !== "www" && slug !== "api" ? normalizeSlug(slug) : null;
   }
 
