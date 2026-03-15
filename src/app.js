@@ -52,7 +52,12 @@ connectDB()
   .catch((err) => console.error("✗ MongoDB failed:", err.message));
 
 // ── Middleware ───────────────────────────────────────────
-app.use(cors());
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  }),
+);
 app.use((req, res, next) => {
   const startedAt = process.hrtime.bigint();
   res.setHeader("X-Request-Id", req.headers["x-request-id"] || `${Date.now()}`);
