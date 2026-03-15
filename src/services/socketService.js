@@ -7,6 +7,34 @@ const { getActiveAdminMembership, hasPermission } = require("./tenantAccessServi
 
 let io = null;
 
+function normalizeOrigin(origin) {
+  if (!origin) return null;
+  return origin.replace(/\/$/, "");
+}
+
+function buildAllowedOrigins() {
+  const defaults = [
+    "http://localhost:3000",
+    "https://univote.online",
+    "https://www.univote.online",
+  ];
+
+  const envOrigins = [
+    process.env.FRONTEND_URL,
+    process.env.ALLOWED_ORIGINS,
+  ]
+    .filter(Boolean)
+    .flatMap((value) => value.split(","));
+
+  return new Set(
+    [...defaults, ...envOrigins]
+      .map((value) => normalizeOrigin(value.trim()))
+      .filter(Boolean),
+  );
+}
+
+const allowedOrigins = buildAllowedOrigins();
+
 function canManageSupport(actor) {
   if (!actor || actor.type !== "admin") return false;
   if (actor.role === "super_admin") return true;
@@ -186,7 +214,20 @@ function initializeSocketServer(server) {
 
   io = new Server(server, {
     cors: {
-      origin: true,
+      origin(origin, callback) {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+
+        const normalizedOrigin = normalizeOrigin(origin);
+        if (allowedOrigins.has(normalizedOrigin)) {
+          callback(null, true);
+          return;
+        }
+
+        callback(new Error(`Socket CORS blocked for origin: ${origin}`));
+      },
       credentials: true,
     },
   });

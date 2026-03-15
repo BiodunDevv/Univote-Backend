@@ -32,6 +32,31 @@ const PORT = process.env.PORT || 5000;
 const ENV = process.env.NODE_ENV || "development";
 const SERVER_URL = process.env.SERVER_URL || `http://localhost:${PORT}`;
 
+function normalizeOrigin(origin) {
+  if (!origin) return null;
+  return origin.replace(/\/$/, "");
+}
+
+function buildAllowedOrigins() {
+  const defaults = [
+    "http://localhost:3000",
+    "https://univote.online",
+    "https://www.univote.online",
+  ];
+
+  const envOrigins = [process.env.FRONTEND_URL, process.env.ALLOWED_ORIGINS]
+    .filter(Boolean)
+    .flatMap((value) => value.split(","));
+
+  return new Set(
+    [...defaults, ...envOrigins]
+      .map((value) => normalizeOrigin(value.trim()))
+      .filter(Boolean),
+  );
+}
+
+const allowedOrigins = buildAllowedOrigins();
+
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 
@@ -54,7 +79,20 @@ connectDB()
 // ── Middleware ───────────────────────────────────────────
 app.use(
   cors({
-    origin: true,
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      const normalizedOrigin = normalizeOrigin(origin);
+      if (allowedOrigins.has(normalizedOrigin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
   }),
 );
