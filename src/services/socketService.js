@@ -3,7 +3,10 @@ const { Server } = require("socket.io");
 const Admin = require("../models/Admin");
 const Student = require("../models/Student");
 const SupportTicket = require("../models/SupportTicket");
-const { getActiveAdminMembership, hasPermission } = require("./tenantAccessService");
+const {
+  getActiveAdminMembership,
+  hasPermission,
+} = require("./tenantAccessService");
 
 let io = null;
 
@@ -19,10 +22,7 @@ function buildAllowedOrigins() {
     "https://www.univote.online",
   ];
 
-  const envOrigins = [
-    process.env.FRONTEND_URL,
-    process.env.ALLOWED_ORIGINS,
-  ]
+  const envOrigins = [process.env.FRONTEND_URL, process.env.ALLOWED_ORIGINS]
     .filter(Boolean)
     .flatMap((value) => value.split(","));
 
@@ -309,7 +309,9 @@ function initializeSocketServer(server) {
           socket.join(room);
         }
 
-        socket.to(room).emit("support:typing", buildTypingPayload(actor, ticketId));
+        socket
+          .to(room)
+          .emit("support:typing", buildTypingPayload(actor, ticketId));
 
         if (typeof callback === "function") {
           callback({ ok: true });
@@ -329,7 +331,9 @@ function initializeSocketServer(server) {
         }
 
         const room = `ticket:${ticketId}`;
-        socket.to(room).emit("support:stop-typing", buildTypingPayload(actor, ticketId));
+        socket
+          .to(room)
+          .emit("support:stop-typing", buildTypingPayload(actor, ticketId));
 
         if (typeof callback === "function") {
           callback({ ok: true });
