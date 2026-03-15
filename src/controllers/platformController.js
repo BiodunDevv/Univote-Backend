@@ -133,6 +133,45 @@ function normalizeBiometricProviderPayload(providerKey, payload = {}, current = 
   }
 }
 
+function validateBiometricProviderConfig(providerKey, payload = {}) {
+  switch (providerKey) {
+    case "facepp":
+      if (!String(payload.api_key || "").trim()) {
+        return "Face++ API key is required";
+      }
+      if (!String(payload.api_secret || "").trim()) {
+        return "Face++ API secret is required";
+      }
+      return null;
+    case "aws_rekognition":
+      if (!String(payload.access_key_id || "").trim()) {
+        return "AWS access key ID is required";
+      }
+      if (!String(payload.secret_access_key || "").trim()) {
+        return "AWS secret access key is required";
+      }
+      return null;
+    case "azure_face":
+      if (!String(payload.endpoint || "").trim()) {
+        return "Azure endpoint is required";
+      }
+      if (!String(payload.api_key || "").trim()) {
+        return "Azure API key is required";
+      }
+      return null;
+    case "google_vision":
+      if (!String(payload.project_id || "").trim()) {
+        return "Google project ID is required";
+      }
+      if (!String(payload.api_key || "").trim()) {
+        return "Google API key is required";
+      }
+      return null;
+    default:
+      return "Unsupported biometric provider";
+  }
+}
+
 async function buildTenantStats(tenantId) {
   const [membershipSummary, studentSummary, collegeCount, sessionSummary, candidateCount, voteSummary] =
     await Promise.all([
@@ -815,6 +854,11 @@ class PlatformController {
 
       if (!provider_key || !providerCatalog[provider_key]) {
         return res.status(400).json({ error: "Valid provider_key is required" });
+      }
+
+      const validationError = validateBiometricProviderConfig(provider_key, config);
+      if (validationError) {
+        return res.status(400).json({ error: validationError });
       }
 
       const platformSetting = await getOrCreatePlatformSetting();
