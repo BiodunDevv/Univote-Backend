@@ -13,7 +13,6 @@ const FEATURE_MIN_PLAN = {
   advanced_reports: "pro_plus",
   custom_terminology: "pro_plus",
   custom_identity_policy: "pro_plus",
-  custom_participant_structure: "pro_plus",
   custom_branding: "enterprise",
 };
 

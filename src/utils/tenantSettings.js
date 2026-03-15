@@ -119,7 +119,7 @@ const DEFAULT_TENANT_SETTINGS = {
   features: {
     custom_terminology: false,
     custom_identity_policy: false,
-    custom_participant_structure: false,
+    custom_participant_structure: true,
     advanced_notifications: false,
     advanced_reports: false,
     face_verification: false,

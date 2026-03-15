@@ -13,7 +13,7 @@ const DEFAULT_PLAN_DEFINITIONS = {
     entitlements: {
       custom_terminology: false,
       custom_identity_policy: false,
-      custom_participant_structure: false,
+      custom_participant_structure: true,
       custom_branding: false,
       advanced_analytics: false,
       advanced_reports: false,
@@ -23,7 +23,7 @@ const DEFAULT_PLAN_DEFINITIONS = {
     },
     features: [
       "Core election management",
-      "Student web portal",
+      "Participant web portal",
       "Ticket support",
       "Standard analytics",
     ],

@@ -1447,14 +1447,6 @@ class SettingsController {
         return res.status(404).json({ error: "Tenant not found" });
       }
 
-      if (!hasTenantFeature(tenant, "custom_participant_structure")) {
-        return res.status(403).json({
-          error: "Your current plan does not allow configurable participant structure",
-          code: "PLAN_FEATURE_UNAVAILABLE",
-          required_feature: "custom_participant_structure",
-        });
-      }
-
       const currentSettings = getTenantSettings(tenant);
       const nextFieldsInput = req.body.participant_fields || {};
 
