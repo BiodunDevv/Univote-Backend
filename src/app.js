@@ -32,30 +32,56 @@ const PORT = process.env.PORT || 5000;
 const ENV = process.env.NODE_ENV || "development";
 const SERVER_URL = process.env.SERVER_URL || `http://localhost:${PORT}`;
 
-function normalizeOrigin(origin) {
-  if (!origin) return null;
-  return origin.replace(/\/$/, "");
+function parseAllowedOrigins(value) {
+  return String(value || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
-function buildAllowedOrigins() {
-  const defaults = [
-    "http://localhost:3000",
-    "https://univote.online",
-    "https://www.univote.online",
-  ];
+function isLocalDevelopmentOrigin(origin) {
+  if (!origin) return true;
 
-  const envOrigins = [process.env.FRONTEND_URL, process.env.ALLOWED_ORIGINS]
-    .filter(Boolean)
-    .flatMap((value) => value.split(","));
-
-  return new Set(
-    [...defaults, ...envOrigins]
-      .map((value) => normalizeOrigin(value.trim()))
-      .filter(Boolean),
-  );
+  try {
+    const parsed = new URL(origin);
+    const hostname = parsed.hostname.toLowerCase();
+    return (
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname === "127.0.0.1"
+    );
+  } catch {
+    return false;
+  }
 }
 
-const allowedOrigins = buildAllowedOrigins();
+const explicitAllowedOrigins = parseAllowedOrigins(
+  process.env.CORS_ALLOWED_ORIGINS,
+);
+
+function resolveCorsOrigin(origin, callback) {
+  if (!origin) {
+    callback(null, true);
+    return;
+  }
+
+  if (ENV !== "production" && isLocalDevelopmentOrigin(origin)) {
+    callback(null, true);
+    return;
+  }
+
+  if (explicitAllowedOrigins.includes(origin)) {
+    callback(null, true);
+    return;
+  }
+
+  if (ENV !== "production") {
+    callback(null, true);
+    return;
+  }
+
+  callback(new Error(`CORS blocked for origin: ${origin}`));
+}
 
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
@@ -79,21 +105,16 @@ connectDB()
 // ── Middleware ───────────────────────────────────────────
 app.use(
   cors({
-    origin(origin, callback) {
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
-
-      const normalizedOrigin = normalizeOrigin(origin);
-      if (allowedOrigins.has(normalizedOrigin)) {
-        callback(null, true);
-        return;
-      }
-
-      callback(new Error(`CORS blocked for origin: ${origin}`));
-    },
+    origin: resolveCorsOrigin,
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Authorization",
+      "Content-Type",
+      "X-Tenant-Slug",
+      "X-Requested-With",
+      "x-request-id",
+    ],
   }),
 );
 app.use((req, res, next) => {

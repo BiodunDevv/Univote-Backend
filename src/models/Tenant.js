@@ -214,6 +214,14 @@ const tenantSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    application_reference: {
+      type: String,
+      default: undefined,
+      unique: true,
+      sparse: true,
+      trim: true,
+      uppercase: true,
+    },
     status: {
       type: String,
       enum: ["draft", "pending_payment", "pending_approval", "active", "suspended"],
@@ -302,6 +310,10 @@ const tenantSchema = new mongoose.Schema(
         type: Date,
         default: null,
       },
+      application_last_updated_at: {
+        type: Date,
+        default: null,
+      },
       activated_at: {
         type: Date,
         default: null,
@@ -309,6 +321,67 @@ const tenantSchema = new mongoose.Schema(
       approved_at: {
         type: Date,
         default: null,
+      },
+      rejected_at: {
+        type: Date,
+        default: null,
+      },
+      rejection_reason: {
+        type: String,
+        default: null,
+      },
+      payment_required: {
+        type: Boolean,
+        default: true,
+      },
+      coupon_code: {
+        type: String,
+        default: null,
+        uppercase: true,
+        trim: true,
+      },
+      coupon_snapshot: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null,
+      },
+      billing_snapshot: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null,
+      },
+      structure_preferences: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null,
+      },
+      identity_preferences: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null,
+      },
+      status_timeline: {
+        type: [
+          new mongoose.Schema(
+            {
+              status: {
+                type: String,
+                required: true,
+                trim: true,
+              },
+              label: {
+                type: String,
+                default: null,
+              },
+              note: {
+                type: String,
+                default: null,
+              },
+              at: {
+                type: Date,
+                default: Date.now,
+              },
+            },
+            { _id: false },
+          ),
+        ],
+        default: () => [],
       },
     },
     is_active: {

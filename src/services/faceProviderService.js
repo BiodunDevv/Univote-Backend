@@ -6,18 +6,34 @@ const PROVIDER_CATALOG = {
   facepp: {
     label: "Face++",
     implemented: true,
+    rollout_visible: true,
+    description:
+      "Production-ready face detection and verification for participant enrollment and voting checks.",
+    requirements: ["API key", "API secret", "Base URL", "Confidence threshold"],
   },
   aws_rekognition: {
     label: "AWS Rekognition",
     implemented: false,
+    rollout_visible: false,
+    description:
+      "AWS-hosted biometric provider slot for organizations standardizing on Amazon infrastructure.",
+    requirements: ["Access key ID", "Secret access key", "Region", "Similarity threshold"],
   },
   azure_face: {
     label: "Azure Face",
     implemented: false,
+    rollout_visible: false,
+    description:
+      "Azure-hosted provider slot for organizations standardizing on Microsoft cloud services.",
+    requirements: ["Endpoint", "API key", "Confidence threshold"],
   },
   google_vision: {
     label: "Google Cloud Vision",
     implemented: false,
+    rollout_visible: false,
+    description:
+      "Google Cloud provider slot for organizations standardizing on GCP-based verification.",
+    requirements: ["Project ID", "API key", "Confidence threshold"],
   },
 };
 
@@ -25,6 +41,43 @@ function getMaskedSecret(value) {
   if (!value) return null;
   if (value.length <= 8) return "********";
   return `${value.slice(0, 4)}••••${value.slice(-2)}`;
+}
+
+function getProviderDefaultState(providerKey) {
+  switch (providerKey) {
+    case "facepp":
+      return {
+        enabled: false,
+        api_key: null,
+        api_secret: null,
+        base_url: DEFAULT_FACEPP_BASE_URL,
+        confidence_threshold: 80,
+      };
+    case "aws_rekognition":
+      return {
+        enabled: false,
+        region: "us-east-1",
+        access_key_id: null,
+        secret_access_key: null,
+        similarity_threshold: 90,
+      };
+    case "azure_face":
+      return {
+        enabled: false,
+        endpoint: null,
+        api_key: null,
+        confidence_threshold: 80,
+      };
+    case "google_vision":
+      return {
+        enabled: false,
+        project_id: null,
+        api_key: null,
+        confidence_threshold: 80,
+      };
+    default:
+      return null;
+  }
 }
 
 async function getOrCreatePlatformSetting() {
@@ -52,6 +105,8 @@ async function getBiometricSettings() {
         enabled: facepp.enabled !== false,
         implemented: true,
         configured: Boolean(facepp.api_key && facepp.api_secret),
+        api_key_value: facepp.api_key || "",
+        api_secret_value: facepp.api_secret || "",
         api_key_masked: getMaskedSecret(facepp.api_key || ""),
         api_secret_masked: getMaskedSecret(facepp.api_secret || ""),
         base_url: facepp.base_url || DEFAULT_FACEPP_BASE_URL,
@@ -66,6 +121,8 @@ async function getBiometricSettings() {
         configured: Boolean(
           awsRekognition.access_key_id && awsRekognition.secret_access_key,
         ),
+        access_key_id_value: awsRekognition.access_key_id || "",
+        secret_access_key_value: awsRekognition.secret_access_key || "",
         access_key_id_masked: getMaskedSecret(awsRekognition.access_key_id || ""),
         secret_access_key_masked: getMaskedSecret(
           awsRekognition.secret_access_key || "",
@@ -81,6 +138,7 @@ async function getBiometricSettings() {
         implemented: false,
         configured: Boolean(azureFace.endpoint && azureFace.api_key),
         endpoint: azureFace.endpoint || null,
+        api_key_value: azureFace.api_key || "",
         api_key_masked: getMaskedSecret(azureFace.api_key || ""),
         confidence_threshold:
           typeof azureFace.confidence_threshold === "number"
@@ -92,6 +150,7 @@ async function getBiometricSettings() {
         implemented: false,
         configured: Boolean(googleVision.project_id && googleVision.api_key),
         project_id: googleVision.project_id || null,
+        api_key_value: googleVision.api_key || "",
         api_key_masked: getMaskedSecret(googleVision.api_key || ""),
         confidence_threshold:
           typeof googleVision.confidence_threshold === "number"
@@ -102,18 +161,22 @@ async function getBiometricSettings() {
   };
 }
 
-async function resolveProvider() {
+async function resolveProvider(providerOverride = null) {
   const biometrics = await getBiometricSettings();
+  const selectedProvider = providerOverride || biometrics.active_provider;
 
-  if (biometrics.active_provider !== "facepp") {
+  if (selectedProvider !== "facepp") {
+    const catalogEntry = PROVIDER_CATALOG[selectedProvider];
     return {
       provider: null,
-      providerKey: biometrics.active_provider,
+      providerKey: selectedProvider,
       status: {
-        provider: biometrics.active_provider,
+        provider: selectedProvider,
         configured: false,
-        implemented: false,
-        error: "Selected biometric provider is not implemented yet",
+        implemented: Boolean(catalogEntry?.implemented),
+        error: catalogEntry?.implemented
+          ? "Selected biometric provider is unavailable"
+          : "Selected biometric provider is not implemented yet",
       },
     };
   }
@@ -148,13 +211,21 @@ class FaceProviderService {
     return getBiometricSettings();
   }
 
-  async getStatus() {
-    const resolved = await resolveProvider();
+  getProviderCatalog() {
+    return PROVIDER_CATALOG;
+  }
+
+  getProviderDefaultState(providerKey) {
+    return getProviderDefaultState(providerKey);
+  }
+
+  async getStatus(providerKey = null) {
+    const resolved = await resolveProvider(providerKey);
     return resolved.status;
   }
 
-  async validateConfig() {
-    const resolved = await resolveProvider();
+  async validateConfig(providerKey = null) {
+    const resolved = await resolveProvider(providerKey);
     if (!resolved.provider) {
       return {
         success: false,
@@ -223,20 +294,34 @@ class FaceProviderService {
   }
 
   async testConnection(imageUrl) {
-    const config = await this.validateConfig();
+    return this.testConnectionForProvider(null, imageUrl);
+  }
+
+  async testConnectionForProvider(providerKey, imageUrl) {
+    const catalog = PROVIDER_CATALOG[providerKey || undefined] || null;
+    const config = await this.validateConfig(providerKey);
     if (!config.success) {
       return {
         success: false,
         provider: config.provider,
         error: config.error,
         code: "BIOMETRIC_PROVIDER_NOT_CONFIGURED",
+        readiness: {
+          implemented:
+            providerKey && catalog ? Boolean(catalog.implemented) : undefined,
+          requirements: providerKey && catalog ? catalog.requirements : undefined,
+        },
       };
     }
 
-    const resolved = await resolveProvider();
+    const resolved = await resolveProvider(providerKey);
     const detection = await resolved.provider.detectFace(imageUrl);
     return {
       provider: resolved.providerKey,
+      readiness: {
+        implemented: true,
+        configured: true,
+      },
       ...detection,
     };
   }

@@ -91,15 +91,13 @@ function getFrontendBaseUrl() {
 }
 
 function buildCheckoutCallbackUrl(tenant, source) {
-  if (source === "tenant_application") {
-    return `${getFrontendBaseUrl()}/?checkout=paystack`;
+  const frontendBaseUrl = getFrontendBaseUrl();
+  const callback = new URL("/checkout", frontendBaseUrl);
+  callback.searchParams.set("source", source || "billing");
+  if (tenant?.slug) {
+    callback.searchParams.set("tenant", tenant.slug);
   }
-
-  if (tenant.primary_domain) {
-    return `https://${tenant.primary_domain}/dashboard/billing?checkout=paystack`;
-  }
-
-  return `${getFrontendBaseUrl()}/dashboard/billing?checkout=paystack`;
+  return callback.toString();
 }
 
 function createInvoiceNumber() {
@@ -263,14 +261,18 @@ async function createInvoice({
   paymentProvider = getPaymentProvider(),
   paymentReference = createPaymentReference("pay"),
   providerCheckoutUrl = null,
+  amountNgn = null,
+  amountKobo = null,
 }) {
   const plan = getPlanDefinition(planCode);
+  const resolvedAmountNgn = amountNgn ?? plan.monthly_price_ngn;
+  const resolvedAmountKobo = amountKobo ?? resolvedAmountNgn * 100;
   const invoice = await Invoice.create({
     tenant_id: tenant._id,
     invoice_number: createInvoiceNumber(),
     plan_code: plan.code,
-    amount_ngn: plan.monthly_price_ngn,
-    amount_kobo: plan.monthly_price_ngn * 100,
+    amount_ngn: resolvedAmountNgn,
+    amount_kobo: resolvedAmountKobo,
     currency: "NGN",
     interval: "monthly",
     status,
@@ -474,6 +476,54 @@ async function activateInvoicePayment(invoice, providerPayload = {}) {
   return { tenant, invoice };
 }
 
+async function getInvoiceCheckoutResolution(reference) {
+  if (!reference) {
+    return null;
+  }
+
+  const invoice = await Invoice.findOne({ payment_reference: reference }).lean();
+  if (!invoice) {
+    return null;
+  }
+
+  const tenant = await Tenant.findById(invoice.tenant_id).lean();
+  const source = getMetadataValue(invoice.metadata, "source") || "upgrade";
+  const tenantSlug = tenant?.slug || null;
+  const tenantPrimaryDomain = tenant?.primary_domain || null;
+  const applicationReference =
+    getMetadataValue(invoice.metadata, "application_reference") ||
+    tenant?.application_reference ||
+    null;
+
+  let status = invoice.status;
+  if (status === "pending" && invoice.provider_checkout_url) {
+    status = "pending";
+  }
+
+  return {
+    reference,
+    source,
+    status,
+    tenant: tenant
+      ? {
+          id: tenant._id,
+          name: tenant.name,
+          slug: tenantSlug,
+          primary_domain: tenantPrimaryDomain,
+          status: tenant.status,
+          plan_code: tenant.plan_code,
+          subscription_status: tenant.subscription_status,
+        }
+      : null,
+    invoice: serializeInvoice(invoice),
+    application_reference: applicationReference,
+    retry_checkout_url:
+      invoice.status === "pending" || invoice.status === "failed"
+        ? invoice.provider_checkout_url || null
+        : null,
+  };
+}
+
 async function markInvoiceFailedByReference(reference, providerPayload = {}) {
   if (!reference) return null;
 
@@ -643,6 +693,9 @@ async function requestPlanCheckout({
   tenant,
   targetPlanCode,
   actorAdminId = null,
+  metadata = {},
+  amountNgn = null,
+  amountKobo = null,
 }) {
   ensureBillingFields(tenant);
 
@@ -652,6 +705,9 @@ async function requestPlanCheckout({
   const provider = getPaymentProvider();
   const isActivationFlow =
     tenant.status === "pending_payment" || tenant.status === "draft";
+  const resolvedAmountNgn =
+    amountNgn ?? getPlanDefinition(targetPlanCode).monthly_price_ngn;
+  const resolvedAmountKobo = amountKobo ?? resolvedAmountNgn * 100;
 
   if (targetPlanCode === currentPlan && !isActivationFlow) {
     return {
@@ -668,6 +724,46 @@ async function requestPlanCheckout({
     const previousStatus = tenant.subscription_status;
     const source = isActivationFlow ? "tenant_application" : "upgrade";
 
+    if (resolvedAmountNgn <= 0) {
+      await voidPendingInvoicesForTenant(tenant._id);
+
+      const invoice = await createInvoice({
+        tenant,
+        planCode: targetPlanCode,
+        actorAdminId,
+        issuedAt: now,
+        periodStart: tenant.billing.current_period_start || now,
+        periodEnd: tenant.billing.current_period_end || addDays(now, 30),
+        status: "paid",
+        metadata: {
+          source,
+          current_plan_code: currentPlan,
+          ...metadata,
+        },
+        paymentProvider: "mock",
+        amountNgn: resolvedAmountNgn,
+        amountKobo: resolvedAmountKobo,
+      });
+
+      await activateInvoicePayment(invoice, {
+        paid_at: now.toISOString(),
+        reference: invoice.payment_reference,
+      });
+
+      const refreshedTenant = await Tenant.findById(tenant._id);
+
+      return {
+        message: isActivationFlow
+          ? "Application submitted successfully and moved straight into approval."
+          : `${getPlanDefinition(targetPlanCode).name} activated successfully`,
+        tenant: refreshedTenant || tenant,
+        invoice,
+        scheduled_change: null,
+        action: isActivationFlow ? "pending_approval" : "upgraded",
+        checkout_url: null,
+      };
+    }
+
     if (provider === "paystack") {
       await voidPendingInvoicesForTenant(tenant._id);
 
@@ -682,8 +778,11 @@ async function requestPlanCheckout({
         metadata: {
           source,
           current_plan_code: currentPlan,
+          ...metadata,
         },
         paymentProvider: "paystack",
+        amountNgn: resolvedAmountNgn,
+        amountKobo: resolvedAmountKobo,
       });
 
       const checkoutUrl = await initializePaystackCheckout({
@@ -734,8 +833,11 @@ async function requestPlanCheckout({
       periodEnd: tenant.billing.current_period_end || addDays(now, 30),
       metadata: {
         source,
+        ...metadata,
       },
       paymentProvider: "mock",
+      amountNgn: resolvedAmountNgn,
+      amountKobo: resolvedAmountKobo,
     });
 
     await activateInvoicePayment(invoice, {
@@ -887,4 +989,6 @@ module.exports = {
   serializeTenantBilling,
   syncInvoiceFromPaystackEvent,
   toMetadataObject,
+  getFrontendBaseUrl,
+  getInvoiceCheckoutResolution,
 };

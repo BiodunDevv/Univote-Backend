@@ -17,5 +17,6 @@ const router = express.Router();
  *         description: Invalid signature
  */
 router.post("/webhooks/paystack", billingController.handlePaystackWebhook);
+router.post("/verify-checkout", billingController.verifyCheckout);
 
 module.exports = router;

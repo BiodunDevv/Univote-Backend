@@ -168,6 +168,27 @@ router.post(
   authController.switchTenant,
 );
 
+router.post(
+  "/link-organization",
+  authenticateAdmin,
+  [
+    body("tenant_slug").notEmpty().withMessage("tenant_slug is required"),
+    body("email").isEmail().withMessage("Valid email is required"),
+    body("password").notEmpty().withMessage("Password is required"),
+    validate,
+  ],
+  auditLogger("link_organization", "auth"),
+  authController.linkOrganization,
+);
+
+router.post(
+  "/unlink-organization",
+  authenticateAdmin,
+  [body("tenant_slug").notEmpty().withMessage("tenant_slug is required"), validate],
+  auditLogger("unlink_organization", "auth"),
+  authController.unlinkOrganization,
+);
+
 /**
  * @swagger
  * /auth/change-password:

@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const Student = require("../models/Student");
 const Admin = require("../models/Admin");
 const Tenant = require("../models/Tenant");
+const LinkedAdminWorkspace = require("../models/LinkedAdminWorkspace");
 const {
   getActiveAdminMembership,
   getActiveAdminMemberships,
@@ -151,6 +152,98 @@ async function resolveTenantChoices(memberships = []) {
       };
     })
     .filter(Boolean);
+}
+
+async function resolveLinkedTenantChoices(sourceAdminId) {
+  const links = await LinkedAdminWorkspace.find({
+    source_admin_id: sourceAdminId,
+    is_active: true,
+  }).lean();
+
+  if (!links.length) return [];
+
+  const tenantIds = links.map((link) => link.tenant_id);
+  const tenants = await Tenant.find({
+    _id: { $in: tenantIds },
+    is_active: true,
+  })
+    .select(
+      "_id name slug status plan_code subscription_status primary_domain",
+    )
+    .lean();
+  const tenantMap = new Map(tenants.map((tenant) => [String(tenant._id), tenant]));
+
+  return links
+    .map((link) => {
+      const tenant = tenantMap.get(String(link.tenant_id));
+      if (!tenant) return null;
+
+      return {
+        tenant_id: tenant._id,
+        name: tenant.name,
+        slug: tenant.slug,
+        role: "linked",
+        status: tenant.status,
+        plan_code: tenant.plan_code,
+        subscription_status: tenant.subscription_status,
+        primary_domain: tenant.primary_domain || null,
+        linked: true,
+        linked_admin_id: String(link.target_admin_id),
+        link_id: String(link._id),
+        label: link.label || null,
+      };
+    })
+    .filter(Boolean);
+}
+
+async function resolveAccessibleOrganizations(sourceAdminId) {
+  const [memberships, linkedOrganizations] = await Promise.all([
+    getActiveAdminMemberships(sourceAdminId),
+    resolveLinkedTenantChoices(sourceAdminId),
+  ]);
+
+  const directOrganizations = await resolveTenantChoices(memberships);
+  const directTenantIds = new Set(
+    directOrganizations.map((organization) => String(organization.tenant_id)),
+  );
+
+  return [
+    ...directOrganizations,
+    ...linkedOrganizations.filter(
+      (organization) => !directTenantIds.has(String(organization.tenant_id)),
+    ),
+  ];
+}
+
+async function resolveLinkedWorkspaceAccess(sourceAdminId, tenantId) {
+  const link = await LinkedAdminWorkspace.findOne({
+    source_admin_id: sourceAdminId,
+    tenant_id: tenantId,
+    is_active: true,
+  });
+
+  if (!link) {
+    return null;
+  }
+
+  const targetAdmin = await Admin.findById(link.target_admin_id);
+  if (!targetAdmin || !targetAdmin.is_active) {
+    return null;
+  }
+
+  const membership = await getActiveAdminMembership(targetAdmin._id, tenantId);
+  if (!membership) {
+    return null;
+  }
+
+  link.last_used_at = new Date();
+  await link.save();
+
+  return {
+    admin: targetAdmin,
+    membership,
+    link,
+  };
 }
 
 async function findAdminInTenantScope(email, tenantId) {
@@ -352,9 +445,9 @@ class AuthController {
                 code: "TENANT_NOT_FOUND",
               });
             }
-            organizations = await resolveTenantChoices(memberships);
+            organizations = await resolveAccessibleOrganizations(admin._id);
           } else if (memberships.length > 1) {
-            const tenantChoices = await resolveTenantChoices(memberships);
+            const tenantChoices = await resolveAccessibleOrganizations(admin._id);
             return res.status(409).json({
               error: "Multiple tenant memberships found for this account",
               code: "TENANT_SELECTION_REQUIRED",
@@ -375,8 +468,7 @@ class AuthController {
             });
           }
 
-          const memberships = await getActiveAdminMemberships(admin._id);
-          organizations = await resolveTenantChoices(memberships);
+          organizations = await resolveAccessibleOrganizations(admin._id);
         }
       }
 
@@ -1072,17 +1164,24 @@ class AuthController {
         });
       }
 
-      const membership = await getActiveAdminMembership(req.admin._id, tenant._id);
+      let actingAdmin = req.admin;
+      let membership = await getActiveAdminMembership(req.admin._id, tenant._id);
+
       if (!membership) {
-        return res.status(403).json({
-          error: "Tenant admin membership not found",
-          code: "TENANT_MEMBERSHIP_REQUIRED",
-        });
+        const linkedAccess = await resolveLinkedWorkspaceAccess(req.admin._id, tenant._id);
+        if (!linkedAccess) {
+          return res.status(403).json({
+            error: "Tenant admin membership not found",
+            code: "TENANT_MEMBERSHIP_REQUIRED",
+          });
+        }
+
+        actingAdmin = linkedAccess.admin;
+        membership = linkedAccess.membership;
       }
 
-      const memberships = await getActiveAdminMemberships(req.admin._id);
-      const organizations = await resolveTenantChoices(memberships);
-      const token = generateAdminToken(req.admin, {
+      const organizations = await resolveAccessibleOrganizations(req.admin._id);
+      const token = generateAdminToken(actingAdmin, {
         tenant_id: tenant._id,
         tenant_role: membership.role || null,
         permissions: membership.permissions || [],
@@ -1091,7 +1190,7 @@ class AuthController {
       return res.json({
         message: "Tenant switched successfully",
         token,
-        admin: serializeAdmin(req.admin, membership),
+        admin: serializeAdmin(actingAdmin, membership),
         tenant: serializeTenant(tenant),
         organizations,
         membership: {
@@ -1103,6 +1202,139 @@ class AuthController {
     } catch (error) {
       console.error("Switch tenant error:", error);
       return res.status(500).json({ error: "Failed to switch tenant" });
+    }
+  }
+
+  async linkOrganization(req, res) {
+    try {
+      if (!req.admin) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      if (req.admin.role === "super_admin") {
+        return res.status(403).json({ error: "Super admins do not link tenant workspaces" });
+      }
+
+      const targetSlug = normalizeTenantLookupSlug(req.body.tenant_slug);
+      const email = String(req.body.email || "").trim().toLowerCase();
+      const password = String(req.body.password || "");
+      const label = req.body.label ? String(req.body.label).trim() : null;
+
+      if (!targetSlug || !email || !password) {
+        return res.status(400).json({
+          error: "tenant_slug, email, and password are required",
+        });
+      }
+
+      const tenant = await Tenant.findOne({ slug: targetSlug, is_active: true });
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found", code: "TENANT_NOT_FOUND" });
+      }
+
+      const targetAdmin = await Admin.findOne({ email });
+      if (!targetAdmin || !targetAdmin.is_active) {
+        return res.status(401).json({ error: "Invalid organization admin credentials" });
+      }
+
+      const isPasswordValid = await bcrypt.compare(password, targetAdmin.password_hash);
+      if (!isPasswordValid) {
+        return res.status(401).json({ error: "Invalid organization admin credentials" });
+      }
+
+      const membership = await getActiveAdminMembership(targetAdmin._id, tenant._id);
+      if (!membership) {
+        return res.status(403).json({
+          error: "The provided admin does not belong to that organization",
+        });
+      }
+
+      if (String(targetAdmin._id) === String(req.admin._id)) {
+        return res.status(400).json({
+          error: "This organization is already available through the current admin account",
+        });
+      }
+
+      await LinkedAdminWorkspace.findOneAndUpdate(
+        {
+          source_admin_id: req.admin._id,
+          target_admin_id: targetAdmin._id,
+          tenant_id: tenant._id,
+        },
+        {
+          $set: {
+            is_active: true,
+            label,
+            linked_by_admin_id: req.admin._id,
+          },
+        },
+        {
+          new: true,
+          upsert: true,
+          setDefaultsOnInsert: true,
+        },
+      );
+
+      const organizations = await resolveAccessibleOrganizations(req.admin._id);
+
+      return res.json({
+        message: `${tenant.name} linked successfully`,
+        organizations,
+      });
+    } catch (error) {
+      console.error("Link organization error:", error);
+      return res.status(500).json({ error: "Failed to link organization" });
+    }
+  }
+
+  async unlinkOrganization(req, res) {
+    try {
+      if (!req.admin) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      if (req.admin.role === "super_admin") {
+        return res.status(403).json({ error: "Super admins do not unlink tenant workspaces" });
+      }
+
+      const targetSlug = normalizeTenantLookupSlug(req.body.tenant_slug);
+      if (!targetSlug) {
+        return res.status(400).json({ error: "tenant_slug is required" });
+      }
+
+      const tenant = await Tenant.findOne({ slug: targetSlug }).select("_id");
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found", code: "TENANT_NOT_FOUND" });
+      }
+
+      const result = await LinkedAdminWorkspace.findOneAndUpdate(
+        {
+          source_admin_id: req.admin._id,
+          tenant_id: tenant._id,
+          is_active: true,
+        },
+        {
+          $set: {
+            is_active: false,
+          },
+        },
+        {
+          new: true,
+        },
+      );
+
+      if (!result) {
+        return res.status(404).json({ error: "Linked organization not found" });
+      }
+
+      const organizations = await resolveAccessibleOrganizations(req.admin._id);
+
+      return res.json({
+        message: "Linked organization removed successfully",
+        organizations,
+      });
+    } catch (error) {
+      console.error("Unlink organization error:", error);
+      return res.status(500).json({ error: "Failed to unlink organization" });
     }
   }
 }

@@ -81,6 +81,10 @@ async function resolveTenantContext(req, _res, next) {
 }
 
 function requireTenantContext(req, res, next) {
+  if (req.admin?.role === "super_admin") {
+    return next();
+  }
+
   if (!req.tenant) {
     return res.status(400).json({
       error: "Tenant context is required",
@@ -109,6 +113,10 @@ function canTenantAccessActiveFeatures(tenant) {
 }
 
 function requireTenantAccess(req, res, next) {
+  if (req.admin?.role === "super_admin") {
+    return next();
+  }
+
   if (!req.tenant) {
     return res.status(400).json({
       error: "Tenant context is required",

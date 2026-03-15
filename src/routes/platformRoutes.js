@@ -43,6 +43,20 @@ router.patch(
   platformController.updatePlatformSettings,
 );
 router.post(
+  "/settings/biometrics/providers",
+  authenticateAdmin,
+  requireSuperAdmin,
+  auditLogger("create_biometric_provider", "platform_settings"),
+  platformController.createBiometricProvider,
+);
+router.delete(
+  "/settings/biometrics/providers/:providerKey",
+  authenticateAdmin,
+  requireSuperAdmin,
+  auditLogger("delete_biometric_provider", "platform_settings"),
+  platformController.deleteBiometricProvider,
+);
+router.post(
   "/settings/biometrics/test",
   authenticateAdmin,
   requireSuperAdmin,
@@ -95,6 +109,51 @@ router.patch(
   ],
   auditLogger("update_platform_plan", "platform_billing"),
   billingController.updatePlatformPlan,
+);
+
+router.get(
+  "/coupons",
+  authenticateAdmin,
+  requireSuperAdmin,
+  platformController.listCoupons,
+);
+
+router.post(
+  "/coupons",
+  authenticateAdmin,
+  requireSuperAdmin,
+  [
+    body("code").notEmpty().withMessage("Coupon code is required"),
+    body("name").notEmpty().withMessage("Coupon name is required"),
+    body("discount_type")
+      .isIn(["percentage", "fixed_amount"])
+      .withMessage("Valid discount type is required"),
+    body("discount_value")
+      .isFloat({ min: 0 })
+      .withMessage("Discount value must be zero or greater"),
+    validate,
+  ],
+  auditLogger("create_coupon", "billing"),
+  platformController.createCoupon,
+);
+
+router.patch(
+  "/coupons/:id",
+  authenticateAdmin,
+  requireSuperAdmin,
+  [
+    body("discount_type")
+      .optional()
+      .isIn(["percentage", "fixed_amount"])
+      .withMessage("Valid discount type is required"),
+    body("discount_value")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("Discount value must be zero or greater"),
+    validate,
+  ],
+  auditLogger("update_coupon", "billing"),
+  platformController.updateCoupon,
 );
 
 /**

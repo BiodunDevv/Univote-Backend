@@ -83,6 +83,28 @@ router.get("/organizations/:slug", apiLimiter, publicController.getOrganizationB
  *         description: Published testimonials retrieved successfully
  */
 router.get("/testimonials", apiLimiter, publicController.listTestimonials);
+router.post(
+  "/testimonials/submissions",
+  apiLimiter,
+  [
+    body("author_name").notEmpty().withMessage("Author name is required"),
+    body("author_role").notEmpty().withMessage("Author role is required"),
+    body("institution_name").notEmpty().withMessage("Institution name is required"),
+    body("quote")
+      .isLength({ min: 20, max: 600 })
+      .withMessage("Quote must be between 20 and 600 characters"),
+    body("rating")
+      .optional()
+      .isInt({ min: 1, max: 5 })
+      .withMessage("Rating must be between 1 and 5"),
+    body("source")
+      .optional()
+      .isIn(["public", "tenant"])
+      .withMessage("Valid testimonial source is required"),
+    validate,
+  ],
+  publicController.submitTestimonial,
+);
 
 /**
  * @swagger
@@ -130,7 +152,7 @@ router.get("/testimonials", apiLimiter, publicController.listTestimonials);
  *         description: Tenant application submitted successfully
  */
 router.post(
-  "/tenant-applications",
+  "/applications",
   apiLimiter,
   [
     body("institution_name").notEmpty().withMessage("Institution name is required"),
@@ -155,6 +177,7 @@ router.post(
       .optional({ nullable: true, checkFalsy: true })
       .isInt({ min: 0 })
       .withMessage("Admin estimate must be zero or greater"),
+    body("coupon_code").optional().isString().withMessage("Coupon code must be text"),
     body("demo_requested")
       .optional()
       .isBoolean()
@@ -163,5 +186,44 @@ router.post(
   ],
   publicController.submitTenantApplication,
 );
+
+router.post(
+  "/tenant-applications",
+  apiLimiter,
+  [
+    body("institution_name").notEmpty().withMessage("Institution name is required"),
+    body("slug")
+      .matches(/^[a-z0-9-]+$/)
+      .withMessage("Tenant slug must contain only lowercase letters, numbers, and hyphens"),
+    body("contact_name").notEmpty().withMessage("Contact name is required"),
+    body("contact_email").isEmail().withMessage("Contact email must be valid"),
+    validate,
+  ],
+  publicController.submitTenantApplication,
+);
+
+router.patch(
+  "/applications/:reference",
+  apiLimiter,
+  [
+    body("institution_name").notEmpty().withMessage("Institution name is required"),
+    body("slug")
+      .matches(/^[a-z0-9-]+$/)
+      .withMessage("Tenant slug must contain only lowercase letters, numbers, and hyphens"),
+    body("contact_name").notEmpty().withMessage("Contact name is required"),
+    body("contact_email").isEmail().withMessage("Contact email must be valid"),
+    validate,
+  ],
+  publicController.updateTenantApplication,
+);
+
+router.get("/applications/status", apiLimiter, publicController.getTenantApplicationStatus);
+router.post(
+  "/applications/:reference/checkout",
+  apiLimiter,
+  publicController.retryTenantApplicationCheckout,
+);
+router.get("/coupons/:code/validate", apiLimiter, publicController.validateCoupon);
+router.post("/checkout/resolve", apiLimiter, publicController.resolveCheckout);
 
 module.exports = router;

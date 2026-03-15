@@ -1,24 +1,12 @@
 const SibApiV3Sdk = require("@sendinblue/client");
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function formatDateTime(value) {
-  return new Date(value || Date.now()).toLocaleString("en-NG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
-function stripHtml(value) {
-  return String(value || "").replace(/<[^>]+>/g, "").trim();
-}
+const {
+  escapeHtml,
+  formatDateTime,
+  renderKeyValueRows,
+  renderList,
+  renderMessageCard,
+  stripHtml,
+} = require("../emails");
 
 class EmailService {
   constructor() {
@@ -55,129 +43,6 @@ class EmailService {
   canSendForTenant(tenant = null, { critical = false } = {}) {
     if (critical) return true;
     return tenant?.settings?.notifications?.email_enabled !== false;
-  }
-
-  renderList(items = []) {
-    if (!items.length) return "";
-    return `
-      <ul style="margin:0;padding-left:18px;color:#475569;font-size:13px;line-height:1.7;">
-        ${items
-          .map((item) => `<li style="margin:0 0 6px;">${escapeHtml(item)}</li>`)
-          .join("")}
-      </ul>
-    `;
-  }
-
-  renderKeyValueRows(rows = []) {
-    if (!rows.length) return "";
-    return `
-      <div style="border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;background:#ffffff;">
-        ${rows
-          .map(
-            (row, index) => `
-              <div style="display:flex;justify-content:space-between;gap:16px;padding:12px 14px;${
-                index < rows.length - 1 ? "border-bottom:1px solid #e2e8f0;" : ""
-              }">
-                <span style="font-size:12px;color:#64748b;">${escapeHtml(row.label)}</span>
-                <span style="font-size:12px;color:#0f172a;font-weight:600;text-align:right;">${escapeHtml(row.value)}</span>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
-    `;
-  }
-
-  renderMessageCard({
-    eyebrow,
-    title,
-    intro,
-    sections = [],
-    ctaLabel,
-    ctaLink,
-    footnote,
-    tenant = null,
-  }) {
-    const branding = this.getBranding(tenant);
-
-    return `
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>${escapeHtml(title)}</title>
-        </head>
-        <body style="margin:0;padding:24px;background:#f8fafc;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;margin:0 auto;">
-            <tr>
-              <td style="padding-bottom:16px;">
-                <div style="border:1px solid #e2e8f0;border-radius:24px;background:linear-gradient(135deg, ${branding.primaryColor} 0%, ${branding.accentColor} 100%);padding:24px;color:#ffffff;">
-                  <div style="display:flex;align-items:center;gap:14px;">
-                    ${
-                      branding.logoUrl
-                        ? `<img src="${escapeHtml(branding.logoUrl)}" alt="${escapeHtml(
-                            branding.appName,
-                          )}" style="height:40px;width:40px;border-radius:12px;object-fit:cover;background:rgba(255,255,255,0.12);" />`
-                        : `<div style="height:40px;width:40px;border-radius:12px;background:rgba(255,255,255,0.14);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;">U</div>`
-                    }
-                    <div>
-                      <p style="margin:0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;opacity:0.78;">
-                        ${escapeHtml(eyebrow || "Transactional update")}
-                      </p>
-                      <h1 style="margin:6px 0 0;font-size:22px;line-height:1.25;font-weight:700;">
-                        ${escapeHtml(title)}
-                      </h1>
-                    </div>
-                  </div>
-                  ${
-                    intro
-                      ? `<p style="margin:18px 0 0;font-size:14px;line-height:1.7;color:rgba(255,255,255,0.92);">${escapeHtml(
-                          intro,
-                        )}</p>`
-                      : ""
-                  }
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <div style="border:1px solid #e2e8f0;border-radius:24px;background:#ffffff;padding:24px;">
-                  ${sections.join("")}
-                  ${
-                    ctaLabel && ctaLink
-                      ? `<div style="margin-top:20px;">
-                          <a href="${escapeHtml(
-                            ctaLink,
-                          )}" style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:${branding.primaryColor};color:#ffffff;text-decoration:none;padding:12px 18px;font-size:13px;font-weight:600;">
-                            ${escapeHtml(ctaLabel)}
-                          </a>
-                        </div>`
-                      : ""
-                  }
-                  ${
-                    footnote
-                      ? `<p style="margin:18px 0 0;font-size:12px;line-height:1.7;color:#64748b;">${escapeHtml(
-                          footnote,
-                        )}</p>`
-                      : ""
-                  }
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:14px 4px 0;">
-                <p style="margin:0;font-size:11px;line-height:1.7;color:#64748b;text-align:center;">
-                  ${escapeHtml(branding.appName)} · ${escapeHtml(
-                    branding.supportEmail,
-                  )} · ${new Date().getFullYear()}
-                </p>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `;
   }
 
   async sendEmail(to, subject, html, text = null) {
@@ -237,6 +102,21 @@ class EmailService {
       html,
       tenant,
       critical: false,
+    });
+  }
+
+  renderList(items = []) {
+    return renderList(items);
+  }
+
+  renderKeyValueRows(rows = []) {
+    return renderKeyValueRows(rows);
+  }
+
+  renderMessageCard({ tenant = null, ...rest }) {
+    return renderMessageCard({
+      branding: this.getBranding(tenant),
+      ...rest,
     });
   }
 
@@ -449,6 +329,7 @@ class EmailService {
     tenantName,
     planCode,
     checkoutUrl,
+    applicationReference = null,
     recipientType = "contact",
   }) {
     const isPlatformRecipient = recipientType === "platform_admin";
@@ -466,6 +347,9 @@ class EmailService {
         this.renderKeyValueRows([
           { label: "Organisation", value: tenantName },
           { label: "Plan", value: planCode },
+          ...(applicationReference
+            ? [{ label: "Reference", value: applicationReference }]
+            : []),
           { label: "Submitted", value: formatDateTime(Date.now()) },
         ]),
         isPlatformRecipient
@@ -483,6 +367,193 @@ class EmailService {
         : "Organisation application submitted",
       html,
       critical: isPlatformRecipient,
+    });
+  }
+
+  async sendTenantApplicationPaymentRequired({
+    to,
+    contactName,
+    tenantName,
+    planCode,
+    checkoutUrl = null,
+    applicationReference = null,
+    amountLabel = null,
+  }) {
+    const html = this.renderMessageCard({
+      eyebrow: "Payment required",
+      title: "Complete payment to continue onboarding",
+      intro: `Hello ${escapeHtml(
+        contactName || "there",
+      )}, your organisation application has been captured and is waiting for billing confirmation.`,
+      ctaLabel: checkoutUrl ? "Continue payment" : null,
+      ctaLink: checkoutUrl || null,
+      sections: [
+        this.renderKeyValueRows([
+          { label: "Organisation", value: tenantName },
+          { label: "Plan", value: planCode },
+          ...(applicationReference
+            ? [{ label: "Reference", value: applicationReference }]
+            : []),
+          ...(amountLabel ? [{ label: "Payable", value: amountLabel }] : []),
+        ]),
+        `<p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#475569;">Once payment is confirmed, the application moves into platform review automatically.</p>`,
+      ],
+    });
+
+    return this.dispatch({
+      to,
+      subject: "Complete payment to continue onboarding",
+      html,
+      critical: false,
+    });
+  }
+
+  async sendTenantApplicationApproved({
+    to,
+    contactName,
+    tenantName,
+    applicationReference = null,
+    workspaceUrl = null,
+  }) {
+    const html = this.renderMessageCard({
+      eyebrow: "Application approved",
+      title: "Your workspace is now approved",
+      intro: `Hello ${escapeHtml(
+        contactName || "there",
+      )}, ${escapeHtml(tenantName)} has passed platform review and is ready to use.`,
+      ctaLabel: workspaceUrl ? "Open workspace" : null,
+      ctaLink: workspaceUrl || null,
+      sections: [
+        this.renderKeyValueRows([
+          { label: "Organisation", value: tenantName },
+          ...(applicationReference
+            ? [{ label: "Reference", value: applicationReference }]
+            : []),
+          { label: "Approved", value: formatDateTime(Date.now()) },
+        ]),
+      ],
+    });
+
+    return this.dispatch({
+      to,
+      subject: "Your organisation workspace has been approved",
+      html,
+      critical: false,
+    });
+  }
+
+  async sendTenantApplicationRejected({
+    to,
+    contactName,
+    tenantName,
+    applicationReference = null,
+    reason = null,
+    statusUrl = null,
+  }) {
+    const html = this.renderMessageCard({
+      eyebrow: "Application update",
+      title: "Your application needs changes",
+      intro: `Hello ${escapeHtml(
+        contactName || "there",
+      )}, the platform team returned ${escapeHtml(
+        tenantName,
+      )} to draft so the submitted details can be updated.`,
+      ctaLabel: statusUrl ? "Review application status" : null,
+      ctaLink: statusUrl || null,
+      sections: [
+        this.renderKeyValueRows([
+          { label: "Organisation", value: tenantName },
+          ...(applicationReference
+            ? [{ label: "Reference", value: applicationReference }]
+            : []),
+        ]),
+        reason
+          ? `<p style="margin:16px 0 0;font-size:14px;line-height:1.8;color:#334155;"><strong>Review note:</strong> ${escapeHtml(
+              reason,
+            )}</p>`
+          : "",
+      ].filter(Boolean),
+    });
+
+    return this.dispatch({
+      to,
+      subject: "Your application needs changes",
+      html,
+      critical: false,
+    });
+  }
+
+  async sendTenantPaymentConfirmed({
+    to,
+    recipientName,
+    tenant = null,
+    invoiceNumber,
+    applicationReference = null,
+    workspaceUrl = null,
+  }) {
+    const html = this.renderMessageCard({
+      eyebrow: "Payment confirmed",
+      title: "Your payment was received",
+      intro: recipientName
+        ? `Hello ${escapeHtml(recipientName)}, payment for your organisation has been confirmed.`
+        : "Payment for your organisation has been confirmed.",
+      tenant,
+      ctaLabel: workspaceUrl ? "Open workspace" : null,
+      ctaLink: workspaceUrl || null,
+      sections: [
+        this.renderKeyValueRows([
+          { label: "Invoice", value: invoiceNumber || "Pending reference" },
+          ...(applicationReference
+            ? [{ label: "Reference", value: applicationReference }]
+            : []),
+          { label: "Processed", value: formatDateTime(Date.now()) },
+        ]),
+      ],
+    });
+
+    return this.dispatch({
+      to,
+      subject: "Payment confirmed",
+      html,
+      tenant,
+      critical: false,
+    });
+  }
+
+  async sendTenantPaymentFailed({
+    to,
+    recipientName,
+    tenant = null,
+    invoiceNumber,
+    retryUrl = null,
+    applicationReference = null,
+  }) {
+    const html = this.renderMessageCard({
+      eyebrow: "Payment failed",
+      title: "We could not complete your payment",
+      intro: recipientName
+        ? `Hello ${escapeHtml(recipientName)}, the latest payment attempt for your organisation did not complete successfully.`
+        : "The latest payment attempt for your organisation did not complete successfully.",
+      tenant,
+      ctaLabel: retryUrl ? "Retry payment" : null,
+      ctaLink: retryUrl || null,
+      sections: [
+        this.renderKeyValueRows([
+          { label: "Invoice", value: invoiceNumber || "Pending reference" },
+          ...(applicationReference
+            ? [{ label: "Reference", value: applicationReference }]
+            : []),
+        ]),
+        `<p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#475569;">You can retry payment from the billing workspace or the public application status page.</p>`,
+      ],
+    });
+
+    return this.dispatch({
+      to,
+      subject: "Payment attempt failed",
+      html,
+      tenant,
+      critical: false,
     });
   }
 

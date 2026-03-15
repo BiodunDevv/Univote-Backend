@@ -7,6 +7,7 @@ const VotingSession = require("../models/VotingSession");
 const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
 const PlatformSetting = require("../models/PlatformSetting");
+const Coupon = require("../models/Coupon");
 const { cloneDefaultTenantSettings, getTenantSettingsCatalog, mergeTenantSettings } = require("../utils/tenantSettings");
 const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
@@ -47,6 +48,89 @@ async function getOrCreatePlatformSetting() {
     });
   }
   return platformSetting;
+}
+
+function normalizeBiometricProviderPayload(providerKey, payload = {}, current = {}) {
+  switch (providerKey) {
+    case "facepp":
+      return {
+        ...current,
+        enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : current.enabled !== false,
+        api_key:
+          payload.api_key !== undefined && payload.api_key !== ""
+            ? String(payload.api_key).trim()
+            : current.api_key || null,
+        api_secret:
+          payload.api_secret !== undefined && payload.api_secret !== ""
+            ? String(payload.api_secret).trim()
+            : current.api_secret || null,
+        base_url:
+          payload.base_url !== undefined && payload.base_url !== ""
+            ? String(payload.base_url).trim()
+            : current.base_url || "https://api-us.faceplusplus.com/facepp/v3",
+        confidence_threshold:
+          payload.confidence_threshold !== undefined
+            ? Number(payload.confidence_threshold)
+            : current.confidence_threshold || 80,
+      };
+    case "aws_rekognition":
+      return {
+        ...current,
+        enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(current.enabled),
+        region:
+          payload.region !== undefined && payload.region !== ""
+            ? String(payload.region).trim()
+            : current.region || "us-east-1",
+        access_key_id:
+          payload.access_key_id !== undefined && payload.access_key_id !== ""
+            ? String(payload.access_key_id).trim()
+            : current.access_key_id || null,
+        secret_access_key:
+          payload.secret_access_key !== undefined && payload.secret_access_key !== ""
+            ? String(payload.secret_access_key).trim()
+            : current.secret_access_key || null,
+        similarity_threshold:
+          payload.similarity_threshold !== undefined
+            ? Number(payload.similarity_threshold)
+            : current.similarity_threshold || 90,
+      };
+    case "azure_face":
+      return {
+        ...current,
+        enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(current.enabled),
+        endpoint:
+          payload.endpoint !== undefined && payload.endpoint !== ""
+            ? String(payload.endpoint).trim()
+            : current.endpoint || null,
+        api_key:
+          payload.api_key !== undefined && payload.api_key !== ""
+            ? String(payload.api_key).trim()
+            : current.api_key || null,
+        confidence_threshold:
+          payload.confidence_threshold !== undefined
+            ? Number(payload.confidence_threshold)
+            : current.confidence_threshold || 80,
+      };
+    case "google_vision":
+      return {
+        ...current,
+        enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(current.enabled),
+        project_id:
+          payload.project_id !== undefined && payload.project_id !== ""
+            ? String(payload.project_id).trim()
+            : current.project_id || null,
+        api_key:
+          payload.api_key !== undefined && payload.api_key !== ""
+            ? String(payload.api_key).trim()
+            : current.api_key || null,
+        confidence_threshold:
+          payload.confidence_threshold !== undefined
+            ? Number(payload.confidence_threshold)
+            : current.confidence_threshold || 80,
+      };
+    default:
+      return current;
+  }
 }
 
 async function buildTenantStats(tenantId) {
@@ -373,10 +457,17 @@ class PlatformController {
         contact_name,
         contact_email,
         support_email,
+        institution_type,
+        student_count_estimate,
+        admin_count_estimate,
+        notes,
+        demo_requested,
+        payment_required,
         plan_code,
         status,
         subscription_status,
         is_active,
+        rejection_reason,
       } = req.body;
 
       const tenant = await Tenant.findById(id);
@@ -427,6 +518,38 @@ class PlatformController {
           : null;
       }
 
+      if (institution_type !== undefined) {
+        tenant.onboarding.institution_type = institution_type
+          ? String(institution_type).trim()
+          : null;
+      }
+
+      if (student_count_estimate !== undefined) {
+        tenant.onboarding.student_count_estimate =
+          student_count_estimate === null || student_count_estimate === ""
+            ? null
+            : Number(student_count_estimate);
+      }
+
+      if (admin_count_estimate !== undefined) {
+        tenant.onboarding.admin_count_estimate =
+          admin_count_estimate === null || admin_count_estimate === ""
+            ? null
+            : Number(admin_count_estimate);
+      }
+
+      if (notes !== undefined) {
+        tenant.onboarding.notes = notes ? String(notes).trim() : null;
+      }
+
+      if (demo_requested !== undefined) {
+        tenant.onboarding.demo_requested = Boolean(demo_requested);
+      }
+
+      if (payment_required !== undefined) {
+        tenant.onboarding.payment_required = Boolean(payment_required);
+      }
+
       if (plan_code !== undefined) tenant.plan_code = plan_code;
       if (status !== undefined) tenant.status = status;
       if (subscription_status !== undefined) {
@@ -434,8 +557,32 @@ class PlatformController {
       }
       if (is_active !== undefined) tenant.is_active = Boolean(is_active);
 
+      if (rejection_reason !== undefined) {
+        tenant.onboarding.rejection_reason = rejection_reason
+          ? String(rejection_reason).trim()
+          : null;
+      }
+
       if (tenant.status === "active" && !tenant.onboarding.activated_at) {
         tenant.onboarding.activated_at = new Date();
+      }
+
+      if (tenant.status === "active" && !tenant.onboarding.approved_at) {
+        tenant.onboarding.approved_at = new Date();
+      }
+
+      if (tenant.status === "pending_approval") {
+        tenant.onboarding.rejected_at = null;
+      }
+
+      if (tenant.status === "suspended" || tenant.status === "draft") {
+        tenant.onboarding.activated_at = tenant.status === "draft"
+          ? null
+          : tenant.onboarding.activated_at;
+      }
+
+      if (tenant.status === "draft" && previousStatus !== "draft") {
+        tenant.onboarding.rejected_at = new Date();
       }
 
       if (tenant.status === "active" && !tenant.billing?.current_period_end) {
@@ -457,21 +604,59 @@ class PlatformController {
           previousPlanCode !== tenant.plan_code ||
           previousSubscriptionStatus !== tenant.subscription_status)
       ) {
-        emailService
-          .sendTenantStatusUpdate({
+        const workspaceUrl = tenant.primary_domain
+          ? `https://${tenant.primary_domain}`
+          : `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}`;
+        const statusUrl = `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}/application-status?reference=${encodeURIComponent(
+          tenant.application_reference || "",
+        )}&email=${encodeURIComponent(tenant.onboarding.contact_email)}`;
+
+        let notificationPromise = null;
+
+        if (tenant.status === "active" && previousStatus !== "active") {
+          notificationPromise = emailService.sendTenantApplicationApproved({
+            to: tenant.onboarding.contact_email,
+            contactName: tenant.onboarding.contact_name,
+            tenantName: tenant.name,
+            applicationReference: tenant.application_reference || null,
+            workspaceUrl,
+          });
+        } else if (tenant.status === "draft" && previousStatus !== "draft") {
+          notificationPromise = emailService.sendTenantApplicationRejected({
+            to: tenant.onboarding.contact_email,
+            contactName: tenant.onboarding.contact_name,
+            tenantName: tenant.name,
+            applicationReference: tenant.application_reference || null,
+            reason: tenant.onboarding.rejection_reason || null,
+            statusUrl,
+          });
+        } else if (tenant.status === "pending_payment" && previousStatus !== "pending_payment") {
+          notificationPromise = emailService.sendTenantApplicationPaymentRequired({
+            to: tenant.onboarding.contact_email,
+            contactName: tenant.onboarding.contact_name,
+            tenantName: tenant.name,
+            planCode: tenant.plan_code,
+            applicationReference: tenant.application_reference || null,
+            amountLabel:
+              tenant.onboarding?.billing_snapshot?.payable_amount_ngn !== undefined
+                ? `${tenant.onboarding.billing_snapshot.payable_amount_ngn} NGN`
+                : null,
+          });
+        } else {
+          notificationPromise = emailService.sendTenantStatusUpdate({
             to: tenant.onboarding.contact_email,
             contactName: tenant.onboarding.contact_name,
             tenantName: tenant.name,
             status: tenant.status,
             message: `Your workspace is currently ${tenant.status.replace(/_/g, " ")} on the ${tenant.plan_code} plan with subscription status ${tenant.subscription_status}.`,
             ctaLabel: tenant.status === "active" ? "Open workspace" : null,
-            ctaLink: tenant.primary_domain
-              ? `https://${tenant.primary_domain}`
-              : `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}`,
-          })
-          .catch((err) => {
-            console.error("Failed to send tenant status update email:", err);
+            ctaLink: workspaceUrl,
           });
+        }
+
+        notificationPromise.catch((err) => {
+          console.error("Failed to send tenant lifecycle email:", err);
+        });
       }
 
       return res.json({
@@ -486,6 +671,66 @@ class PlatformController {
 
   async updateTenantStatus(req, res) {
     return this.updateTenant(req, res);
+  }
+
+  async listCoupons(req, res) {
+    try {
+      const search = String(req.query.search || "").trim();
+      const filter = {};
+
+      if (search) {
+        filter.$or = [
+          { code: { $regex: search, $options: "i" } },
+          { name: { $regex: search, $options: "i" } },
+        ];
+      }
+
+      const coupons = await Coupon.find(filter).sort({ createdAt: -1 }).lean();
+      return res.json({ coupons });
+    } catch (error) {
+      console.error("List coupons error:", error);
+      return res.status(500).json({ error: "Failed to fetch coupons" });
+    }
+  }
+
+  async createCoupon(req, res) {
+    try {
+      const coupon = await Coupon.create({
+        ...req.body,
+        code: String(req.body.code || "").trim().toUpperCase(),
+      });
+      return res.status(201).json({
+        message: "Coupon created successfully",
+        coupon,
+      });
+    } catch (error) {
+      console.error("Create coupon error:", error);
+      return res.status(500).json({ error: "Failed to create coupon" });
+    }
+  }
+
+  async updateCoupon(req, res) {
+    try {
+      const coupon = await Coupon.findById(req.params.id);
+      if (!coupon) {
+        return res.status(404).json({ error: "Coupon not found" });
+      }
+
+      Object.assign(coupon, req.body || {});
+      if (req.body.code !== undefined) {
+        coupon.code = String(req.body.code || "").trim().toUpperCase();
+      }
+
+      await coupon.save();
+
+      return res.json({
+        message: "Coupon updated successfully",
+        coupon,
+      });
+    } catch (error) {
+      console.error("Update coupon error:", error);
+      return res.status(500).json({ error: "Failed to update coupon" });
+    }
   }
 
   async getPlatformSettings(_req, res) {
@@ -528,103 +773,22 @@ class PlatformController {
         const nextBiometrics = req.body.biometrics || {};
         const currentProviders = platformSetting.biometrics?.providers || {};
         const incomingProviders = nextBiometrics.providers || {};
-        const currentFacepp = currentProviders.facepp || {};
-        const currentAws = currentProviders.aws_rekognition || {};
-        const currentAzure = currentProviders.azure_face || {};
-        const currentGoogle = currentProviders.google_vision || {};
-        const facepp = incomingProviders.facepp || {};
-        const awsRekognition = incomingProviders.aws_rekognition || {};
-        const azureFace = incomingProviders.azure_face || {};
-        const googleVision = incomingProviders.google_vision || {};
+        const supportedProviders = Object.keys(
+          faceProviderService.getProviderCatalog(),
+        );
+        const nextProviders = { ...currentProviders };
+
+        supportedProviders.forEach((providerKey) => {
+          nextProviders[providerKey] = normalizeBiometricProviderPayload(
+            providerKey,
+            incomingProviders[providerKey] || {},
+            currentProviders[providerKey] || {},
+          );
+        });
 
         platformSetting.biometrics = {
           active_provider: nextBiometrics.active_provider || platformSetting.biometrics?.active_provider || "facepp",
-          providers: {
-            ...currentProviders,
-            facepp: {
-              ...currentFacepp,
-              enabled: facepp.enabled !== undefined ? Boolean(facepp.enabled) : currentFacepp.enabled !== false,
-              api_key:
-                facepp.api_key !== undefined && facepp.api_key !== ""
-                  ? String(facepp.api_key).trim()
-                  : currentFacepp.api_key || null,
-              api_secret:
-                facepp.api_secret !== undefined && facepp.api_secret !== ""
-                  ? String(facepp.api_secret).trim()
-                  : currentFacepp.api_secret || null,
-              base_url:
-                facepp.base_url !== undefined && facepp.base_url !== ""
-                  ? String(facepp.base_url).trim()
-                  : currentFacepp.base_url || "https://api-us.faceplusplus.com/facepp/v3",
-              confidence_threshold:
-                facepp.confidence_threshold !== undefined
-                  ? Number(facepp.confidence_threshold)
-                  : currentFacepp.confidence_threshold || 80,
-            },
-            aws_rekognition: {
-              ...currentAws,
-              enabled:
-                awsRekognition.enabled !== undefined
-                  ? Boolean(awsRekognition.enabled)
-                  : Boolean(currentAws.enabled),
-              region:
-                awsRekognition.region !== undefined && awsRekognition.region !== ""
-                  ? String(awsRekognition.region).trim()
-                  : currentAws.region || "us-east-1",
-              access_key_id:
-                awsRekognition.access_key_id !== undefined &&
-                awsRekognition.access_key_id !== ""
-                  ? String(awsRekognition.access_key_id).trim()
-                  : currentAws.access_key_id || null,
-              secret_access_key:
-                awsRekognition.secret_access_key !== undefined &&
-                awsRekognition.secret_access_key !== ""
-                  ? String(awsRekognition.secret_access_key).trim()
-                  : currentAws.secret_access_key || null,
-              similarity_threshold:
-                awsRekognition.similarity_threshold !== undefined
-                  ? Number(awsRekognition.similarity_threshold)
-                  : currentAws.similarity_threshold || 90,
-            },
-            azure_face: {
-              ...currentAzure,
-              enabled:
-                azureFace.enabled !== undefined
-                  ? Boolean(azureFace.enabled)
-                  : Boolean(currentAzure.enabled),
-              endpoint:
-                azureFace.endpoint !== undefined && azureFace.endpoint !== ""
-                  ? String(azureFace.endpoint).trim()
-                  : currentAzure.endpoint || null,
-              api_key:
-                azureFace.api_key !== undefined && azureFace.api_key !== ""
-                  ? String(azureFace.api_key).trim()
-                  : currentAzure.api_key || null,
-              confidence_threshold:
-                azureFace.confidence_threshold !== undefined
-                  ? Number(azureFace.confidence_threshold)
-                  : currentAzure.confidence_threshold || 80,
-            },
-            google_vision: {
-              ...currentGoogle,
-              enabled:
-                googleVision.enabled !== undefined
-                  ? Boolean(googleVision.enabled)
-                  : Boolean(currentGoogle.enabled),
-              project_id:
-                googleVision.project_id !== undefined && googleVision.project_id !== ""
-                  ? String(googleVision.project_id).trim()
-                  : currentGoogle.project_id || null,
-              api_key:
-                googleVision.api_key !== undefined && googleVision.api_key !== ""
-                  ? String(googleVision.api_key).trim()
-                  : currentGoogle.api_key || null,
-              confidence_threshold:
-                googleVision.confidence_threshold !== undefined
-                  ? Number(googleVision.confidence_threshold)
-                  : currentGoogle.confidence_threshold || 80,
-            },
-          },
+          providers: nextProviders,
         };
       }
 
@@ -644,14 +808,133 @@ class PlatformController {
     }
   }
 
+  async createBiometricProvider(req, res) {
+    try {
+      const { provider_key, config = {}, set_active = false } = req.body || {};
+      const providerCatalog = faceProviderService.getProviderCatalog();
+
+      if (!provider_key || !providerCatalog[provider_key]) {
+        return res.status(400).json({ error: "Valid provider_key is required" });
+      }
+
+      const platformSetting = await getOrCreatePlatformSetting();
+      const currentProviders = platformSetting.biometrics?.providers || {};
+      const defaultState =
+        faceProviderService.getProviderDefaultState(provider_key) || {};
+      const supportedProviders = Object.keys(
+        faceProviderService.getProviderCatalog(),
+      );
+      const nextProviders = {};
+
+      supportedProviders.forEach((supportedProviderKey) => {
+        const baseState =
+          currentProviders[supportedProviderKey] ||
+          faceProviderService.getProviderDefaultState(supportedProviderKey) ||
+          {};
+
+        nextProviders[supportedProviderKey] =
+          supportedProviderKey === provider_key
+            ? normalizeBiometricProviderPayload(
+                provider_key,
+                { ...defaultState, ...config, enabled: true },
+                baseState,
+              )
+            : normalizeBiometricProviderPayload(
+                supportedProviderKey,
+                {},
+                baseState,
+              );
+      });
+
+      platformSetting.biometrics = {
+        active_provider:
+          set_active || !platformSetting.biometrics?.active_provider
+            ? provider_key
+            : platformSetting.biometrics?.active_provider || "facepp",
+        providers: nextProviders,
+      };
+
+      await platformSetting.save();
+
+      return res.status(201).json({
+        message: `${providerCatalog[provider_key].label} provider created successfully`,
+        biometrics: await faceProviderService.getSettingsSummary(),
+      });
+    } catch (error) {
+      console.error("Create biometric provider error:", error);
+      return res.status(500).json({ error: "Failed to create biometric provider" });
+    }
+  }
+
+  async deleteBiometricProvider(req, res) {
+    try {
+      const { providerKey } = req.params;
+      const providerCatalog = faceProviderService.getProviderCatalog();
+
+      if (!providerCatalog[providerKey]) {
+        return res.status(404).json({ error: "Biometric provider not found" });
+      }
+
+      const platformSetting = await getOrCreatePlatformSetting();
+      const currentProviders = platformSetting.biometrics?.providers || {};
+      const defaultState =
+        faceProviderService.getProviderDefaultState(providerKey) || {};
+      const supportedProviders = Object.keys(
+        faceProviderService.getProviderCatalog(),
+      );
+      const nextProviders = {};
+
+      supportedProviders.forEach((supportedProviderKey) => {
+        const baseState =
+          currentProviders[supportedProviderKey] ||
+          faceProviderService.getProviderDefaultState(supportedProviderKey) ||
+          {};
+        nextProviders[supportedProviderKey] =
+          supportedProviderKey === providerKey
+            ? defaultState
+            : normalizeBiometricProviderPayload(
+                supportedProviderKey,
+                {},
+                baseState,
+              );
+      });
+
+      platformSetting.biometrics = {
+        active_provider:
+          platformSetting.biometrics?.active_provider === providerKey
+            ? "facepp"
+            : platformSetting.biometrics?.active_provider || "facepp",
+        providers: nextProviders,
+      };
+
+      await platformSetting.save();
+
+      return res.json({
+        message: `${providerCatalog[providerKey].label} provider removed successfully`,
+        biometrics: await faceProviderService.getSettingsSummary(),
+      });
+    } catch (error) {
+      console.error("Delete biometric provider error:", error);
+      return res.status(500).json({ error: "Failed to delete biometric provider" });
+    }
+  }
+
   async testBiometricProvider(req, res) {
     try {
-      const { image_url } = req.body;
+      const { image_url, provider_key } = req.body;
       if (!image_url) {
         return res.status(400).json({ error: "Image URL is required" });
       }
 
-      const result = await faceProviderService.testConnection(image_url);
+      const providerCatalog = faceProviderService.getProviderCatalog();
+      if (provider_key && !providerCatalog[provider_key]) {
+        return res.status(400).json({ error: "Invalid provider_key supplied" });
+      }
+
+      const result = await faceProviderService.testConnectionForProvider(
+        provider_key || null,
+        image_url,
+      );
       if (!result.success) {
         if (req.admin?.email) {
           emailService
@@ -670,16 +953,31 @@ class PlatformController {
           error: result.error || "Biometric provider test failed",
           code: result.code || "BIOMETRIC_PROVIDER_TEST_FAILED",
           provider: result.provider || "facepp",
+          provider_status: await faceProviderService.getStatus(provider_key || null),
+          requirements:
+            provider_key && providerCatalog[provider_key]
+              ? providerCatalog[provider_key].requirements
+              : undefined,
         });
       }
 
       return res.json({
         message: "Biometric provider test completed successfully",
         provider: result.provider || "facepp",
+        provider_status: await faceProviderService.getStatus(provider_key || null),
+        summary: {
+          detection: result.face_token ? "Face detected" : "No face token returned",
+          image_checked: image_url,
+        },
         result: {
           face_token: result.face_token ? `${result.face_token.slice(0, 20)}...` : null,
           face_rectangle: result.face_rectangle || null,
           image_id: result.image_id || null,
+        },
+        provider_response: {
+          success: Boolean(result.success),
+          provider: result.provider || "facepp",
+          readiness: result.readiness || null,
         },
       });
     } catch (error) {

@@ -49,6 +49,41 @@ function resolveEligibleDepartmentNames(eligibleDepartmentIds, colleges) {
   return names;
 }
 
+function buildEligibilityScope(session, tenant, colleges) {
+  const eligibilityPolicy = getTenantEligibilityPolicy(tenant || null);
+  const college = eligibilityPolicy.college
+    ? session.eligible_college || null
+    : null;
+  const departments = eligibilityPolicy.department
+    ? resolveEligibleDepartmentNames(session.eligible_departments || [], colleges)
+    : [];
+  const levels = eligibilityPolicy.level
+    ? session.eligible_levels || []
+    : [];
+
+  let summary = "Tenant-wide access";
+
+  if (departments.length > 0 && levels.length > 0) {
+    summary = `${departments.length} department${departments.length === 1 ? "" : "s"} across ${levels.length} level${levels.length === 1 ? "" : "s"}`;
+  } else if (departments.length > 0) {
+    summary = `${departments.length} department${departments.length === 1 ? "" : "s"} eligible`;
+  } else if (college && levels.length > 0) {
+    summary = `${college} with ${levels.length} eligible level${levels.length === 1 ? "" : "s"}`;
+  } else if (college) {
+    summary = `${college} participants only`;
+  } else if (levels.length > 0) {
+    summary = `${levels.length} level${levels.length === 1 ? "" : "s"} eligible`;
+  }
+
+  return {
+    tenant_wide: !college && departments.length === 0 && levels.length === 0,
+    college,
+    departments,
+    levels,
+    summary,
+  };
+}
+
 function getSessionEligibility(session, student, colleges) {
   const eligibilityPolicy = getTenantEligibilityPolicy(student?.tenant || null);
 
@@ -209,6 +244,8 @@ class SessionController {
           return acc;
         }
 
+        const eligibilityScope = buildEligibilityScope(session, student.tenant, colleges);
+
         acc.push({
           ...session,
           has_voted: student.has_voted_sessions.some(
@@ -217,6 +254,7 @@ class SessionController {
           candidate_count: Array.isArray(session.candidates)
             ? session.candidates.length
             : 0,
+          eligibility_scope: eligibilityScope,
         });
 
         return acc;
@@ -280,6 +318,11 @@ class SessionController {
       context.student,
       context.colleges,
     );
+    const eligibilityScope = buildEligibilityScope(
+      calculatedSession,
+      context.student.tenant,
+      context.colleges,
+    );
 
     const responseData = {
       session: {
@@ -294,6 +337,7 @@ class SessionController {
         is_off_campus_allowed: calculatedSession.is_off_campus_allowed,
         eligible,
         eligibility_reason: reason,
+        eligibility_scope: eligibilityScope,
         has_voted: context.student.has_voted_sessions.some(
           (value) => value.toString() === calculatedSession._id.toString(),
         ),

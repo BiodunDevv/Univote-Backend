@@ -8,6 +8,7 @@ const {
   cancelScheduledPlanChange,
   getPlatformBillingOverview,
   getTenantBillingSnapshotById,
+  getInvoiceCheckoutResolution,
   markInvoiceFailedByReference,
   requestPlanCheckout,
   serializeInvoice,
@@ -296,12 +297,15 @@ class BillingController {
             tenant?.onboarding?.contact_email || tenant?.branding?.support_email;
           if (tenant && contactEmail) {
             emailService
-              .sendBillingPlanChange({
+              .sendTenantPaymentConfirmed({
                 to: contactEmail,
                 recipientName: tenant.onboarding?.contact_name || tenant.name,
                 tenant,
-                title: "Payment confirmed",
-                message: `Payment for invoice ${result.invoice.invoice_number} has been confirmed and your subscription is now up to date.`,
+                invoiceNumber: result.invoice.invoice_number,
+                applicationReference: tenant.application_reference || null,
+                workspaceUrl: tenant.primary_domain
+                  ? `https://${tenant.primary_domain}`
+                  : `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}`,
               })
               .catch((err) => {
                 console.error("Failed to send payment success email:", err);
@@ -319,12 +323,13 @@ class BillingController {
             tenant?.onboarding?.contact_email || tenant?.branding?.support_email;
           if (tenant && contactEmail) {
             emailService
-              .sendBillingPlanChange({
+              .sendTenantPaymentFailed({
                 to: contactEmail,
                 recipientName: tenant.onboarding?.contact_name || tenant.name,
                 tenant,
-                title: "Payment attempt failed",
-                message: `We could not complete payment for invoice ${invoice.invoice_number}. Review the billing workspace to retry or update your payment flow.`,
+                invoiceNumber: invoice.invoice_number,
+                applicationReference: tenant.application_reference || null,
+                retryUrl: invoice.provider_checkout_url || null,
               })
               .catch((err) => {
                 console.error("Failed to send payment failure email:", err);
@@ -337,6 +342,25 @@ class BillingController {
     } catch (error) {
       console.error("Paystack webhook error:", error);
       return res.status(500).json({ error: "Failed to process billing webhook" });
+    }
+  }
+
+  async verifyCheckout(req, res) {
+    try {
+      const reference = String(req.body.reference || req.query.reference || "").trim();
+      if (!reference) {
+        return res.status(400).json({ error: "reference is required" });
+      }
+
+      const resolution = await getInvoiceCheckoutResolution(reference);
+      if (!resolution) {
+        return res.status(404).json({ error: "Checkout reference not found" });
+      }
+
+      return res.json({ resolution });
+    } catch (error) {
+      console.error("Verify checkout error:", error);
+      return res.status(500).json({ error: "Failed to verify checkout" });
     }
   }
 }
