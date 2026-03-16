@@ -93,7 +93,7 @@ const DEFAULT_PARTICIPANT_FIELDS = {
   },
   face_verification: {
     enabled: true,
-    required: false,
+    required: true,
     show_in_profile: false,
     show_in_filters: true,
     allow_in_eligibility: false,
@@ -113,8 +113,8 @@ const DEFAULT_TENANT_SETTINGS = {
   },
   auth: {
     require_email: true,
-    require_photo: false,
-    require_face_verification: false,
+    require_photo: true,
+    require_face_verification: true,
   },
   features: {
     custom_terminology: false,
@@ -122,7 +122,7 @@ const DEFAULT_TENANT_SETTINGS = {
     custom_participant_structure: true,
     advanced_notifications: false,
     advanced_reports: false,
-    face_verification: false,
+    face_verification: true,
   },
   participant_fields: DEFAULT_PARTICIPANT_FIELDS,
   support: {
@@ -134,7 +134,7 @@ const DEFAULT_TENANT_SETTINGS = {
     push_enabled: false,
   },
   voting: {
-    require_face_verification: false,
+    require_face_verification: true,
   },
 };
 
@@ -265,11 +265,10 @@ function mergeTenantSettings(settings = {}) {
     ? allowedIdentifiers
     : [primaryIdentifier, ...allowedIdentifiers];
   merged.identity.recovery_identifiers = recoveryIdentifiers;
-  merged.identity.display_identifier = merged.identity.allowed_identifiers.includes(
-    displayIdentifier,
-  )
-    ? displayIdentifier
-    : primaryIdentifier;
+  merged.identity.display_identifier =
+    merged.identity.allowed_identifiers.includes(displayIdentifier)
+      ? displayIdentifier
+      : primaryIdentifier;
 
   if (!merged.participant_fields.email.enabled) {
     merged.auth.require_email = false;
@@ -304,6 +303,20 @@ function mergeTenantSettings(settings = {}) {
   if (!merged.participant_fields.full_name.required) {
     merged.participant_fields.full_name.required = true;
   }
+
+  // Face verification is mandatory for every tenant.
+  merged.auth.require_photo = true;
+  merged.auth.require_face_verification = true;
+  merged.features.face_verification = true;
+  merged.voting.require_face_verification = true;
+  merged.participant_fields.face_verification = {
+    ...(merged.participant_fields.face_verification || {}),
+    enabled: true,
+    required: true,
+    show_in_profile: false,
+    show_in_filters: true,
+    allow_in_eligibility: false,
+  };
 
   return merged;
 }
@@ -376,15 +389,15 @@ function getTenantEligibilityPolicy(tenant) {
   return {
     college: Boolean(
       participantFields.college?.enabled &&
-        participantFields.college?.allow_in_eligibility,
+      participantFields.college?.allow_in_eligibility,
     ),
     department: Boolean(
       participantFields.department?.enabled &&
-        participantFields.department?.allow_in_eligibility,
+      participantFields.department?.allow_in_eligibility,
     ),
     level: Boolean(
       participantFields.level?.enabled &&
-        participantFields.level?.allow_in_eligibility,
+      participantFields.level?.allow_in_eligibility,
     ),
   };
 }

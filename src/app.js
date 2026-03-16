@@ -21,11 +21,9 @@ const platformRoutes = require("./routes/platformRoutes");
 const supportRoutes = require("./routes/supportRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const publicRoutes = require("./routes/publicRoutes");
-const billingRoutes = require("./routes/billingRoutes");
 const announcementRoutes = require("./routes/announcementRoutes");
 const { resolveTenantContext } = require("./middleware/tenantContext");
 const { initializeSocketServer } = require("./services/socketService");
-const { hydratePlanCatalogFromStore } = require("./config/billingPlans");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -97,7 +95,6 @@ pingRedis()
 
 connectDB()
   .then(async () => {
-    await hydratePlanCatalogFromStore();
     require("./utils/sessionScheduler").start();
   })
   .catch((err) => console.error("✗ MongoDB failed:", err.message));
@@ -181,7 +178,6 @@ app.use("/api/admin/settings", settingsRoutes);
 app.use("/api/platform", platformRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/announcements", announcementRoutes);
-app.use("/api/billing", billingRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/sessions", sessionRoutes);

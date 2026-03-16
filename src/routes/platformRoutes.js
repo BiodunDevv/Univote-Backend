@@ -2,7 +2,6 @@ const express = require("express");
 const { body } = require("express-validator");
 const platformController = require("../controllers/platformController");
 const platformTestimonialController = require("../controllers/platformTestimonialController");
-const billingController = require("../controllers/billingController");
 const { authenticateAdmin, requireSuperAdmin } = require("../middleware/auth");
 const validate = require("../middleware/validator");
 const auditLogger = require("../middleware/auditLogger");
@@ -61,99 +60,6 @@ router.post(
   authenticateAdmin,
   requireSuperAdmin,
   platformController.testBiometricProvider,
-);
-
-router.get(
-  "/billing",
-  authenticateAdmin,
-  requireSuperAdmin,
-  billingController.getPlatformBillingOverview,
-);
-
-router.get(
-  "/plans",
-  authenticateAdmin,
-  requireSuperAdmin,
-  billingController.getPlatformPlans,
-);
-
-router.patch(
-  "/plans/:code",
-  authenticateAdmin,
-  requireSuperAdmin,
-  [
-    body("name").optional().notEmpty().withMessage("Plan name cannot be empty"),
-    body("rank").optional().isInt({ min: 1 }).withMessage("Rank must be at least 1"),
-    body("monthly_price_ngn")
-      .optional()
-      .isFloat({ min: 0 })
-      .withMessage("Monthly price must be zero or greater"),
-    body("support_sla")
-      .optional()
-      .notEmpty()
-      .withMessage("Support SLA cannot be empty"),
-    body("limits.admins")
-      .optional()
-      .isInt({ min: 0 })
-      .withMessage("Admin limit must be zero or greater"),
-    body("limits.students")
-      .optional()
-      .isInt({ min: 0 })
-      .withMessage("Participant limit must be zero or greater"),
-    body("limits.active_sessions")
-      .optional()
-      .isInt({ min: 0 })
-      .withMessage("Active session limit must be zero or greater"),
-    body("features").optional().isArray().withMessage("Features must be an array"),
-    validate,
-  ],
-  auditLogger("update_platform_plan", "platform_billing"),
-  billingController.updatePlatformPlan,
-);
-
-router.get(
-  "/coupons",
-  authenticateAdmin,
-  requireSuperAdmin,
-  platformController.listCoupons,
-);
-
-router.post(
-  "/coupons",
-  authenticateAdmin,
-  requireSuperAdmin,
-  [
-    body("code").notEmpty().withMessage("Coupon code is required"),
-    body("name").notEmpty().withMessage("Coupon name is required"),
-    body("discount_type")
-      .isIn(["percentage", "fixed_amount"])
-      .withMessage("Valid discount type is required"),
-    body("discount_value")
-      .isFloat({ min: 0 })
-      .withMessage("Discount value must be zero or greater"),
-    validate,
-  ],
-  auditLogger("create_coupon", "billing"),
-  platformController.createCoupon,
-);
-
-router.patch(
-  "/coupons/:id",
-  authenticateAdmin,
-  requireSuperAdmin,
-  [
-    body("discount_type")
-      .optional()
-      .isIn(["percentage", "fixed_amount"])
-      .withMessage("Valid discount type is required"),
-    body("discount_value")
-      .optional()
-      .isFloat({ min: 0 })
-      .withMessage("Discount value must be zero or greater"),
-    validate,
-  ],
-  auditLogger("update_coupon", "billing"),
-  platformController.updateCoupon,
 );
 
 /**
@@ -223,15 +129,9 @@ router.get(
  *               support_email:
  *                 type: string
  *                 format: email
- *               plan_code:
- *                 type: string
- *                 enum: [pro, pro_plus, enterprise]
  *               status:
  *                 type: string
- *                 enum: [draft, pending_payment, pending_approval, active, suspended]
- *               subscription_status:
- *                 type: string
- *                 enum: [trial, active, grace, expired, suspended]
+ *                 enum: [draft, pending_approval, active, suspended]
  *               is_active:
  *                 type: boolean
  *     responses:
@@ -260,18 +160,10 @@ router.patch(
       .optional({ nullable: true, checkFalsy: true })
       .isEmail()
       .withMessage("Support email must be valid"),
-    body("plan_code")
-      .optional()
-      .isIn(["pro", "pro_plus", "enterprise"])
-      .withMessage("Valid plan code is required"),
     body("status")
       .optional()
-      .isIn(["draft", "pending_payment", "pending_approval", "active", "suspended"])
+      .isIn(["draft", "pending_approval", "active", "suspended"])
       .withMessage("Valid tenant status is required"),
-    body("subscription_status")
-      .optional()
-      .isIn(["trial", "active", "grace", "expired", "suspended"])
-      .withMessage("Valid subscription status is required"),
     body("is_active")
       .optional()
       .isBoolean()
@@ -304,8 +196,6 @@ router.patch(
  *                 type: string
  *               primary_domain:
  *                 type: string
- *               plan_code:
- *                 type: string
  *               contact_name:
  *                 type: string
  *               contact_email:
@@ -325,7 +215,9 @@ router.post(
     body("name").notEmpty().withMessage("Tenant name is required"),
     body("slug")
       .matches(/^[a-z0-9-]+$/)
-      .withMessage("Tenant slug must contain only lowercase letters, numbers, and hyphens"),
+      .withMessage(
+        "Tenant slug must contain only lowercase letters, numbers, and hyphens",
+      ),
     body("contact_email")
       .optional()
       .isEmail()
@@ -362,13 +254,6 @@ router.patch(
   platformController.updateTenantStatus,
 );
 
-router.get(
-  "/tenants/:id/billing",
-  authenticateAdmin,
-  requireSuperAdmin,
-  billingController.getPlatformTenantBilling,
-);
-
 /**
  * @swagger
  * /platform/testimonials:
@@ -403,7 +288,9 @@ router.post(
   [
     body("author_name").notEmpty().withMessage("Author name is required"),
     body("author_role").notEmpty().withMessage("Author role is required"),
-    body("institution_name").notEmpty().withMessage("Institution name is required"),
+    body("institution_name")
+      .notEmpty()
+      .withMessage("Institution name is required"),
     body("quote").notEmpty().withMessage("Quote is required"),
     body("rating")
       .optional()

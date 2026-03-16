@@ -11,6 +11,7 @@ const {
   getTenantQuotaStatus,
 } = require("../services/planAccessService");
 const emailService = require("../services/emailService");
+const { generateTemporaryPassword } = require("../utils/passwordUtils");
 
 function serializeMembership(membership, admin) {
   return {
@@ -49,6 +50,30 @@ class TenantAdminController {
     });
   }
 
+  async getOnboardingDetails(req, res) {
+    try {
+      const tenant = await Tenant.findById(req.tenantId)
+        .select("onboarding.contact_name onboarding.contact_email")
+        .lean();
+
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      return res.json({
+        onboarding: {
+          contact_name: tenant.onboarding?.contact_name || null,
+          contact_email: tenant.onboarding?.contact_email || null,
+        },
+      });
+    } catch (error) {
+      console.error("Get onboarding details error:", error);
+      return res
+        .status(500)
+        .json({ error: "Failed to fetch onboarding details" });
+    }
+  }
+
   async getOverview(req, res) {
     try {
       const tenantId = req.tenantId;
@@ -64,10 +89,12 @@ class TenantAdminController {
           .length,
         admins: memberships.filter((membership) => membership.role === "admin")
           .length,
-        support: memberships.filter((membership) => membership.role === "support")
-          .length,
-        analysts: memberships.filter((membership) => membership.role === "analyst")
-          .length,
+        support: memberships.filter(
+          (membership) => membership.role === "support",
+        ).length,
+        analysts: memberships.filter(
+          (membership) => membership.role === "analyst",
+        ).length,
       };
 
       return res.json({ totals, roles: getTenantRoleCatalog() });
@@ -85,7 +112,9 @@ class TenantAdminController {
       const skip = (page - 1) * limit;
       const role = String(req.query.role || "").trim();
       const isActive = String(req.query.is_active || "").trim();
-      const search = String(req.query.search || "").trim().toLowerCase();
+      const search = String(req.query.search || "")
+        .trim()
+        .toLowerCase();
 
       const membershipFilter = { tenant_id: tenantId };
       if (role) membershipFilter.role = role;
@@ -93,9 +122,11 @@ class TenantAdminController {
         membershipFilter.is_active = isActive === "true";
       }
 
-      const membershipQuery = TenantAdminMembership.find(membershipFilter).sort({
-        createdAt: -1,
-      });
+      const membershipQuery = TenantAdminMembership.find(membershipFilter).sort(
+        {
+          createdAt: -1,
+        },
+      );
 
       if (!search) {
         membershipQuery.skip(skip).limit(limit);
@@ -160,7 +191,9 @@ class TenantAdminController {
       }).lean();
 
       if (!membership) {
-        return res.status(404).json({ error: "Tenant admin membership not found" });
+        return res
+          .status(404)
+          .json({ error: "Tenant admin membership not found" });
       }
 
       const admin = await Admin.findById(membership.admin_id)
@@ -176,7 +209,9 @@ class TenantAdminController {
       });
     } catch (error) {
       console.error("Get tenant admin member error:", error);
-      return res.status(500).json({ error: "Failed to fetch tenant admin member" });
+      return res
+        .status(500)
+        .json({ error: "Failed to fetch tenant admin member" });
     }
   }
 
@@ -185,6 +220,9 @@ class TenantAdminController {
       const { email, password, full_name, role, permissions } = req.body;
       const normalizedEmail = String(email).trim().toLowerCase();
       const targetRole = role || "admin";
+
+      // Generate temporary password if not provided
+      const tempPassword = password || generateTemporaryPassword();
 
       let admin = await Admin.findOne({ email: normalizedEmail });
 
@@ -195,18 +233,15 @@ class TenantAdminController {
       }
 
       if (!admin) {
-        if (!password) {
-          return res.status(400).json({
-            error: "Password is required when creating a new admin account",
-          });
-        }
-        const passwordHash = await bcrypt.hash(String(password), 10);
+        // New admin account - always use generated/provided password
+        const passwordHash = await bcrypt.hash(tempPassword, 10);
         admin = await Admin.create({
           email: normalizedEmail,
           password_hash: passwordHash,
           full_name: String(full_name).trim(),
           role: "admin",
           is_active: true,
+          requires_password_change: !password, // Only require change if we generated the password
         });
       } else if (full_name) {
         admin.full_name = String(full_name).trim();
@@ -252,19 +287,23 @@ class TenantAdminController {
 
       const payload = await buildMembershipResponse(membership);
 
+      // Send welcome email with temporary password
+      const signInUrl = req.tenant?.primary_domain
+        ? `https://${req.tenant.primary_domain}/auth/signin`
+        : `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}/auth/signin`;
+
       emailService
-        .sendAdminInvitation({
+        .sendAdminWelcome({
           to: admin.email,
           fullName: admin.full_name,
-          roleLabel: targetRole,
-          password: password || "Use your existing password",
+          temporaryPassword: tempPassword,
+          loginUrl: signInUrl,
           tenant: req.tenant || null,
-          signInUrl: req.tenant?.primary_domain
-            ? `https://${req.tenant.primary_domain}/auth/signin`
-            : `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}/auth/signin`,
+          roleLabel: targetRole,
+          platformScope: false,
         })
         .catch((err) => {
-          console.error("Failed to send tenant admin invitation email:", err);
+          console.error("Failed to send tenant admin welcome email:", err);
         });
 
       return res.status(201).json({
@@ -288,7 +327,9 @@ class TenantAdminController {
       });
 
       if (!membership) {
-        return res.status(404).json({ error: "Tenant admin membership not found" });
+        return res
+          .status(404)
+          .json({ error: "Tenant admin membership not found" });
       }
 
       if (
@@ -348,7 +389,9 @@ class TenantAdminController {
       });
 
       if (!membership) {
-        return res.status(404).json({ error: "Tenant admin membership not found" });
+        return res
+          .status(404)
+          .json({ error: "Tenant admin membership not found" });
       }
 
       if (membership.admin_id.toString() === req.adminId.toString()) {

@@ -8,7 +8,6 @@ const TENANT_ROLE_DEFINITIONS = {
       "tenant.labels.manage",
       "tenant.auth-policy.manage",
       "tenant.roles.manage",
-      "billing.manage",
       "students.manage",
       "participants.manage",
       "participants.view",
@@ -35,19 +34,11 @@ const TENANT_ROLE_DEFINITIONS = {
   },
   support: {
     label: "Support",
-    permissions: [
-      "support.manage",
-      "students.manage",
-      "participants.view",
-    ],
+    permissions: ["support.manage", "students.manage", "participants.view"],
   },
   analyst: {
     label: "Analyst",
-    permissions: [
-      "analytics.view",
-      "reports.export",
-      "participants.view",
-    ],
+    permissions: ["analytics.view", "reports.export", "participants.view"],
   },
 };
 

@@ -2,7 +2,6 @@ const express = require("express");
 const router = express.Router();
 const { body } = require("express-validator");
 const adminController = require("../controllers/adminController");
-const billingController = require("../controllers/billingController");
 const tenantAdminController = require("../controllers/tenantAdminController");
 const {
   authenticateAdmin,
@@ -22,12 +21,6 @@ const auditLogger = require("../middleware/auditLogger");
 const tenantAdminMiddlewares = [
   authenticateAdmin,
   requireTenantAccess,
-  requireTenantAdmin,
-];
-
-const tenantBillingMiddlewares = [
-  authenticateAdmin,
-  requireTenantContext,
   requireTenantAdmin,
 ];
 
@@ -375,7 +368,11 @@ router.post(
  *       200:
  *         description: Candidate directory response
  */
-router.get("/candidates", ...tenantAdminMiddlewares, adminController.listCandidates);
+router.get(
+  "/candidates",
+  ...tenantAdminMiddlewares,
+  adminController.listCandidates,
+);
 
 /**
  * @swagger
@@ -661,7 +658,11 @@ router.post(
  *                   $ref: '#/components/schemas/Pagination'
  */
 router.get("/students", ...tenantAdminMiddlewares, adminController.getStudents);
-router.get("/participants", ...tenantAdminMiddlewares, adminController.getStudents);
+router.get(
+  "/participants",
+  ...tenantAdminMiddlewares,
+  adminController.getStudents,
+);
 router.get(
   "/students/overview",
   ...tenantAdminMiddlewares,
@@ -708,7 +709,11 @@ router.patch(
  *       404:
  *         description: Student not found
  */
-router.get("/students/:id", ...tenantAdminMiddlewares, adminController.getStudentById);
+router.get(
+  "/students/:id",
+  ...tenantAdminMiddlewares,
+  adminController.getStudentById,
+);
 router.get(
   "/participants/:id",
   ...tenantAdminMiddlewares,
@@ -1139,7 +1144,11 @@ router.get(
  *       404:
  *         description: Session not found
  */
-router.get("/sessions/:id", ...tenantAdminMiddlewares, adminController.getSessionById);
+router.get(
+  "/sessions/:id",
+  ...tenantAdminMiddlewares,
+  adminController.getSessionById,
+);
 
 /**
  * @swagger
@@ -1196,40 +1205,6 @@ router.get(
   adminController.getAdvancedSessionAnalytics,
 );
 
-router.get(
-  "/billing/summary",
-  ...tenantBillingMiddlewares,
-  billingController.getTenantBillingSummary,
-);
-
-router.get(
-  "/billing/invoices",
-  ...tenantBillingMiddlewares,
-  billingController.getTenantInvoices,
-);
-
-router.post(
-  "/billing/checkout",
-  ...tenantBillingMiddlewares,
-  requirePermission("billing.manage", "tenant.manage"),
-  [
-    body("plan_code")
-      .isIn(["pro", "pro_plus", "enterprise"])
-      .withMessage("Valid plan_code is required"),
-    validate,
-  ],
-  auditLogger("tenant_billing_checkout", "billing"),
-  billingController.checkout,
-);
-
-router.post(
-  "/billing/cancel-change",
-  ...tenantBillingMiddlewares,
-  requirePermission("billing.manage", "tenant.manage"),
-  auditLogger("tenant_billing_cancel_change", "billing"),
-  billingController.cancelScheduledChange,
-);
-
 /**
  * @swagger
  * /admin/admin-users/roles-catalog:
@@ -1247,6 +1222,25 @@ router.get(
   "/admin-users/roles-catalog",
   ...tenantAdminMiddlewares,
   tenantAdminController.getRoleCatalog,
+);
+
+/**
+ * @swagger
+ * /admin/admin-users/onboarding:
+ *   get:
+ *     summary: Get tenant onboarding details
+ *     description: Returns tenant contact name and email for auto-populating admin invitation forms.
+ *     tags: [Admin - Tenant Admin Users]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tenant onboarding details
+ */
+router.get(
+  "/admin-users/onboarding",
+  ...tenantAdminMiddlewares,
+  tenantAdminController.getOnboardingDetails,
 );
 
 /**
@@ -1448,13 +1442,19 @@ router.patch(
   ...tenantAdminMiddlewares,
   requirePermission("admins.manage", "tenant.manage"),
   [
-    body("full_name").optional().notEmpty().withMessage("Full name cannot be empty"),
+    body("full_name")
+      .optional()
+      .notEmpty()
+      .withMessage("Full name cannot be empty"),
     body("role")
       .optional()
       .isIn(["owner", "admin", "support", "analyst"])
       .withMessage("Valid tenant role is required"),
     body("permissions").optional().isArray(),
-    body("is_active").optional().isBoolean().withMessage("is_active must be boolean"),
+    body("is_active")
+      .optional()
+      .isBoolean()
+      .withMessage("is_active must be boolean"),
     validate,
   ],
   auditLogger("update_tenant_admin_member", "admin_users"),

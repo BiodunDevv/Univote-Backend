@@ -7,16 +7,13 @@ const VotingSession = require("../models/VotingSession");
 const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
 const PlatformSetting = require("../models/PlatformSetting");
-const Coupon = require("../models/Coupon");
-const { cloneDefaultTenantSettings, getTenantSettingsCatalog, mergeTenantSettings } = require("../utils/tenantSettings");
+const {
+  cloneDefaultTenantSettings,
+  getTenantSettingsCatalog,
+  mergeTenantSettings,
+} = require("../utils/tenantSettings");
 const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
-const {
-  clonePlanCatalog,
-  normalizePlanDefinition,
-  serializePlanCatalog,
-  setPlanCatalog,
-} = require("../config/billingPlans");
 
 function serializeTenant(tenant) {
   return {
@@ -50,12 +47,19 @@ async function getOrCreatePlatformSetting() {
   return platformSetting;
 }
 
-function normalizeBiometricProviderPayload(providerKey, payload = {}, current = {}) {
+function normalizeBiometricProviderPayload(
+  providerKey,
+  payload = {},
+  current = {},
+) {
   switch (providerKey) {
     case "facepp":
       return {
         ...current,
-        enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : current.enabled !== false,
+        enabled:
+          payload.enabled !== undefined
+            ? Boolean(payload.enabled)
+            : current.enabled !== false,
         api_key:
           payload.api_key !== undefined && payload.api_key !== ""
             ? String(payload.api_key).trim()
@@ -76,7 +80,10 @@ function normalizeBiometricProviderPayload(providerKey, payload = {}, current = 
     case "aws_rekognition":
       return {
         ...current,
-        enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(current.enabled),
+        enabled:
+          payload.enabled !== undefined
+            ? Boolean(payload.enabled)
+            : Boolean(current.enabled),
         region:
           payload.region !== undefined && payload.region !== ""
             ? String(payload.region).trim()
@@ -86,7 +93,8 @@ function normalizeBiometricProviderPayload(providerKey, payload = {}, current = 
             ? String(payload.access_key_id).trim()
             : current.access_key_id || null,
         secret_access_key:
-          payload.secret_access_key !== undefined && payload.secret_access_key !== ""
+          payload.secret_access_key !== undefined &&
+          payload.secret_access_key !== ""
             ? String(payload.secret_access_key).trim()
             : current.secret_access_key || null,
         similarity_threshold:
@@ -97,7 +105,10 @@ function normalizeBiometricProviderPayload(providerKey, payload = {}, current = 
     case "azure_face":
       return {
         ...current,
-        enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(current.enabled),
+        enabled:
+          payload.enabled !== undefined
+            ? Boolean(payload.enabled)
+            : Boolean(current.enabled),
         endpoint:
           payload.endpoint !== undefined && payload.endpoint !== ""
             ? String(payload.endpoint).trim()
@@ -114,7 +125,10 @@ function normalizeBiometricProviderPayload(providerKey, payload = {}, current = 
     case "google_vision":
       return {
         ...current,
-        enabled: payload.enabled !== undefined ? Boolean(payload.enabled) : Boolean(current.enabled),
+        enabled:
+          payload.enabled !== undefined
+            ? Boolean(payload.enabled)
+            : Boolean(current.enabled),
         project_id:
           payload.project_id !== undefined && payload.project_id !== ""
             ? String(payload.project_id).trim()
@@ -173,110 +187,120 @@ function validateBiometricProviderConfig(providerKey, payload = {}) {
 }
 
 async function buildTenantStats(tenantId) {
-  const [membershipSummary, studentSummary, collegeCount, sessionSummary, candidateCount, voteSummary] =
-    await Promise.all([
-      TenantAdminMembership.aggregate([
-        {
-          $match: {
-            tenant_id: tenantId,
-          },
+  const [
+    membershipSummary,
+    studentSummary,
+    collegeCount,
+    sessionSummary,
+    candidateCount,
+    voteSummary,
+  ] = await Promise.all([
+    TenantAdminMembership.aggregate([
+      {
+        $match: {
+          tenant_id: tenantId,
         },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: 1 },
-            active: {
-              $sum: {
-                $cond: [{ $eq: ["$is_active", true] }, 1, 0],
-              },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          active: {
+            $sum: {
+              $cond: [{ $eq: ["$is_active", true] }, 1, 0],
             },
-            owners: {
-              $sum: {
-                $cond: [{ $eq: ["$role", "owner"] }, 1, 0],
-              },
-            },
           },
-        },
-      ]),
-      Student.aggregate([
-        {
-          $match: {
-            tenant_id: tenantId,
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: 1 },
-            active: {
-              $sum: {
-                $cond: [{ $eq: ["$is_active", true] }, 1, 0],
-              },
+          owners: {
+            $sum: {
+              $cond: [{ $eq: ["$role", "owner"] }, 1, 0],
             },
           },
         },
-      ]),
-      College.countDocuments({ tenant_id: tenantId }),
-      VotingSession.aggregate([
-        {
-          $match: {
-            tenant_id: tenantId,
-          },
+      },
+    ]),
+    Student.aggregate([
+      {
+        $match: {
+          tenant_id: tenantId,
         },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: 1 },
-            active: {
-              $sum: {
-                $cond: [{ $eq: ["$status", "active"] }, 1, 0],
-              },
-            },
-            upcoming: {
-              $sum: {
-                $cond: [{ $eq: ["$status", "upcoming"] }, 1, 0],
-              },
-            },
-            ended: {
-              $sum: {
-                $cond: [{ $eq: ["$status", "ended"] }, 1, 0],
-              },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          active: {
+            $sum: {
+              $cond: [{ $eq: ["$is_active", true] }, 1, 0],
             },
           },
         },
-      ]),
-      Candidate.countDocuments({ tenant_id: tenantId }),
-      Vote.aggregate([
-        {
-          $match: {
-            tenant_id: tenantId,
-          },
+      },
+    ]),
+    College.countDocuments({ tenant_id: tenantId }),
+    VotingSession.aggregate([
+      {
+        $match: {
+          tenant_id: tenantId,
         },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: 1 },
-            accepted: {
-              $sum: {
-                $cond: [{ $eq: ["$status", "accepted"] }, 1, 0],
-              },
-            },
-            rejected: {
-              $sum: {
-                $cond: [{ $eq: ["$status", "rejected"] }, 1, 0],
-              },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          active: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "active"] }, 1, 0],
             },
           },
+          upcoming: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "upcoming"] }, 1, 0],
+            },
+          },
+          ended: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "ended"] }, 1, 0],
+            },
+          },
         },
-      ]),
-    ]);
+      },
+    ]),
+    Candidate.countDocuments({ tenant_id: tenantId }),
+    Vote.aggregate([
+      {
+        $match: {
+          tenant_id: tenantId,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          accepted: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "accepted"] }, 1, 0],
+            },
+          },
+          rejected: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "rejected"] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]),
+  ]);
 
   return {
     admins: membershipSummary[0] || { total: 0, active: 0, owners: 0 },
     students: studentSummary[0] || { total: 0, active: 0 },
     colleges: collegeCount,
-    sessions:
-      sessionSummary[0] || { total: 0, active: 0, upcoming: 0, ended: 0 },
+    sessions: sessionSummary[0] || {
+      total: 0,
+      active: 0,
+      upcoming: 0,
+      ended: 0,
+    },
     candidates: candidateCount,
     votes: voteSummary[0] || { total: 0, accepted: 0, rejected: 0 },
   };
@@ -323,7 +347,9 @@ class PlatformController {
       const skip = (page - 1) * limit;
       const search = String(req.query.search || "").trim();
       const status = String(req.query.status || "").trim();
-      const subscriptionStatus = String(req.query.subscription_status || "").trim();
+      const subscriptionStatus = String(
+        req.query.subscription_status || "",
+      ).trim();
 
       const filter = {};
 
@@ -339,7 +365,11 @@ class PlatformController {
       if (subscriptionStatus) filter.subscription_status = subscriptionStatus;
 
       const [tenants, total] = await Promise.all([
-        Tenant.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        Tenant.find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
         Tenant.countDocuments(filter),
       ]);
 
@@ -369,7 +399,12 @@ class PlatformController {
 
       const normalizedSlug = String(slug).trim().toLowerCase();
       const existingTenant = await Tenant.findOne({
-        $or: [{ slug: normalizedSlug }, ...(primary_domain ? [{ primary_domain: primary_domain.toLowerCase() }] : [])],
+        $or: [
+          { slug: normalizedSlug },
+          ...(primary_domain
+            ? [{ primary_domain: primary_domain.toLowerCase() }]
+            : []),
+        ],
       }).select("_id slug primary_domain");
 
       if (existingTenant) {
@@ -389,7 +424,9 @@ class PlatformController {
       const tenant = await Tenant.create({
         name: String(name).trim(),
         slug: normalizedSlug,
-        primary_domain: primary_domain ? String(primary_domain).trim().toLowerCase() : null,
+        primary_domain: primary_domain
+          ? String(primary_domain).trim().toLowerCase()
+          : null,
         plan_code: plan_code || "pro",
         status: "pending_payment",
         subscription_status: "trial",
@@ -399,7 +436,9 @@ class PlatformController {
         },
         onboarding: {
           contact_name: contact_name ? String(contact_name).trim() : null,
-          contact_email: contact_email ? String(contact_email).trim().toLowerCase() : null,
+          contact_email: contact_email
+            ? String(contact_email).trim().toLowerCase()
+            : null,
         },
         settings: cloneDefaultTenantSettings(),
       });
@@ -411,7 +450,6 @@ class PlatformController {
           role: "owner",
           permissions: [
             "tenant.manage",
-            "billing.manage",
             "students.manage",
             "sessions.manage",
             "support.manage",
@@ -452,7 +490,9 @@ class PlatformController {
         .select("full_name email role is_active")
         .lean();
 
-      const adminMap = new Map(admins.map((admin) => [admin._id.toString(), admin]));
+      const adminMap = new Map(
+        admins.map((admin) => [admin._id.toString(), admin]),
+      );
       const team = memberships
         .map((membership) => {
           const admin = adminMap.get(membership.admin_id.toString());
@@ -615,9 +655,8 @@ class PlatformController {
       }
 
       if (tenant.status === "suspended" || tenant.status === "draft") {
-        tenant.onboarding.activated_at = tenant.status === "draft"
-          ? null
-          : tenant.onboarding.activated_at;
+        tenant.onboarding.activated_at =
+          tenant.status === "draft" ? null : tenant.onboarding.activated_at;
       }
 
       if (tenant.status === "draft" && previousStatus !== "draft") {
@@ -669,25 +708,13 @@ class PlatformController {
             reason: tenant.onboarding.rejection_reason || null,
             statusUrl,
           });
-        } else if (tenant.status === "pending_payment" && previousStatus !== "pending_payment") {
-          notificationPromise = emailService.sendTenantApplicationPaymentRequired({
-            to: tenant.onboarding.contact_email,
-            contactName: tenant.onboarding.contact_name,
-            tenantName: tenant.name,
-            planCode: tenant.plan_code,
-            applicationReference: tenant.application_reference || null,
-            amountLabel:
-              tenant.onboarding?.billing_snapshot?.payable_amount_ngn !== undefined
-                ? `${tenant.onboarding.billing_snapshot.payable_amount_ngn} NGN`
-                : null,
-          });
         } else {
           notificationPromise = emailService.sendTenantStatusUpdate({
             to: tenant.onboarding.contact_email,
             contactName: tenant.onboarding.contact_name,
             tenantName: tenant.name,
             status: tenant.status,
-            message: `Your workspace is currently ${tenant.status.replace(/_/g, " ")} on the ${tenant.plan_code} plan with subscription status ${tenant.subscription_status}.`,
+            message: `Your workspace is currently ${tenant.status.replace(/_/g, " ")} and is being provisioned.`,
             ctaLabel: tenant.status === "active" ? "Open workspace" : null,
             ctaLink: workspaceUrl,
           });
@@ -712,66 +739,6 @@ class PlatformController {
     return this.updateTenant(req, res);
   }
 
-  async listCoupons(req, res) {
-    try {
-      const search = String(req.query.search || "").trim();
-      const filter = {};
-
-      if (search) {
-        filter.$or = [
-          { code: { $regex: search, $options: "i" } },
-          { name: { $regex: search, $options: "i" } },
-        ];
-      }
-
-      const coupons = await Coupon.find(filter).sort({ createdAt: -1 }).lean();
-      return res.json({ coupons });
-    } catch (error) {
-      console.error("List coupons error:", error);
-      return res.status(500).json({ error: "Failed to fetch coupons" });
-    }
-  }
-
-  async createCoupon(req, res) {
-    try {
-      const coupon = await Coupon.create({
-        ...req.body,
-        code: String(req.body.code || "").trim().toUpperCase(),
-      });
-      return res.status(201).json({
-        message: "Coupon created successfully",
-        coupon,
-      });
-    } catch (error) {
-      console.error("Create coupon error:", error);
-      return res.status(500).json({ error: "Failed to create coupon" });
-    }
-  }
-
-  async updateCoupon(req, res) {
-    try {
-      const coupon = await Coupon.findById(req.params.id);
-      if (!coupon) {
-        return res.status(404).json({ error: "Coupon not found" });
-      }
-
-      Object.assign(coupon, req.body || {});
-      if (req.body.code !== undefined) {
-        coupon.code = String(req.body.code || "").trim().toUpperCase();
-      }
-
-      await coupon.save();
-
-      return res.json({
-        message: "Coupon updated successfully",
-        coupon,
-      });
-    } catch (error) {
-      console.error("Update coupon error:", error);
-      return res.status(500).json({ error: "Failed to update coupon" });
-    }
-  }
-
   async getPlatformSettings(_req, res) {
     try {
       const platformSetting = await getOrCreatePlatformSetting();
@@ -779,8 +746,6 @@ class PlatformController {
         defaults: platformSetting.defaults || cloneDefaultTenantSettings(),
         identity_catalog:
           platformSetting.identity_catalog || getTenantSettingsCatalog(),
-        plan_entitlements: platformSetting.plan_entitlements || {},
-        plans: serializePlanCatalog(),
         biometrics: await faceProviderService.getSettingsSummary(),
       });
     } catch (error) {
@@ -804,10 +769,6 @@ class PlatformController {
         };
       }
 
-      if (req.body.plan_entitlements) {
-        platformSetting.plan_entitlements = req.body.plan_entitlements;
-      }
-
       if (req.body.biometrics) {
         const nextBiometrics = req.body.biometrics || {};
         const currentProviders = platformSetting.biometrics?.providers || {};
@@ -826,7 +787,10 @@ class PlatformController {
         });
 
         platformSetting.biometrics = {
-          active_provider: nextBiometrics.active_provider || platformSetting.biometrics?.active_provider || "facepp",
+          active_provider:
+            nextBiometrics.active_provider ||
+            platformSetting.biometrics?.active_provider ||
+            "facepp",
           providers: nextProviders,
         };
       }
@@ -837,8 +801,6 @@ class PlatformController {
         message: "Platform settings updated successfully",
         defaults: platformSetting.defaults,
         identity_catalog: platformSetting.identity_catalog,
-        plan_entitlements: platformSetting.plan_entitlements,
-        plans: serializePlanCatalog(),
         biometrics: await faceProviderService.getSettingsSummary(),
       });
     } catch (error) {
@@ -853,10 +815,15 @@ class PlatformController {
       const providerCatalog = faceProviderService.getProviderCatalog();
 
       if (!provider_key || !providerCatalog[provider_key]) {
-        return res.status(400).json({ error: "Valid provider_key is required" });
+        return res
+          .status(400)
+          .json({ error: "Valid provider_key is required" });
       }
 
-      const validationError = validateBiometricProviderConfig(provider_key, config);
+      const validationError = validateBiometricProviderConfig(
+        provider_key,
+        config,
+      );
       if (validationError) {
         return res.status(400).json({ error: validationError });
       }
@@ -906,7 +873,9 @@ class PlatformController {
       });
     } catch (error) {
       console.error("Create biometric provider error:", error);
-      return res.status(500).json({ error: "Failed to create biometric provider" });
+      return res
+        .status(500)
+        .json({ error: "Failed to create biometric provider" });
     }
   }
 
@@ -959,7 +928,9 @@ class PlatformController {
       });
     } catch (error) {
       console.error("Delete biometric provider error:", error);
-      return res.status(500).json({ error: "Failed to delete biometric provider" });
+      return res
+        .status(500)
+        .json({ error: "Failed to delete biometric provider" });
     }
   }
 
@@ -990,14 +961,19 @@ class PlatformController {
               ctaLink: `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}/super-admin/settings`,
             })
             .catch((err) => {
-              console.error("Failed to send biometric provider alert email:", err);
+              console.error(
+                "Failed to send biometric provider alert email:",
+                err,
+              );
             });
         }
         return res.status(400).json({
           error: result.error || "Biometric provider test failed",
           code: result.code || "BIOMETRIC_PROVIDER_TEST_FAILED",
           provider: result.provider || "facepp",
-          provider_status: await faceProviderService.getStatus(provider_key || null),
+          provider_status: await faceProviderService.getStatus(
+            provider_key || null,
+          ),
           requirements:
             provider_key && providerCatalog[provider_key]
               ? providerCatalog[provider_key].requirements
@@ -1008,13 +984,19 @@ class PlatformController {
       return res.json({
         message: "Biometric provider test completed successfully",
         provider: result.provider || "facepp",
-        provider_status: await faceProviderService.getStatus(provider_key || null),
+        provider_status: await faceProviderService.getStatus(
+          provider_key || null,
+        ),
         summary: {
-          detection: result.face_token ? "Face detected" : "No face token returned",
+          detection: result.face_token
+            ? "Face detected"
+            : "No face token returned",
           image_checked: image_url,
         },
         result: {
-          face_token: result.face_token ? `${result.face_token.slice(0, 20)}...` : null,
+          face_token: result.face_token
+            ? `${result.face_token.slice(0, 20)}...`
+            : null,
           face_rectangle: result.face_rectangle || null,
           image_id: result.image_id || null,
         },
@@ -1026,7 +1008,9 @@ class PlatformController {
       });
     } catch (error) {
       console.error("Test biometric provider error:", error);
-      return res.status(500).json({ error: "Failed to test biometric provider" });
+      return res
+        .status(500)
+        .json({ error: "Failed to test biometric provider" });
     }
   }
 

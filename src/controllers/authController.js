@@ -45,6 +45,21 @@ function serializeTenant(tenant) {
     participant_fields: getTenantParticipantFieldMetadata(tenant),
     eligibility_policy: getTenantEligibilityPolicy(tenant),
     entitlements: getTenantEntitlements(tenant),
+    onboarding: {
+      contact_name: tenant.onboarding?.contact_name || null,
+      contact_email: tenant.onboarding?.contact_email || null,
+      student_count_estimate: tenant.onboarding?.student_count_estimate ?? null,
+      admin_count_estimate: tenant.onboarding?.admin_count_estimate ?? null,
+      application_submitted_at:
+        tenant.onboarding?.application_submitted_at || null,
+      activated_at: tenant.onboarding?.activated_at || null,
+      approved_at: tenant.onboarding?.approved_at || null,
+      rejected_at: tenant.onboarding?.rejected_at || null,
+      rejection_reason: tenant.onboarding?.rejection_reason || null,
+      status_timeline: Array.isArray(tenant.onboarding?.status_timeline)
+        ? tenant.onboarding.status_timeline
+        : [],
+    },
   };
 }
 
@@ -117,6 +132,13 @@ function normalizeTenantLookupSlug(slug) {
     .replace(/[^a-z0-9-]/g, "");
 }
 
+function isTenantSuspended(tenant) {
+  if (!tenant) return false;
+  return (
+    tenant.status === "suspended" || tenant.subscription_status === "suspended"
+  );
+}
+
 async function resolveTenantChoices(memberships = []) {
   if (!memberships.length) return [];
 
@@ -124,6 +146,8 @@ async function resolveTenantChoices(memberships = []) {
   const tenants = await Tenant.find({
     _id: { $in: tenantIds },
     is_active: true,
+    status: { $ne: "suspended" },
+    subscription_status: { $ne: "suspended" },
   })
     .select("_id name slug status plan_code subscription_status primary_domain")
     .lean();
@@ -163,6 +187,8 @@ async function resolveLinkedTenantChoices(sourceAdminId) {
   const tenants = await Tenant.find({
     _id: { $in: tenantIds },
     is_active: true,
+    status: { $ne: "suspended" },
+    subscription_status: { $ne: "suspended" },
   })
     .select("_id name slug status plan_code subscription_status primary_domain")
     .lean();
@@ -273,6 +299,13 @@ class AuthController {
         return res.status(404).json({
           error: "Tenant not found",
           code: "TENANT_NOT_FOUND",
+        });
+      }
+
+      if (isTenantSuspended(req.tenant)) {
+        return res.status(403).json({
+          error: "Tenant is suspended",
+          code: "TENANT_SUSPENDED",
         });
       }
 
@@ -404,6 +437,13 @@ class AuthController {
         });
       }
 
+      if (isTenantSuspended(req.tenant)) {
+        return res.status(403).json({
+          error: "Tenant is suspended",
+          code: "TENANT_SUSPENDED",
+        });
+      }
+
       // Find admin
       const admin = await Admin.findOne({ email: email.toLowerCase() });
 
@@ -439,6 +479,12 @@ class AuthController {
                 code: "TENANT_NOT_FOUND",
               });
             }
+            if (isTenantSuspended(tenant)) {
+              return res.status(403).json({
+                error: "Tenant is suspended",
+                code: "TENANT_SUSPENDED",
+              });
+            }
             organizations = await resolveAccessibleOrganizations(admin._id);
           } else if (memberships.length > 1) {
             const tenantChoices = await resolveAccessibleOrganizations(
@@ -461,6 +507,13 @@ class AuthController {
             return res.status(403).json({
               error: "Tenant admin membership not found",
               code: "TENANT_MEMBERSHIP_REQUIRED",
+            });
+          }
+
+          if (isTenantSuspended(tenant)) {
+            return res.status(403).json({
+              error: "Tenant is suspended",
+              code: "TENANT_SUSPENDED",
             });
           }
 
@@ -1158,6 +1211,13 @@ class AuthController {
         return res.status(404).json({
           error: "Tenant not found",
           code: "TENANT_NOT_FOUND",
+        });
+      }
+
+      if (isTenantSuspended(tenant)) {
+        return res.status(403).json({
+          error: "Tenant is suspended",
+          code: "TENANT_SUSPENDED",
         });
       }
 

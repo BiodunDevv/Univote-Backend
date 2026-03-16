@@ -10,17 +10,13 @@ const VotingSession = require("../src/models/VotingSession");
 const Candidate = require("../src/models/Candidate");
 const Vote = require("../src/models/Vote");
 const AuditLog = require("../src/models/AuditLog");
-const Invoice = require("../src/models/Invoice");
 const Notification = require("../src/models/Notification");
-const SubscriptionEvent = require("../src/models/SubscriptionEvent");
 const Testimonial = require("../src/models/Testimonial");
 const PlatformSetting = require("../src/models/PlatformSetting");
 const Announcement = require("../src/models/Announcement");
-const Coupon = require("../src/models/Coupon");
 const LinkedAdminWorkspace = require("../src/models/LinkedAdminWorkspace");
-const { createInvoice, addDays } = require("../src/services/subscriptionService");
+const { addDays } = require("../src/services/subscriptionService");
 const { cloneDefaultTenantSettings } = require("../src/utils/tenantSettings");
-const { clonePlanCatalog } = require("../src/config/billingPlans");
 
 const DEFAULT_PASSWORD = "123456";
 const DEPLOY_ROOT_DOMAIN = String(
@@ -35,6 +31,8 @@ const DEPLOY_ROOT_DOMAIN = String(
 const SUPER_ADMIN_EMAIL = "super@gmail.com";
 const TENANT_ADMIN_EMAIL = "tenant@gmail.com";
 const SECONDARY_TENANT_ADMIN_EMAIL = "tenant2@gmail.com";
+const PRIMARY_TENANT_OPS_ADMIN_EMAIL = "ops.bowen@gmail.com";
+const SECONDARY_TENANT_SUPPORT_ADMIN_EMAIL = "support.summit@gmail.com";
 const TENANT_SLUG = "bowen-demo";
 const SECONDARY_TENANT_SLUG = "summit-demo";
 const SEEDED_FACEPP_KEY = process.env.FACEPP_API_KEY || null;
@@ -345,7 +343,9 @@ function buildDepartments() {
   let hodIndex = 0;
   let deanIndex = 0;
 
-  for (const [collegeName, collegeInfo] of Object.entries(collegesAndDepartments)) {
+  for (const [collegeName, collegeInfo] of Object.entries(
+    collegesAndDepartments,
+  )) {
     const dean = deanNames[deanIndex % deanNames.length];
     deanIndex += 1;
 
@@ -401,7 +401,13 @@ async function createPlatformAccounts() {
 
   const passwordHash = await createPasswordHash();
 
-  const [superAdmin, tenantAdmin, secondaryTenantAdmin] = await Admin.create([
+  const [
+    superAdmin,
+    tenantAdmin,
+    secondaryTenantAdmin,
+    primaryTenantOpsAdmin,
+    secondaryTenantSupportAdmin,
+  ] = await Admin.create([
     {
       email: SUPER_ADMIN_EMAIL,
       password_hash: passwordHash,
@@ -423,13 +429,35 @@ async function createPlatformAccounts() {
       role: "admin",
       is_active: true,
     },
+    {
+      email: PRIMARY_TENANT_OPS_ADMIN_EMAIL,
+      password_hash: passwordHash,
+      full_name: "Bowen Operations Admin",
+      role: "admin",
+      is_active: true,
+    },
+    {
+      email: SECONDARY_TENANT_SUPPORT_ADMIN_EMAIL,
+      password_hash: passwordHash,
+      full_name: "Summit Support Admin",
+      role: "admin",
+      is_active: true,
+    },
   ]);
 
   console.log(`✅ Super admin: ${SUPER_ADMIN_EMAIL}`);
   console.log(`✅ Tenant admin: ${TENANT_ADMIN_EMAIL}`);
   console.log(`✅ Tenant admin: ${SECONDARY_TENANT_ADMIN_EMAIL}`);
+  console.log(`✅ Tenant admin: ${PRIMARY_TENANT_OPS_ADMIN_EMAIL}`);
+  console.log(`✅ Tenant admin: ${SECONDARY_TENANT_SUPPORT_ADMIN_EMAIL}`);
 
-  return { superAdmin, tenantAdmin, secondaryTenantAdmin };
+  return {
+    superAdmin,
+    tenantAdmin,
+    secondaryTenantAdmin,
+    primaryTenantOpsAdmin,
+    secondaryTenantSupportAdmin,
+  };
 }
 
 async function seedPlatformDefaults() {
@@ -438,7 +466,6 @@ async function seedPlatformDefaults() {
   await PlatformSetting.create({
     key: "defaults",
     defaults: cloneDefaultTenantSettings(),
-    plan_catalog: clonePlanCatalog(),
     biometrics: {
       active_provider: "facepp",
       providers: {
@@ -477,7 +504,12 @@ async function seedPlatformDefaults() {
   );
 }
 
-async function createActiveDemoTenants(primaryTenantAdminId, secondaryTenantAdminId) {
+async function createActiveDemoTenants(
+  primaryTenantAdminId,
+  secondaryTenantAdminId,
+  primaryTenantOpsAdminId,
+  secondaryTenantSupportAdminId,
+) {
   console.log("\n🏢 Creating active demo tenants...");
 
   const now = new Date();
@@ -489,9 +521,7 @@ async function createActiveDemoTenants(primaryTenantAdminId, secondaryTenantAdmi
       slug: TENANT_SLUG,
       application_reference: buildApplicationReference("20260315-BOWE01"),
       primary_domain: buildSeedTenantDomain(TENANT_SLUG),
-      plan_code: "pro_plus",
       status: "active",
-      subscription_status: "active",
       is_active: true,
       branding: {
         primary_color: "#0f172a",
@@ -523,11 +553,6 @@ async function createActiveDemoTenants(primaryTenantAdminId, secondaryTenantAdmi
         admin_count_estimate: 8,
         notes: "Primary demo tenant seeded for tenant admin acceptance flows.",
         demo_requested: false,
-        payment_required: false,
-        billing_snapshot: {
-          original_amount_ngn: 180000,
-          payable_amount_ngn: 0,
-        },
         application_submitted_at: now,
         application_last_updated_at: now,
         activated_at: now,
@@ -550,13 +575,11 @@ async function createActiveDemoTenants(primaryTenantAdminId, secondaryTenantAdmi
       },
     },
     {
-      name: "Summit Institute Demo",
+      name: "Summit University Demo",
       slug: SECONDARY_TENANT_SLUG,
       application_reference: buildApplicationReference("20260315-SUMM01"),
       primary_domain: buildSeedTenantDomain(SECONDARY_TENANT_SLUG),
-      plan_code: "pro",
       status: "active",
-      subscription_status: "active",
       is_active: true,
       branding: {
         primary_color: "#14532d",
@@ -672,16 +695,12 @@ async function createActiveDemoTenants(primaryTenantAdminId, secondaryTenantAdmi
         contact_name: "Summit Tenant Owner",
         contact_email: SECONDARY_TENANT_ADMIN_EMAIL,
         contact_phone: "+2348000000004",
-        institution_type: "college",
+        institution_type: "university",
         student_count_estimate: 2800,
         admin_count_estimate: 5,
-        notes: "Secondary active tenant for multi-organization workspace switching.",
+        notes:
+          "Secondary active tenant for multi-organization workspace switching.",
         demo_requested: false,
-        payment_required: false,
-        billing_snapshot: {
-          original_amount_ngn: 75000,
-          payable_amount_ngn: 0,
-        },
         application_submitted_at: addDays(now, -10),
         application_last_updated_at: addDays(now, -7),
         activated_at: addDays(now, -7),
@@ -717,7 +736,6 @@ async function createActiveDemoTenants(primaryTenantAdminId, secondaryTenantAdmi
         "tenant.labels.manage",
         "tenant.auth-policy.manage",
         "tenant.roles.manage",
-        "billing.manage",
         "students.manage",
         "participants.manage",
         "participants.view",
@@ -739,7 +757,6 @@ async function createActiveDemoTenants(primaryTenantAdminId, secondaryTenantAdmi
         "tenant.labels.manage",
         "tenant.auth-policy.manage",
         "tenant.roles.manage",
-        "billing.manage",
         "students.manage",
         "participants.manage",
         "participants.view",
@@ -748,6 +765,27 @@ async function createActiveDemoTenants(primaryTenantAdminId, secondaryTenantAdmi
         "analytics.view",
         "reports.export",
       ],
+      is_active: true,
+    },
+    {
+      tenant_id: primaryTenant._id,
+      admin_id: primaryTenantOpsAdminId,
+      role: "admin",
+      permissions: [
+        "participants.view",
+        "participants.manage",
+        "students.manage",
+        "sessions.manage",
+        "analytics.view",
+        "reports.export",
+      ],
+      is_active: true,
+    },
+    {
+      tenant_id: secondaryTenant._id,
+      admin_id: secondaryTenantSupportAdminId,
+      role: "support",
+      permissions: ["participants.view", "support.manage", "analytics.view"],
       is_active: true,
     },
   ]);
@@ -765,52 +803,21 @@ async function createPipelineTenants() {
   const now = new Date();
   const tenants = await Tenant.insertMany([
     {
-      name: "Lakeside Polytechnic",
+      name: "Lakeside University",
       slug: "lakeside-poly",
       application_reference: buildApplicationReference("20260315-LAKE01"),
       primary_domain: buildSeedTenantDomain("lakeside"),
-      plan_code: "pro",
-      status: "pending_payment",
-      subscription_status: "trial",
+      status: "pending_approval",
       is_active: true,
       onboarding: {
         contact_name: "Miriam Afolayan",
         contact_email: "miriam@lakesidepoly.edu.ng",
         contact_phone: "+2348000000002",
-        institution_type: "polytechnic",
+        institution_type: "university",
         student_count_estimate: 3200,
         admin_count_estimate: 4,
-        notes: "Needs a quick demo before internal sign-off.",
+        notes: "Needs a quick demo before final platform approval.",
         demo_requested: true,
-        payment_required: true,
-        coupon_code: "LAUNCH25",
-        coupon_snapshot: {
-          code: "LAUNCH25",
-          name: "Launch Discount",
-          description: "25% off the first monthly invoice.",
-          discount_type: "percentage",
-          discount_value: 25,
-          discount_amount_ngn: 18750,
-          original_amount_ngn: 75000,
-          final_amount_ngn: 56250,
-          plan_code: "pro",
-          applied_at: now,
-        },
-        billing_snapshot: {
-          original_amount_ngn: 75000,
-          payable_amount_ngn: 56250,
-        },
-        structure_preferences: {
-          uses_college: true,
-          uses_department: true,
-          uses_level: true,
-          requires_photo: false,
-          requires_face_verification: false,
-        },
-        identity_preferences: {
-          primary_identifier: "matric_no",
-          recovery_identifiers: ["email"],
-        },
         application_submitted_at: now,
         application_last_updated_at: now,
         status_timeline: [
@@ -821,9 +828,9 @@ async function createPipelineTenants() {
             at: addDays(now, -1),
           },
           {
-            status: "pending_payment",
-            label: "Waiting for payment",
-            note: "Application submitted and awaiting billing completion.",
+            status: "pending_approval",
+            label: "Submitted for platform review",
+            note: "Application submitted and queued for moderation.",
             at: now,
           },
         ],
@@ -838,48 +845,18 @@ async function createPipelineTenants() {
       slug: "northfield-college",
       application_reference: buildApplicationReference("20260315-NORT01"),
       primary_domain: buildSeedTenantDomain("northfield"),
-      plan_code: "enterprise",
       status: "pending_approval",
-      subscription_status: "active",
       is_active: true,
       onboarding: {
         contact_name: "Daniel Oriji",
         contact_email: "daniel@northfieldcollege.edu.ng",
         contact_phone: "+2348000000003",
-        institution_type: "college",
+        institution_type: "university",
         student_count_estimate: 18000,
         admin_count_estimate: 18,
-        notes: "Payment cleared, waiting on platform review and provisioning.",
+        notes:
+          "Application submitted, waiting on platform review and provisioning.",
         demo_requested: false,
-        payment_required: true,
-        coupon_code: "ENTERPRISE100",
-        coupon_snapshot: {
-          code: "ENTERPRISE100",
-          name: "Enterprise Onboarding Credit",
-          description: "100,000 NGN onboarding credit.",
-          discount_type: "fixed_amount",
-          discount_value: 100000,
-          discount_amount_ngn: 100000,
-          original_amount_ngn: 350000,
-          final_amount_ngn: 250000,
-          plan_code: "enterprise",
-          applied_at: addDays(now, -3),
-        },
-        billing_snapshot: {
-          original_amount_ngn: 350000,
-          payable_amount_ngn: 250000,
-        },
-        structure_preferences: {
-          uses_college: true,
-          uses_department: true,
-          uses_level: true,
-          requires_photo: true,
-          requires_face_verification: false,
-        },
-        identity_preferences: {
-          primary_identifier: "matric_no",
-          recovery_identifiers: ["email"],
-        },
         application_submitted_at: addDays(now, -3),
         application_last_updated_at: addDays(now, -1),
         approved_at: null,
@@ -891,15 +868,9 @@ async function createPipelineTenants() {
             at: addDays(now, -5),
           },
           {
-            status: "pending_payment",
-            label: "Waiting for payment",
-            note: "Invoice issued to applicant.",
-            at: addDays(now, -4),
-          },
-          {
             status: "pending_approval",
             label: "Ready for platform approval",
-            note: "Payment confirmed and queued for review.",
+            note: "Application is queued for platform review.",
             at: addDays(now, -3),
           },
         ],
@@ -917,66 +888,6 @@ async function createPipelineTenants() {
   console.log(`✅ Created ${tenants.length} onboarding pipeline tenants`);
 
   return tenants;
-}
-
-async function seedCoupons() {
-  console.log("\n🏷️  Creating platform coupons...");
-
-  const now = new Date();
-  const coupons = await Coupon.insertMany([
-    {
-      code: "LAUNCH25",
-      name: "Launch Discount",
-      description: "25% off the first monthly invoice for new applications.",
-      discount_type: "percentage",
-      discount_value: 25,
-      plan_scope: "selected",
-      plan_codes: ["pro", "pro_plus"],
-      minimum_amount_ngn: 50000,
-      usage_limit: 250,
-      per_applicant_limit: 1,
-      usage_count: 1,
-      active_from: addDays(now, -14),
-      active_until: addDays(now, 30),
-      is_active: true,
-      redemptions: [
-        {
-          application_reference: buildApplicationReference("20260315-LAKE01"),
-          email: "miriam@lakesidepoly.edu.ng",
-          amount_ngn: 75000,
-          discount_amount_ngn: 18750,
-          created_at: now,
-        },
-      ],
-    },
-    {
-      code: "ENTERPRISE100",
-      name: "Enterprise Onboarding Credit",
-      description: "100,000 NGN off enterprise onboarding.",
-      discount_type: "fixed_amount",
-      discount_value: 100000,
-      plan_scope: "selected",
-      plan_codes: ["enterprise"],
-      minimum_amount_ngn: 200000,
-      usage_limit: 50,
-      per_applicant_limit: 1,
-      usage_count: 1,
-      active_from: addDays(now, -30),
-      active_until: addDays(now, 60),
-      is_active: true,
-      redemptions: [
-        {
-          application_reference: buildApplicationReference("20260315-NORT01"),
-          email: "daniel@northfieldcollege.edu.ng",
-          amount_ngn: 350000,
-          discount_amount_ngn: 100000,
-          created_at: addDays(now, -3),
-        },
-      ],
-    },
-  ]);
-
-  console.log(`✅ Created ${coupons.length} coupons`);
 }
 
 async function seedLinkedWorkspaces(
@@ -1044,7 +955,9 @@ async function seedTenantStudents(tenant, colleges) {
       createdIndex += 1;
 
       const selectedLevel =
-        department.available_levels[Math.min(1, department.available_levels.length - 1)] ||
+        department.available_levels[
+          Math.min(1, department.available_levels.length - 1)
+        ] ||
         department.available_levels[0] ||
         "100";
 
@@ -1054,7 +967,10 @@ async function seedTenantStudents(tenant, colleges) {
         departmentCounters[department.code],
       );
       tenantMemberSequence += 1;
-      const seedFaceToken = generateSeedFaceToken(tenant.slug, tenantMemberSequence);
+      const seedFaceToken = generateSeedFaceToken(
+        tenant.slug,
+        tenantMemberSequence,
+      );
 
       students.push({
         tenant_id: tenant._id,
@@ -1145,7 +1061,8 @@ async function seedTenantSessions(tenant, tenantAdminId) {
       position: "President",
       photo_url: STUDENT_PHOTO_URL,
       bio: "Focused on accountability and transparent student representation.",
-      manifesto: "Campus infrastructure, better class feedback loops, and welfare.",
+      manifesto:
+        "Campus infrastructure, better class feedback loops, and welfare.",
     },
     {
       tenant_id: tenant._id,
@@ -1154,7 +1071,8 @@ async function seedTenantSessions(tenant, tenantAdminId) {
       position: "Vice President",
       photo_url: STUDENT_PHOTO_URL,
       bio: "Committed to student engagement and inclusive decision-making.",
-      manifesto: "Student parliament clinics and stronger hostel representation.",
+      manifesto:
+        "Student parliament clinics and stronger hostel representation.",
     },
     {
       tenant_id: tenant._id,
@@ -1169,51 +1087,21 @@ async function seedTenantSessions(tenant, tenantAdminId) {
   ]);
 
   upcomingSession.candidates = candidates
-    .filter((candidate) => candidate.session_id.toString() === upcomingSession._id.toString())
+    .filter(
+      (candidate) =>
+        candidate.session_id.toString() === upcomingSession._id.toString(),
+    )
     .map((candidate) => candidate._id);
   endedSession.candidates = candidates
-    .filter((candidate) => candidate.session_id.toString() === endedSession._id.toString())
+    .filter(
+      (candidate) =>
+        candidate.session_id.toString() === endedSession._id.toString(),
+    )
     .map((candidate) => candidate._id);
 
   await Promise.all([upcomingSession.save(), endedSession.save()]);
 
   console.log("✅ Created 2 sessions with 3 candidates");
-}
-
-async function seedTenantBilling(tenant, superAdminId) {
-  console.log("\n💳 Creating billing history...");
-
-  const invoice = await createInvoice({
-    tenant,
-    planCode: tenant.plan_code,
-    actorAdminId: superAdminId,
-    issuedAt: tenant.billing.current_period_start || new Date(),
-    periodStart: tenant.billing.current_period_start,
-    periodEnd: tenant.billing.current_period_end,
-    metadata: {
-      source: "seed",
-    },
-  });
-
-  tenant.billing.last_invoice_id = invoice._id;
-  await tenant.save();
-
-  await SubscriptionEvent.create({
-    tenant_id: tenant._id,
-    type: "subscription_seeded",
-    previous_plan_code: null,
-    next_plan_code: tenant.plan_code,
-    previous_subscription_status: null,
-    next_subscription_status: tenant.subscription_status,
-    invoice_id: invoice._id,
-    actor_admin_id: superAdminId,
-    effective_at: tenant.billing.current_period_start || new Date(),
-    metadata: {
-      seeded_by: "scripts/seed.js",
-    },
-  });
-
-  console.log(`✅ Seed invoice created: ${invoice.invoice_number}`);
 }
 
 async function seedNotifications(tenant, superAdmin, tenantAdmin, students) {
@@ -1243,15 +1131,14 @@ async function seedNotifications(tenant, superAdmin, tenantAdmin, students) {
     {
       recipient_type: "super_admin",
       recipient_admin_id: superAdmin._id,
-      type: "tenant.subscription.updated",
-      title: "Tenant billing cycle renewed",
-      message: `${tenant.name} is active on the ${tenant.plan_code} plan.`,
-      link: "/super-admin/billing",
+      type: "tenant.application.reviewed",
+      title: "Tenant onboarding status updated",
+      message: `${tenant.name} is active and fully provisioned.`,
+      link: "/super-admin/tenants",
       priority: "medium",
       metadata: {
         tenant_id: tenant._id,
         tenant_slug: tenant.slug,
-        plan_code: tenant.plan_code,
       },
       created_by_type: "system",
       is_read: false,
@@ -1262,7 +1149,8 @@ async function seedNotifications(tenant, superAdmin, tenantAdmin, students) {
       recipient_student_id: student._id,
       type: "support.ticket.reply.agent",
       title: "New support reply: Face verification help",
-      message: "Support has replied with steps to complete your facial verification.",
+      message:
+        "Support has replied with steps to complete your facial verification.",
       link: "/students/support",
       priority: "high",
       metadata: {
@@ -1278,7 +1166,8 @@ async function seedNotifications(tenant, superAdmin, tenantAdmin, students) {
       recipient_student_id: secondStudent?._id || student._id,
       type: "session.results.available",
       title: "New result available",
-      message: "Final results are now available for the College of Computing Senatorial Election.",
+      message:
+        "Final results are now available for the College of Computing Senatorial Election.",
       link: "/students/results",
       priority: "medium",
       metadata: {
@@ -1355,7 +1244,12 @@ async function seedTestimonials(tenant) {
   console.log("✅ Seeded testimonials");
 }
 
-async function seedAnnouncements(primaryTenant, secondaryTenant, superAdmin, tenantAdmin) {
+async function seedAnnouncements(
+  primaryTenant,
+  secondaryTenant,
+  superAdmin,
+  tenantAdmin,
+) {
   console.log("\n📣 Creating sample announcements...");
 
   await Announcement.insertMany([
@@ -1417,12 +1311,19 @@ async function seed() {
     await connectDB();
     await clearDatabase();
 
-    const { superAdmin, tenantAdmin, secondaryTenantAdmin } = await createPlatformAccounts();
+    const {
+      superAdmin,
+      tenantAdmin,
+      secondaryTenantAdmin,
+      primaryTenantOpsAdmin,
+      secondaryTenantSupportAdmin,
+    } = await createPlatformAccounts();
     await seedPlatformDefaults();
-    await seedCoupons();
     const { primaryTenant, secondaryTenant } = await createActiveDemoTenants(
       tenantAdmin._id,
       secondaryTenantAdmin._id,
+      primaryTenantOpsAdmin._id,
+      secondaryTenantSupportAdmin._id,
     );
     await createPipelineTenants();
     await seedLinkedWorkspaces(
@@ -1431,10 +1332,15 @@ async function seed() {
       primaryTenant,
       secondaryTenant,
     );
-    const primaryColleges = await seedTenantColleges(primaryTenant, tenantAdmin._id);
-    const primaryStudents = await seedTenantStudents(primaryTenant, primaryColleges);
+    const primaryColleges = await seedTenantColleges(
+      primaryTenant,
+      tenantAdmin._id,
+    );
+    const primaryStudents = await seedTenantStudents(
+      primaryTenant,
+      primaryColleges,
+    );
     await seedTenantSessions(primaryTenant, tenantAdmin._id);
-    await seedTenantBilling(primaryTenant, superAdmin._id);
     await seedNotifications(
       primaryTenant,
       superAdmin,
@@ -1452,31 +1358,47 @@ async function seed() {
       secondaryColleges,
     );
     await seedTenantSessions(secondaryTenant, secondaryTenantAdmin._id);
-    await seedTenantBilling(secondaryTenant, superAdmin._id);
     await seedNotifications(
       secondaryTenant,
       superAdmin,
       secondaryTenantAdmin,
       secondaryStudents,
     );
-    await seedAnnouncements(primaryTenant, secondaryTenant, superAdmin, tenantAdmin);
+    await seedAnnouncements(
+      primaryTenant,
+      secondaryTenant,
+      superAdmin,
+      tenantAdmin,
+    );
 
     console.log("\n" + "=".repeat(60));
     console.log("✅ Seed completed successfully!\n");
     console.log("Credentials:");
     console.log(`   - Super Admin: ${SUPER_ADMIN_EMAIL} / ${DEFAULT_PASSWORD}`);
-    console.log(`   - Tenant Owner: ${TENANT_ADMIN_EMAIL} / ${DEFAULT_PASSWORD}`);
-    console.log(`   - Tenant Owner: ${SECONDARY_TENANT_ADMIN_EMAIL} / ${DEFAULT_PASSWORD}`);
-    console.log(`\nApproved tenants:`);
     console.log(
-      `   - ${primaryTenant.name} (${primaryTenant.slug}) • owner ${TENANT_ADMIN_EMAIL} • ${primaryColleges.length} colleges • ${primaryStudents.length} students • ${primaryTenant.plan_code}`,
+      `   - Tenant Owner: ${TENANT_ADMIN_EMAIL} / ${DEFAULT_PASSWORD}`,
     );
     console.log(
-      `   - ${secondaryTenant.name} (${secondaryTenant.slug}) • owner ${SECONDARY_TENANT_ADMIN_EMAIL} • ${secondaryColleges.length} colleges • ${secondaryStudents.length} students • ${secondaryTenant.plan_code}`,
+      `   - Tenant Owner: ${SECONDARY_TENANT_ADMIN_EMAIL} / ${DEFAULT_PASSWORD}`,
+    );
+    console.log(
+      `   - Tenant Admin: ${PRIMARY_TENANT_OPS_ADMIN_EMAIL} / ${DEFAULT_PASSWORD}`,
+    );
+    console.log(
+      `   - Tenant Admin: ${SECONDARY_TENANT_SUPPORT_ADMIN_EMAIL} / ${DEFAULT_PASSWORD}`,
+    );
+    console.log(`\nApproved tenants:`);
+    console.log(
+      `   - ${primaryTenant.name} (${primaryTenant.slug}) • owner ${TENANT_ADMIN_EMAIL} • ${primaryColleges.length} colleges • ${primaryStudents.length} students • active`,
+    );
+    console.log(
+      `   - ${secondaryTenant.name} (${secondaryTenant.slug}) • owner ${SECONDARY_TENANT_ADMIN_EMAIL} • ${secondaryColleges.length} colleges • ${secondaryStudents.length} students • active`,
     );
     console.log("\nNotes:");
     console.log("   - The seed script is destructive and drops the database.");
-    console.log("   - Students are active and do not require first-login password setup.");
+    console.log(
+      "   - Students are active and do not require first-login password setup.",
+    );
     console.log(
       `   - Set DEFAULT_TENANT_SLUG=${TENANT_SLUG} locally for quick tenant admin testing.`,
     );

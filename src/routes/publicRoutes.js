@@ -70,7 +70,11 @@ router.get("/organizations", apiLimiter, publicController.listOrganizations);
  *       404:
  *         description: Organization not found
  */
-router.get("/organizations/:slug", apiLimiter, publicController.getOrganizationBySlug);
+router.get(
+  "/organizations/:slug",
+  apiLimiter,
+  publicController.getOrganizationBySlug,
+);
 
 /**
  * @swagger
@@ -89,7 +93,9 @@ router.post(
   [
     body("author_name").notEmpty().withMessage("Author name is required"),
     body("author_role").notEmpty().withMessage("Author role is required"),
-    body("institution_name").notEmpty().withMessage("Institution name is required"),
+    body("institution_name")
+      .notEmpty()
+      .withMessage("Institution name is required"),
     body("quote")
       .isLength({ min: 20, max: 600 })
       .withMessage("Quote must be between 20 and 600 characters"),
@@ -126,9 +132,6 @@ router.post(
  *                 type: string
  *               primary_domain:
  *                 type: string
- *               plan_code:
- *                 type: string
- *                 enum: [pro, pro_plus, enterprise]
  *               contact_name:
  *                 type: string
  *               contact_email:
@@ -155,16 +158,16 @@ router.post(
   "/applications",
   apiLimiter,
   [
-    body("institution_name").notEmpty().withMessage("Institution name is required"),
+    body("institution_name")
+      .notEmpty()
+      .withMessage("Institution name is required"),
     body("slug")
       .matches(/^[a-z0-9-]+$/)
-      .withMessage("Tenant slug must contain only lowercase letters, numbers, and hyphens"),
+      .withMessage(
+        "Tenant slug must contain only lowercase letters, numbers, and hyphens",
+      ),
     body("contact_name").notEmpty().withMessage("Contact name is required"),
     body("contact_email").isEmail().withMessage("Contact email must be valid"),
-    body("plan_code")
-      .optional()
-      .isIn(["pro", "pro_plus", "enterprise"])
-      .withMessage("Valid plan code is required"),
     body("institution_type")
       .optional()
       .isIn(["university", "college", "polytechnic", "faculty", "organization"])
@@ -177,7 +180,6 @@ router.post(
       .optional({ nullable: true, checkFalsy: true })
       .isInt({ min: 0 })
       .withMessage("Admin estimate must be zero or greater"),
-    body("coupon_code").optional().isString().withMessage("Coupon code must be text"),
     body("demo_requested")
       .optional()
       .isBoolean()
@@ -187,29 +189,18 @@ router.post(
   publicController.submitTenantApplication,
 );
 
-router.post(
-  "/tenant-applications",
-  apiLimiter,
-  [
-    body("institution_name").notEmpty().withMessage("Institution name is required"),
-    body("slug")
-      .matches(/^[a-z0-9-]+$/)
-      .withMessage("Tenant slug must contain only lowercase letters, numbers, and hyphens"),
-    body("contact_name").notEmpty().withMessage("Contact name is required"),
-    body("contact_email").isEmail().withMessage("Contact email must be valid"),
-    validate,
-  ],
-  publicController.submitTenantApplication,
-);
-
 router.patch(
   "/applications/:reference",
   apiLimiter,
   [
-    body("institution_name").notEmpty().withMessage("Institution name is required"),
+    body("institution_name")
+      .notEmpty()
+      .withMessage("Institution name is required"),
     body("slug")
       .matches(/^[a-z0-9-]+$/)
-      .withMessage("Tenant slug must contain only lowercase letters, numbers, and hyphens"),
+      .withMessage(
+        "Tenant slug must contain only lowercase letters, numbers, and hyphens",
+      ),
     body("contact_name").notEmpty().withMessage("Contact name is required"),
     body("contact_email").isEmail().withMessage("Contact email must be valid"),
     validate,
@@ -217,13 +208,10 @@ router.patch(
   publicController.updateTenantApplication,
 );
 
-router.get("/applications/status", apiLimiter, publicController.getTenantApplicationStatus);
-router.post(
-  "/applications/:reference/checkout",
+router.get(
+  "/applications/status",
   apiLimiter,
-  publicController.retryTenantApplicationCheckout,
+  publicController.getTenantApplicationStatus,
 );
-router.get("/coupons/:code/validate", apiLimiter, publicController.validateCoupon);
-router.post("/checkout/resolve", apiLimiter, publicController.resolveCheckout);
 
 module.exports = router;

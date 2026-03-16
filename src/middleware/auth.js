@@ -1,7 +1,10 @@
 const jwt = require("jsonwebtoken");
 const Student = require("../models/Student");
 const Admin = require("../models/Admin");
-const { getActiveAdminMembership, hasPermission } = require("../services/tenantAccessService");
+const {
+  getActiveAdminMembership,
+  hasPermission,
+} = require("../services/tenantAccessService");
 const cacheService = require("../services/cacheService");
 
 function toId(value) {
@@ -16,6 +19,25 @@ function isTenantMismatch(requestTenantId, tokenTenantId) {
 
 function isLegacySingleTenantModeEnabled() {
   return process.env.ALLOW_LEGACY_SINGLE_TENANT !== "false";
+}
+
+async function resolveActiveAdminFromToken(decoded) {
+  if (!decoded?.id) {
+    return null;
+  }
+
+  let admin = await Admin.findById(decoded.id);
+
+  // Support tokens minted before admin records were recreated/migrated.
+  if (!admin && decoded.email) {
+    admin = await Admin.findOne({ email: String(decoded.email).toLowerCase() });
+  }
+
+  if (!admin || !admin.is_active) {
+    return null;
+  }
+
+  return admin;
 }
 
 /**
@@ -71,7 +93,7 @@ const authenticateStudent = async (req, res, next) => {
 
         // Use cached student profile for faster auth
         const cachedProfile = await cacheService.get(
-          `student:profile:${decoded.id}`
+          `student:profile:${decoded.id}`,
         );
         if (cachedProfile) {
           if (!cachedProfile.is_active) {
@@ -122,7 +144,7 @@ const authenticateStudent = async (req, res, next) => {
           studentId: student._id.toString(),
           loginAt: student.last_login_at,
         },
-        86400 // 24 hours TTL
+        86400, // 24 hours TTL
       );
 
       await cacheService.set(
@@ -141,7 +163,7 @@ const authenticateStudent = async (req, res, next) => {
           is_active: student.is_active,
           active_token: student.active_token,
         },
-        900 // 15 minutes TTL
+        900, // 15 minutes TTL
       );
 
       // Attach student to request
@@ -186,8 +208,8 @@ const authenticateAdmin = async (req, res, next) => {
         return res.status(403).json({ error: "Invalid token type" });
       }
 
-      // Find admin
-      const admin = await Admin.findById(decoded.id);
+      // Find admin by token id and fallback to email for stale token ids.
+      const admin = await resolveActiveAdminFromToken(decoded);
 
       if (!admin || !admin.is_active) {
         return res.status(401).json({ error: "Admin not found or inactive" });
@@ -217,7 +239,10 @@ const authenticateAdmin = async (req, res, next) => {
             });
           }
 
-          const membership = await getActiveAdminMembership(admin._id, tenantId);
+          const membership = await getActiveAdminMembership(
+            admin._id,
+            tenantId,
+          );
           if (!membership) {
             return res.status(403).json({
               error: "Tenant admin membership not found",
@@ -385,7 +410,7 @@ const authenticateStudentOrAdmin = async (req, res, next) => {
 
       // Check if it's an admin
       if (decoded.type === "admin") {
-        const admin = await Admin.findById(decoded.id);
+        const admin = await resolveActiveAdminFromToken(decoded);
         if (!admin || !admin.is_active) {
           return res.status(401).json({ error: "Admin not found or inactive" });
         }
@@ -406,7 +431,10 @@ const authenticateStudentOrAdmin = async (req, res, next) => {
               is_legacy: true,
             };
           } else {
-            const membership = await getActiveAdminMembership(admin._id, tenantId);
+            const membership = await getActiveAdminMembership(
+              admin._id,
+              tenantId,
+            );
             if (!membership) {
               return res.status(403).json({
                 error: "Tenant admin membership not found",

@@ -18,7 +18,9 @@ class EmailService {
     this.fromEmail = process.env.EMAIL_FROM_EMAIL || "noreply@univote.com";
     this.defaultLogoUrl = process.env.EMAIL_LOGO_URL || null;
     this.defaultSupportEmail =
-      process.env.EMAIL_SUPPORT_EMAIL || this.fromEmail || "support@univote.com";
+      process.env.EMAIL_SUPPORT_EMAIL ||
+      this.fromEmail ||
+      "support@univote.com";
 
     console.log("📧 Brevo Email Service initialized");
   }
@@ -89,7 +91,10 @@ class EmailService {
           student.full_name,
         )}, your account has been activated successfully.</p>`,
         this.renderKeyValueRows([
-          { label: "Identifier", value: identifier || "Available on sign in page" },
+          {
+            label: "Identifier",
+            value: identifier || "Available on sign in page",
+          },
           { label: "Email", value: student.email || "Not provided" },
           { label: "Activated", value: formatDateTime(Date.now()) },
         ]),
@@ -124,7 +129,8 @@ class EmailService {
     const html = this.renderMessageCard({
       eyebrow: "Security alert",
       title: "New device sign-in detected",
-      intro: "We noticed a sign-in from a device that does not match your recent activity.",
+      intro:
+        "We noticed a sign-in from a device that does not match your recent activity.",
       tenant,
       sections: [
         this.renderKeyValueRows([
@@ -150,7 +156,8 @@ class EmailService {
     const html = this.renderMessageCard({
       eyebrow: "Vote recorded",
       title: `Vote confirmed for ${session.title}`,
-      intro: "This is your transaction receipt for the ballot that was just accepted.",
+      intro:
+        "This is your transaction receipt for the ballot that was just accepted.",
       tenant,
       sections: [
         this.renderKeyValueRows([
@@ -184,7 +191,8 @@ class EmailService {
     const html = this.renderMessageCard({
       eyebrow: "Results published",
       title: `Results are live for ${session.title}`,
-      intro: "The session has been completed and the official outcome is now available.",
+      intro:
+        "The session has been completed and the official outcome is now available.",
       tenant,
       ctaLabel: resultsUrl ? "View results" : null,
       ctaLink: resultsUrl || null,
@@ -195,7 +203,11 @@ class EmailService {
           { label: "Accepted votes", value: String(totalVotes) },
         ]),
         ...(winners.length
-          ? [this.renderList(winners.map((winner) => `${winner.position}: ${winner.name}`))]
+          ? [
+              this.renderList(
+                winners.map((winner) => `${winner.position}: ${winner.name}`),
+              ),
+            ]
           : []),
       ],
     });
@@ -213,7 +225,8 @@ class EmailService {
     const html = this.renderMessageCard({
       eyebrow: "Password reset",
       title: "Use this code to reset your password",
-      intro: "We received a password reset request for your participant account.",
+      intro:
+        "We received a password reset request for your participant account.",
       tenant,
       sections: [
         `<div style="border-radius:18px;background:#eff6ff;color:#1d4ed8;padding:18px;text-align:center;font-size:28px;font-weight:700;letter-spacing:0.18em;">${escapeHtml(
@@ -236,7 +249,8 @@ class EmailService {
     const html = this.renderMessageCard({
       eyebrow: "Admin security",
       title: "Use this code to reset your admin password",
-      intro: "We received a password reset request for an administrator account.",
+      intro:
+        "We received a password reset request for an administrator account.",
       tenant,
       sections: [
         `<div style="border-radius:18px;background:#fff7ed;color:#c2410c;padding:18px;text-align:center;font-size:28px;font-weight:700;letter-spacing:0.18em;">${escapeHtml(
@@ -268,7 +282,9 @@ class EmailService {
     const html = this.renderMessageCard({
       eyebrow: `${roleLabel || "System"} announcement`,
       title,
-      intro: recipientName ? `Hello ${recipientName}, there is a new announcement for you.` : null,
+      intro: recipientName
+        ? `Hello ${recipientName}, there is a new announcement for you.`
+        : null,
       tenant,
       ctaLabel,
       ctaLink,
@@ -299,7 +315,9 @@ class EmailService {
   }) {
     const html = this.renderMessageCard({
       eyebrow: platformScope ? "Platform access" : "Workspace invitation",
-      title: platformScope ? "You were added as a platform admin" : "You were invited as a tenant admin",
+      title: platformScope
+        ? "You were added as a platform admin"
+        : "You were invited as a tenant admin",
       intro: `An administrator account has been created for ${escapeHtml(fullName)}.`,
       tenant,
       ctaLabel: signInUrl ? "Open sign in" : null,
@@ -308,15 +326,21 @@ class EmailService {
         this.renderKeyValueRows([
           { label: "Role", value: roleLabel || "Admin" },
           { label: "Email", value: to },
-          { label: "Temporary password", value: password || "Provided separately" },
+          {
+            label: "Temporary password",
+            value: password || "Provided separately",
+          },
         ]),
       ],
-      footnote: "For security, sign in and rotate this password as soon as possible.",
+      footnote:
+        "For security, sign in and rotate this password as soon as possible.",
     });
 
     return this.dispatch({
       to,
-      subject: platformScope ? "Platform admin invitation" : "Tenant admin invitation",
+      subject: platformScope
+        ? "Platform admin invitation"
+        : "Tenant admin invitation",
       html,
       tenant,
       critical: true,
@@ -327,36 +351,35 @@ class EmailService {
     to,
     contactName,
     tenantName,
-    planCode,
-    checkoutUrl,
     applicationReference = null,
     recipientType = "contact",
   }) {
     const isPlatformRecipient = recipientType === "platform_admin";
     const html = this.renderMessageCard({
-      eyebrow: isPlatformRecipient ? "Onboarding queue" : "Application received",
+      eyebrow: isPlatformRecipient
+        ? "Onboarding queue"
+        : "Application received",
       title: isPlatformRecipient
         ? "A new organisation application is ready for review"
         : "Your organisation setup has started",
       intro: isPlatformRecipient
         ? `Hello ${escapeHtml(contactName || "team")}, ${tenantName} has entered the onboarding pipeline.`
         : `${tenantName} has been captured and entered into the onboarding pipeline.`,
-      ctaLabel: checkoutUrl ? (isPlatformRecipient ? "Review payment link" : "Continue payment") : null,
-      ctaLink: checkoutUrl || null,
+      ctaLabel: null,
+      ctaLink: null,
       sections: [
         this.renderKeyValueRows([
           { label: "Organisation", value: tenantName },
-          { label: "Plan", value: planCode },
           ...(applicationReference
             ? [{ label: "Reference", value: applicationReference }]
             : []),
           { label: "Submitted", value: formatDateTime(Date.now()) },
         ]),
         isPlatformRecipient
-          ? `<p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#475569;">The platform team should monitor payment confirmation, validate onboarding details, and continue provisioning after review.</p>`
+          ? `<p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#475569;">The platform team should validate onboarding details and continue provisioning after review.</p>`
           : `<p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#475569;">Hello ${escapeHtml(
               contactName || "there",
-            )}, payment and review updates will be sent here as your workspace moves through approval.</p>`,
+            )}, review updates will be sent here as your workspace moves through approval.</p>`,
       ],
     });
 
@@ -367,44 +390,6 @@ class EmailService {
         : "Organisation application submitted",
       html,
       critical: isPlatformRecipient,
-    });
-  }
-
-  async sendTenantApplicationPaymentRequired({
-    to,
-    contactName,
-    tenantName,
-    planCode,
-    checkoutUrl = null,
-    applicationReference = null,
-    amountLabel = null,
-  }) {
-    const html = this.renderMessageCard({
-      eyebrow: "Payment required",
-      title: "Complete payment to continue onboarding",
-      intro: `Hello ${escapeHtml(
-        contactName || "there",
-      )}, your organisation application has been captured and is waiting for billing confirmation.`,
-      ctaLabel: checkoutUrl ? "Continue payment" : null,
-      ctaLink: checkoutUrl || null,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Organisation", value: tenantName },
-          { label: "Plan", value: planCode },
-          ...(applicationReference
-            ? [{ label: "Reference", value: applicationReference }]
-            : []),
-          ...(amountLabel ? [{ label: "Payable", value: amountLabel }] : []),
-        ]),
-        `<p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#475569;">Once payment is confirmed, the application moves into platform review automatically.</p>`,
-      ],
-    });
-
-    return this.dispatch({
-      to,
-      subject: "Complete payment to continue onboarding",
-      html,
-      critical: false,
     });
   }
 
@@ -598,14 +583,22 @@ class EmailService {
     const html = this.renderMessageCard({
       eyebrow: "Billing",
       title: "A new invoice is ready",
-      intro: recipientName ? `Hello ${recipientName}, a billing event requires your attention.` : null,
+      intro: recipientName
+        ? `Hello ${recipientName}, a billing event requires your attention.`
+        : null,
       tenant,
       ctaLabel: checkoutUrl ? "Open checkout" : null,
       ctaLink: checkoutUrl || null,
       sections: [
         this.renderKeyValueRows([
-          { label: "Invoice", value: invoice.invoice_number || "Pending reference" },
-          { label: "Plan", value: planName || invoice.plan_code || "Current plan" },
+          {
+            label: "Invoice",
+            value: invoice.invoice_number || "Pending reference",
+          },
+          {
+            label: "Plan",
+            value: planName || invoice.plan_code || "Current plan",
+          },
           { label: "Amount", value: String(invoice.amount_ngn || 0) + " NGN" },
           { label: "Status", value: invoice.status || "pending" },
         ]),
@@ -631,7 +624,9 @@ class EmailService {
     const html = this.renderMessageCard({
       eyebrow: "Subscription update",
       title,
-      intro: recipientName ? `Hello ${recipientName}, your billing plan has changed.` : null,
+      intro: recipientName
+        ? `Hello ${recipientName}, your billing plan has changed.`
+        : null,
       tenant,
       sections: [
         `<p style="margin:0;font-size:14px;line-height:1.8;color:#334155;">${escapeHtml(
@@ -663,7 +658,9 @@ class EmailService {
     const html = this.renderMessageCard({
       eyebrow: "Support update",
       title: headline,
-      intro: recipientName ? `Hello ${recipientName}, there is a new support activity update.` : null,
+      intro: recipientName
+        ? `Hello ${recipientName}, there is a new support activity update.`
+        : null,
       tenant,
       ctaLabel,
       ctaLink,
@@ -693,7 +690,9 @@ class EmailService {
     const html = this.renderMessageCard({
       eyebrow: "Biometric provider alert",
       title: `${providerName} needs attention`,
-      intro: recipientName ? `Hello ${recipientName}, a platform biometric provider requires review.` : null,
+      intro: recipientName
+        ? `Hello ${recipientName}, a platform biometric provider requires review.`
+        : null,
       ctaLabel: ctaLink ? "Open platform settings" : null,
       ctaLink: ctaLink || null,
       sections: [
@@ -733,6 +732,51 @@ class EmailService {
     return this.dispatch({
       to,
       subject: "Transactional email test",
+      html,
+      tenant,
+      critical: true,
+    });
+  }
+
+  async sendAdminWelcome({
+    to,
+    fullName,
+    temporaryPassword,
+    loginUrl = null,
+    tenant = null,
+    roleLabel = "Admin",
+    platformScope = false,
+  }) {
+    const html = this.renderMessageCard({
+      eyebrow: platformScope ? "Platform access" : "Account created",
+      title: platformScope
+        ? "Welcome to the Univote platform"
+        : "Your admin account is ready",
+      intro: `Hello ${escapeHtml(
+        fullName,
+      )}, your administrator account has been created. You can sign in immediately using your temporary credentials below.`,
+      tenant,
+      ctaLabel: loginUrl ? "Sign in now" : null,
+      ctaLink: loginUrl || null,
+      sections: [
+        this.renderKeyValueRows([
+          { label: "Email", value: to },
+          { label: "Temporary password", value: temporaryPassword },
+          { label: "Role", value: roleLabel },
+        ]),
+        `<div style="border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;color:#92400e;padding:12px;font-size:13px;line-height:1.6;">
+          <strong>⚠️ Important:</strong> For security, you must change this temporary password immediately after signing in. You will be prompted to set a new password on your first login.
+        </div>`,
+      ],
+      footnote:
+        "If you did not expect this account, or have questions, contact your organization administrator.",
+    });
+
+    return this.dispatch({
+      to,
+      subject: platformScope
+        ? "Welcome to Univote platform"
+        : "Your Univote admin account is ready",
       html,
       tenant,
       critical: true,
