@@ -17,7 +17,7 @@ const auditLogger = require("../middleware/auditLogger");
  * /auth/login:
  *   post:
  *     summary: Student login
- *     description: Authenticate a tenant participant with the tenant-configured primary identifier and password. Returns JWT token. Handles first-login password change flow and new-device detection.
+ *     description: Authenticate a tenant participant with email and password. Returns JWT token. Handles first-login password change flow and new-device detection.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -25,11 +25,12 @@ const auditLogger = require("../middleware/auditLogger");
  *         application/json:
  *           schema:
  *             type: object
- *             required: [identifier, password]
+ *             required: [email, password]
  *             properties:
- *               identifier:
+ *               email:
  *                 type: string
- *                 example: BU22CSC1005
+ *                 format: email
+ *                 example: student@organization.org
  *               password:
  *                 type: string
  *                 example: "1234"
@@ -74,7 +75,7 @@ router.post(
   "/login",
   authLimiter,
   [
-    body("identifier").notEmpty().withMessage("Identifier is required"),
+    body("email").isEmail().withMessage("Valid email is required"),
     body("password").notEmpty().withMessage("Password is required"),
     validate,
   ],
@@ -163,7 +164,10 @@ router.post(
 router.post(
   "/switch-tenant",
   authenticateAdmin,
-  [body("tenant_slug").notEmpty().withMessage("tenant_slug is required"), validate],
+  [
+    body("tenant_slug").notEmpty().withMessage("tenant_slug is required"),
+    validate,
+  ],
   auditLogger("switch_tenant", "auth"),
   authController.switchTenant,
 );
@@ -184,7 +188,10 @@ router.post(
 router.post(
   "/unlink-organization",
   authenticateAdmin,
-  [body("tenant_slug").notEmpty().withMessage("tenant_slug is required"), validate],
+  [
+    body("tenant_slug").notEmpty().withMessage("tenant_slug is required"),
+    validate,
+  ],
   auditLogger("unlink_organization", "auth"),
   authController.unlinkOrganization,
 );
@@ -396,7 +403,7 @@ router.patch(
  * /auth/forgot-password:
  *   post:
  *     summary: Request student password reset
- *     description: Sends a 6-digit reset code to the student's email. Accepts either email or matric number and always returns success to prevent account enumeration.
+ *     description: Sends a 6-digit reset code to the student's email. Accepts email and always returns success to prevent account enumeration.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -404,11 +411,11 @@ router.patch(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [identifier]
+ *             required: [email]
  *             properties:
- *               identifier:
+ *               email:
  *                 type: string
- *                 description: Student email or matric number
+ *                 format: email
  *     responses:
  *       200:
  *         description: Reset code sent (if account exists)
@@ -416,12 +423,7 @@ router.patch(
 router.post(
   "/forgot-password",
   authLimiter,
-  [
-    body("identifier")
-      .notEmpty()
-      .withMessage("Email or matric number is required"),
-    validate,
-  ],
+  [body("email").isEmail().withMessage("Valid email is required"), validate],
   auditLogger("student_forgot_password", "auth"),
   authController.forgotPassword,
 );
@@ -431,7 +433,7 @@ router.post(
  * /auth/reset-password:
  *   post:
  *     summary: Reset student password with code
- *     description: Reset a student's password using the 6-digit code received by email. Accepts email or matric number as the identifier.
+ *     description: Reset a student's password using the 6-digit code received by email.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -439,11 +441,11 @@ router.post(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [identifier, reset_code, new_password]
+ *             required: [email, reset_code, new_password]
  *             properties:
- *               identifier:
+ *               email:
  *                 type: string
- *                 description: Student email or matric number
+ *                 format: email
  *               reset_code:
  *                 type: string
  *                 minLength: 6
@@ -461,9 +463,7 @@ router.post(
   "/reset-password",
   authLimiter,
   [
-    body("identifier")
-      .notEmpty()
-      .withMessage("Email or matric number is required"),
+    body("email").isEmail().withMessage("Valid email is required"),
     body("reset_code")
       .isLength({ min: 6, max: 6 })
       .withMessage("Reset code must be 6 digits"),

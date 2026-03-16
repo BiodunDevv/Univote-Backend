@@ -92,8 +92,10 @@ function isLegacySingleTenantModeEnabled() {
   return process.env.ALLOW_LEGACY_SINGLE_TENANT !== "false";
 }
 
-function normalizeStudentLookupIdentifier(identifier) {
-  return String(identifier || "").trim();
+function normalizeStudentEmailInput(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function buildScopedStudentLookup(req, identifierKey, identifierValue) {
@@ -106,11 +108,6 @@ function buildScopedStudentLookup(req, identifierKey, identifierValue) {
     ...(req.tenantId ? { tenant_id: req.tenantId } : {}),
     ...lookup,
   };
-}
-
-function buildRecoveryFilters(req, tenant) {
-  const settings = getTenantSettings(tenant);
-  return settings.identity.recovery_identifiers;
 }
 
 function normalizeTenantLookupSlug(slug) {
@@ -128,12 +125,12 @@ async function resolveTenantChoices(memberships = []) {
     _id: { $in: tenantIds },
     is_active: true,
   })
-    .select(
-      "_id name slug status plan_code subscription_status primary_domain",
-    )
+    .select("_id name slug status plan_code subscription_status primary_domain")
     .lean();
 
-  const tenantMap = new Map(tenants.map((tenant) => [String(tenant._id), tenant]));
+  const tenantMap = new Map(
+    tenants.map((tenant) => [String(tenant._id), tenant]),
+  );
 
   return memberships
     .map((membership) => {
@@ -167,11 +164,11 @@ async function resolveLinkedTenantChoices(sourceAdminId) {
     _id: { $in: tenantIds },
     is_active: true,
   })
-    .select(
-      "_id name slug status plan_code subscription_status primary_domain",
-    )
+    .select("_id name slug status plan_code subscription_status primary_domain")
     .lean();
-  const tenantMap = new Map(tenants.map((tenant) => [String(tenant._id), tenant]));
+  const tenantMap = new Map(
+    tenants.map((tenant) => [String(tenant._id), tenant]),
+  );
 
   return links
     .map((link) => {
@@ -269,7 +266,8 @@ class AuthController {
    */
   async login(req, res) {
     try {
-      const { identifier, password, device_id } = req.body;
+      const { password, device_id } = req.body;
+      const email = normalizeStudentEmailInput(req.body.email);
 
       if (req.tenantSlug && !req.tenant) {
         return res.status(404).json({
@@ -278,18 +276,12 @@ class AuthController {
         });
       }
 
-      const tenantIdentity = getTenantIdentityMetadata(req.tenant);
-      const participantLabels = getParticipantLabelSet(req.tenant);
-      const lookupFilter = buildScopedStudentLookup(
-        req,
-        tenantIdentity.primary_identifier,
-        identifier,
-      );
+      const lookupFilter = buildScopedStudentLookup(req, "email", email);
 
       if (!lookupFilter) {
         return res.status(400).json({
-          error: `${tenantIdentity.login.label} is required`,
-          code: "IDENTIFIER_REQUIRED",
+          error: "Email address is required",
+          code: "EMAIL_REQUIRED",
         });
       }
 
@@ -309,7 +301,7 @@ class AuthController {
       // Verify password
       const isPasswordValid = await bcrypt.compare(
         password,
-        student.password_hash
+        student.password_hash,
       );
 
       if (!isPasswordValid) {
@@ -326,7 +318,7 @@ class AuthController {
         await cacheService.set(
           `blacklist:${student.active_token}`,
           true,
-          86400 // 24 hours
+          86400, // 24 hours
         );
       }
 
@@ -349,7 +341,7 @@ class AuthController {
           deviceInfo,
           loginAt: new Date().toISOString(),
         },
-        86400 // 24 hours TTL
+        86400, // 24 hours TTL
       );
 
       // Cache student profile for faster auth
@@ -370,14 +362,16 @@ class AuthController {
           is_active: student.is_active,
           active_token: student.active_token,
         },
-        900 // 15 minutes TTL
+        900, // 15 minutes TTL
       );
 
       // Send new device alert if device changed
       if (isNewDevice) {
-        emailService.sendNewDeviceAlert(student, deviceInfo, req.tenant || null).catch((err) => {
-          console.error("Failed to send device alert:", err);
-        });
+        emailService
+          .sendNewDeviceAlert(student, deviceInfo, req.tenant || null)
+          .catch((err) => {
+            console.error("Failed to send device alert:", err);
+          });
       }
 
       res.json({
@@ -420,7 +414,7 @@ class AuthController {
       // Verify password
       const isPasswordValid = await bcrypt.compare(
         password,
-        admin.password_hash
+        admin.password_hash,
       );
 
       if (!isPasswordValid) {
@@ -447,7 +441,9 @@ class AuthController {
             }
             organizations = await resolveAccessibleOrganizations(admin._id);
           } else if (memberships.length > 1) {
-            const tenantChoices = await resolveAccessibleOrganizations(admin._id);
+            const tenantChoices = await resolveAccessibleOrganizations(
+              admin._id,
+            );
             return res.status(409).json({
               error: "Multiple tenant memberships found for this account",
               code: "TENANT_SELECTION_REQUIRED",
@@ -535,7 +531,7 @@ class AuthController {
 
         const isOldPasswordValid = await bcrypt.compare(
           old_password,
-          student.password_hash
+          student.password_hash,
         );
         if (!isOldPasswordValid) {
           return res.status(401).json({ error: "Invalid old password" });
@@ -544,7 +540,7 @@ class AuthController {
 
       // Hash new password
       const salt = await bcrypt.genSalt(
-        parseInt(process.env.BCRYPT_ROUNDS || 10)
+        parseInt(process.env.BCRYPT_ROUNDS || 10),
       );
       const hashedPassword = await bcrypt.hash(new_password, salt);
 
@@ -564,9 +560,11 @@ class AuthController {
 
       // Send welcome email after first password change
       if (isFirstLogin) {
-        emailService.sendWelcomeEmail(student, req.tenant || null).catch((err) => {
-          console.error("Failed to send welcome email:", err);
-        });
+        emailService
+          .sendWelcomeEmail(student, req.tenant || null)
+          .catch((err) => {
+            console.error("Failed to send welcome email:", err);
+          });
       }
 
       res.json({
@@ -595,7 +593,7 @@ class AuthController {
           await cacheService.set(
             `blacklist:${req.token}`,
             true,
-            86400 // 24 hours
+            86400, // 24 hours
           );
         }
 
@@ -623,7 +621,7 @@ class AuthController {
   async getProfile(req, res) {
     try {
       const student = await Student.findById(req.studentId).select(
-        "-password_hash -active_token -face_token -embedding_vector"
+        "-password_hash -active_token -face_token -embedding_vector",
       );
 
       if (!student) {
@@ -796,7 +794,7 @@ class AuthController {
       // Verify old password
       const isOldPasswordValid = await bcrypt.compare(
         old_password,
-        user.password_hash
+        user.password_hash,
       );
 
       if (!isOldPasswordValid) {
@@ -808,7 +806,7 @@ class AuthController {
       // Check if new password is same as old password
       const isSamePassword = await bcrypt.compare(
         new_password,
-        user.password_hash
+        user.password_hash,
       );
 
       if (isSamePassword) {
@@ -819,7 +817,7 @@ class AuthController {
 
       // Hash new password
       const salt = await bcrypt.genSalt(
-        parseInt(process.env.BCRYPT_ROUNDS || 10)
+        parseInt(process.env.BCRYPT_ROUNDS || 10),
       );
       const hashedPassword = await bcrypt.hash(new_password, salt);
 
@@ -843,7 +841,7 @@ class AuthController {
    */
   async forgotPassword(req, res) {
     try {
-      const identifier = normalizeStudentLookupIdentifier(req.body.identifier);
+      const email = normalizeStudentEmailInput(req.body.email);
 
       if (req.tenantSlug && !req.tenant) {
         return res.status(404).json({
@@ -852,19 +850,12 @@ class AuthController {
         });
       }
 
-      const tenantIdentity = getTenantIdentityMetadata(req.tenant);
       const participantLabels = getParticipantLabelSet(req.tenant);
-      const recoveryFilters = buildRecoveryFilters(req, req.tenant)
-        .map((identifierKey) =>
-          buildScopedStudentLookup(req, identifierKey, identifier),
-        )
-        .filter(Boolean);
+      const lookupFilter = buildScopedStudentLookup(req, "email", email);
 
-      const student = recoveryFilters.length
-        ? await Student.findOne({ $or: recoveryFilters })
-        : null;
+      const student = lookupFilter ? await Student.findOne(lookupFilter) : null;
 
-      const successMessage = `If a ${participantLabels.lowerSingular} account exists for that ${tenantIdentity.recovery[0]?.label?.toLowerCase() || "recovery identifier"}, a reset code has been sent.`;
+      const successMessage = `If a ${participantLabels.lowerSingular} account exists for that email address, a reset code has been sent.`;
 
       // Always return success to avoid account enumeration.
       if (!student || !student.is_active) {
@@ -881,7 +872,11 @@ class AuthController {
       student.reset_password_expires = new Date(Date.now() + 60 * 60 * 1000);
       await student.save();
 
-      await emailService.sendPasswordReset(student, resetCode, req.tenant || null);
+      await emailService.sendPasswordReset(
+        student,
+        resetCode,
+        req.tenant || null,
+      );
 
       return res.json({
         message: successMessage,
@@ -898,7 +893,7 @@ class AuthController {
    */
   async resetPassword(req, res) {
     try {
-      const identifier = normalizeStudentLookupIdentifier(req.body.identifier);
+      const email = normalizeStudentEmailInput(req.body.email);
       const { reset_code, new_password } = req.body;
 
       if (req.tenantSlug && !req.tenant) {
@@ -908,9 +903,9 @@ class AuthController {
         });
       }
 
-      if (!identifier || !reset_code || !new_password) {
+      if (!email || !reset_code || !new_password) {
         return res.status(400).json({
-          error: "Identifier, reset code, and new password are required",
+          error: "Email, reset code, and new password are required",
         });
       }
 
@@ -920,15 +915,9 @@ class AuthController {
         });
       }
 
-      const recoveryFilters = buildRecoveryFilters(req, req.tenant)
-        .map((identifierKey) =>
-          buildScopedStudentLookup(req, identifierKey, identifier),
-        )
-        .filter(Boolean);
+      const lookupFilter = buildScopedStudentLookup(req, "email", email);
 
-      const student = recoveryFilters.length
-        ? await Student.findOne({ $or: recoveryFilters })
-        : null;
+      const student = lookupFilter ? await Student.findOne(lookupFilter) : null;
 
       if (!student || !student.is_active) {
         return res.status(400).json({
@@ -976,7 +965,11 @@ class AuthController {
       const hashedPassword = await bcrypt.hash(new_password, salt);
 
       if (student.active_token) {
-        await cacheService.set(`blacklist:${student.active_token}`, true, 86400);
+        await cacheService.set(
+          `blacklist:${student.active_token}`,
+          true,
+          86400,
+        );
       }
 
       await Promise.all([
@@ -1041,7 +1034,11 @@ class AuthController {
       await admin.save();
 
       // Send email with reset code
-      await emailService.sendAdminPasswordReset(admin, resetCode, req.tenant || null);
+      await emailService.sendAdminPasswordReset(
+        admin,
+        resetCode,
+        req.tenant || null,
+      );
 
       res.json({
         message:
@@ -1099,7 +1096,7 @@ class AuthController {
       // Verify reset code
       const isCodeValid = await bcrypt.compare(
         reset_code,
-        admin.reset_password_code
+        admin.reset_password_code,
       );
 
       if (!isCodeValid) {
@@ -1108,7 +1105,7 @@ class AuthController {
 
       // Hash new password
       const salt = await bcrypt.genSalt(
-        parseInt(process.env.BCRYPT_ROUNDS || 10)
+        parseInt(process.env.BCRYPT_ROUNDS || 10),
       );
       const hashedPassword = await bcrypt.hash(new_password, salt);
 
@@ -1165,10 +1162,16 @@ class AuthController {
       }
 
       let actingAdmin = req.admin;
-      let membership = await getActiveAdminMembership(req.admin._id, tenant._id);
+      let membership = await getActiveAdminMembership(
+        req.admin._id,
+        tenant._id,
+      );
 
       if (!membership) {
-        const linkedAccess = await resolveLinkedWorkspaceAccess(req.admin._id, tenant._id);
+        const linkedAccess = await resolveLinkedWorkspaceAccess(
+          req.admin._id,
+          tenant._id,
+        );
         if (!linkedAccess) {
           return res.status(403).json({
             error: "Tenant admin membership not found",
@@ -1212,11 +1215,15 @@ class AuthController {
       }
 
       if (req.admin.role === "super_admin") {
-        return res.status(403).json({ error: "Super admins do not link tenant workspaces" });
+        return res
+          .status(403)
+          .json({ error: "Super admins do not link tenant workspaces" });
       }
 
       const targetSlug = normalizeTenantLookupSlug(req.body.tenant_slug);
-      const email = String(req.body.email || "").trim().toLowerCase();
+      const email = String(req.body.email || "")
+        .trim()
+        .toLowerCase();
       const password = String(req.body.password || "");
       const label = req.body.label ? String(req.body.label).trim() : null;
 
@@ -1226,22 +1233,37 @@ class AuthController {
         });
       }
 
-      const tenant = await Tenant.findOne({ slug: targetSlug, is_active: true });
+      const tenant = await Tenant.findOne({
+        slug: targetSlug,
+        is_active: true,
+      });
       if (!tenant) {
-        return res.status(404).json({ error: "Tenant not found", code: "TENANT_NOT_FOUND" });
+        return res
+          .status(404)
+          .json({ error: "Tenant not found", code: "TENANT_NOT_FOUND" });
       }
 
       const targetAdmin = await Admin.findOne({ email });
       if (!targetAdmin || !targetAdmin.is_active) {
-        return res.status(401).json({ error: "Invalid organization admin credentials" });
+        return res
+          .status(401)
+          .json({ error: "Invalid organization admin credentials" });
       }
 
-      const isPasswordValid = await bcrypt.compare(password, targetAdmin.password_hash);
+      const isPasswordValid = await bcrypt.compare(
+        password,
+        targetAdmin.password_hash,
+      );
       if (!isPasswordValid) {
-        return res.status(401).json({ error: "Invalid organization admin credentials" });
+        return res
+          .status(401)
+          .json({ error: "Invalid organization admin credentials" });
       }
 
-      const membership = await getActiveAdminMembership(targetAdmin._id, tenant._id);
+      const membership = await getActiveAdminMembership(
+        targetAdmin._id,
+        tenant._id,
+      );
       if (!membership) {
         return res.status(403).json({
           error: "The provided admin does not belong to that organization",
@@ -1250,7 +1272,8 @@ class AuthController {
 
       if (String(targetAdmin._id) === String(req.admin._id)) {
         return res.status(400).json({
-          error: "This organization is already available through the current admin account",
+          error:
+            "This organization is already available through the current admin account",
         });
       }
 
@@ -1293,7 +1316,9 @@ class AuthController {
       }
 
       if (req.admin.role === "super_admin") {
-        return res.status(403).json({ error: "Super admins do not unlink tenant workspaces" });
+        return res
+          .status(403)
+          .json({ error: "Super admins do not unlink tenant workspaces" });
       }
 
       const targetSlug = normalizeTenantLookupSlug(req.body.tenant_slug);
@@ -1303,7 +1328,9 @@ class AuthController {
 
       const tenant = await Tenant.findOne({ slug: targetSlug }).select("_id");
       if (!tenant) {
-        return res.status(404).json({ error: "Tenant not found", code: "TENANT_NOT_FOUND" });
+        return res
+          .status(404)
+          .json({ error: "Tenant not found", code: "TENANT_NOT_FOUND" });
       }
 
       const result = await LinkedAdminWorkspace.findOneAndUpdate(

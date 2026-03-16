@@ -3,7 +3,11 @@ const axios = require("axios");
 const Tenant = require("../models/Tenant");
 const Invoice = require("../models/Invoice");
 const SubscriptionEvent = require("../models/SubscriptionEvent");
-const { comparePlanRank, getPlanDefinition, serializePlanCatalog } = require("../config/billingPlans");
+const {
+  comparePlanRank,
+  getPlanDefinition,
+  serializePlanCatalog,
+} = require("../config/billingPlans");
 const {
   getTenantLimit,
   getTenantUsageSnapshot,
@@ -57,7 +61,9 @@ function getMetadataValue(metadata, key) {
 }
 
 function buildMetadataMap(metadata = {}) {
-  return new Map(Object.entries(metadata).filter(([, value]) => value !== undefined));
+  return new Map(
+    Object.entries(metadata).filter(([, value]) => value !== undefined),
+  );
 }
 
 function getBillingContactEmail(tenant) {
@@ -69,7 +75,9 @@ function getBillingContactEmail(tenant) {
 }
 
 function normalizeBaseUrl(value, defaultProtocol = "https") {
-  const raw = String(value || "").trim().replace(/\/$/, "");
+  const raw = String(value || "")
+    .trim()
+    .replace(/\/$/, "");
   if (!raw) return null;
 
   if (/^https?:\/\//i.test(raw)) {
@@ -206,7 +214,10 @@ function serializeTenantBilling(tenant, invoices = [], usage = null) {
       usage: usageSummary,
       features: {
         custom_terminology: hasTenantFeature(tenant, "custom_terminology"),
-        custom_identity_policy: hasTenantFeature(tenant, "custom_identity_policy"),
+        custom_identity_policy: hasTenantFeature(
+          tenant,
+          "custom_identity_policy",
+        ),
         custom_participant_structure: hasTenantFeature(
           tenant,
           "custom_participant_structure",
@@ -402,7 +413,10 @@ async function activateInvoicePayment(invoice, providerPayload = {}) {
     tenant.billing.current_period_end = addDays(paidAt, 30);
   } else {
     tenant.status = tenant.status === "suspended" ? tenant.status : "active";
-    if (!tenant.billing.current_period_start || !tenant.billing.current_period_end) {
+    if (
+      !tenant.billing.current_period_start ||
+      !tenant.billing.current_period_end
+    ) {
       tenant.billing.current_period_start = paidAt;
       tenant.billing.current_period_end = addDays(paidAt, 30);
     }
@@ -437,11 +451,15 @@ async function activateInvoicePayment(invoice, providerPayload = {}) {
     metadata: {
       source,
       payment_reference: invoice.payment_reference,
-      paystack_reference: providerPayload.reference || invoice.payment_reference,
+      paystack_reference:
+        providerPayload.reference || invoice.payment_reference,
     },
   });
 
-  if (source !== "tenant_application" && previousPlanCode !== tenant.plan_code) {
+  if (
+    source !== "tenant_application" &&
+    previousPlanCode !== tenant.plan_code
+  ) {
     await recordEvent({
       tenantId: tenant._id,
       type: "plan_upgraded",
@@ -476,34 +494,67 @@ async function activateInvoicePayment(invoice, providerPayload = {}) {
   return { tenant, invoice };
 }
 
+async function verifyPaystackTransactionLive(reference) {
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  if (!secretKey) return null;
+
+  try {
+    const response = await axios.get(
+      `${getPaystackApiBaseUrl()}/transaction/verify/${encodeURIComponent(reference)}`,
+      {
+        headers: { Authorization: `Bearer ${secretKey}` },
+        timeout: 15000,
+      },
+    );
+    return response?.data?.data || null;
+  } catch {
+    return null;
+  }
+}
+
 async function getInvoiceCheckoutResolution(reference) {
   if (!reference) {
     return null;
   }
 
-  const invoice = await Invoice.findOne({ payment_reference: reference }).lean();
+  // Use a mutable document so we can update it in-place if Paystack confirms
+  const invoice = await Invoice.findOne({ payment_reference: reference });
   if (!invoice) {
     return null;
   }
 
-  const tenant = await Tenant.findById(invoice.tenant_id).lean();
-  const source = getMetadataValue(invoice.metadata, "source") || "upgrade";
+  // If the invoice is still pending, proactively verify with Paystack so the
+  // user doesn't have to wait for a webhook before seeing a confirmed status.
+  if (invoice.status === "pending") {
+    const paystackData = await verifyPaystackTransactionLive(reference);
+    if (paystackData?.status === "success") {
+      await activateInvoicePayment(invoice, paystackData);
+    } else if (paystackData?.status === "failed") {
+      await markInvoiceFailedByReference(reference, paystackData);
+    }
+    // Re-fetch as plain object after potential mutation
+    await invoice.reload?.();
+  }
+
+  const freshInvoice = await Invoice.findOne({
+    payment_reference: reference,
+  }).lean();
+  if (!freshInvoice) return null;
+
+  const tenant = await Tenant.findById(freshInvoice.tenant_id).lean();
+  const source = getMetadataValue(freshInvoice.metadata, "source") || "upgrade";
   const tenantSlug = tenant?.slug || null;
   const tenantPrimaryDomain = tenant?.primary_domain || null;
   const applicationReference =
-    getMetadataValue(invoice.metadata, "application_reference") ||
+    getMetadataValue(freshInvoice.metadata, "application_reference") ||
     tenant?.application_reference ||
     null;
-
-  let status = invoice.status;
-  if (status === "pending" && invoice.provider_checkout_url) {
-    status = "pending";
-  }
 
   return {
     reference,
     source,
-    status,
+    status: freshInvoice.status,
+    contact_email: tenant?.onboarding?.contact_email || null,
     tenant: tenant
       ? {
           id: tenant._id,
@@ -515,11 +566,11 @@ async function getInvoiceCheckoutResolution(reference) {
           subscription_status: tenant.subscription_status,
         }
       : null,
-    invoice: serializeInvoice(invoice),
+    invoice: serializeInvoice(freshInvoice),
     application_reference: applicationReference,
     retry_checkout_url:
-      invoice.status === "pending" || invoice.status === "failed"
-        ? invoice.provider_checkout_url || null
+      freshInvoice.status === "failed"
+        ? freshInvoice.provider_checkout_url || null
         : null,
   };
 }
@@ -929,7 +980,9 @@ async function cancelScheduledPlanChange(tenant, actorAdminId = null) {
 
 async function getPlatformBillingOverview() {
   const tenantDocs = await Tenant.find({}).sort({ createdAt: -1 });
-  await Promise.all(tenantDocs.map((tenant) => applyLifecycleMutations(tenant)));
+  await Promise.all(
+    tenantDocs.map((tenant) => applyLifecycleMutations(tenant)),
+  );
   const tenants = tenantDocs.map((tenant) => tenant.toObject());
   const invoices = await Invoice.find({})
     .sort({ createdAt: -1 })
@@ -962,7 +1015,8 @@ async function getPlatformBillingOverview() {
       subscription_status: tenant.subscription_status,
       current_period_end: tenant.billing?.current_period_end || null,
       scheduled_plan_code: tenant.billing?.next_plan_code || null,
-      scheduled_plan_effective_at: tenant.billing?.next_plan_effective_at || null,
+      scheduled_plan_effective_at:
+        tenant.billing?.next_plan_effective_at || null,
       limits: {
         admins: getTenantLimit(tenant, "admins"),
         students: getTenantLimit(tenant, "students"),

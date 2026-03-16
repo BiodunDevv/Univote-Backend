@@ -6,7 +6,10 @@ const Invoice = require("../models/Invoice");
 const Coupon = require("../models/Coupon");
 const Testimonial = require("../models/Testimonial");
 const { randomBytes } = require("crypto");
-const { getPlanDefinition, serializePlanCatalog } = require("../config/billingPlans");
+const {
+  getPlanDefinition,
+  serializePlanCatalog,
+} = require("../config/billingPlans");
 const {
   getInvoiceCheckoutResolution,
   requestPlanCheckout,
@@ -34,26 +37,34 @@ function buildTenantApplicationPayload(body) {
     contact_email: String(body.contact_email || "")
       .trim()
       .toLowerCase(),
-    contact_phone: body.contact_phone ? String(body.contact_phone).trim() : null,
+    contact_phone: body.contact_phone
+      ? String(body.contact_phone).trim()
+      : null,
     institution_type: body.institution_type || "university",
     student_count_estimate:
-      body.student_count_estimate !== undefined && body.student_count_estimate !== null
+      body.student_count_estimate !== undefined &&
+      body.student_count_estimate !== null
         ? Number(body.student_count_estimate)
         : null,
     admin_count_estimate:
-      body.admin_count_estimate !== undefined && body.admin_count_estimate !== null
+      body.admin_count_estimate !== undefined &&
+      body.admin_count_estimate !== null
         ? Number(body.admin_count_estimate)
         : null,
     participant_structure: body.participant_structure || null,
     identity_preferences: body.identity_preferences || null,
-    coupon_code: body.coupon_code ? String(body.coupon_code).trim().toUpperCase() : null,
+    coupon_code: body.coupon_code
+      ? String(body.coupon_code).trim().toUpperCase()
+      : null,
     notes: body.notes ? String(body.notes).trim() : null,
     demo_requested: Boolean(body.demo_requested),
   };
 }
 
 function createApplicationReference() {
-  return `APP-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(3)
+  return `APP-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${randomBytes(
+    3,
+  )
     .toString("hex")
     .toUpperCase()}`;
 }
@@ -92,7 +103,9 @@ function serializeApplication(tenant, invoice = null) {
     plan_code: tenant.plan_code,
     subscription_status: tenant.subscription_status,
     payment_required: tenant.onboarding?.payment_required !== false,
-    payment_status: latestInvoice?.status || (tenant.status === "pending_approval" ? "paid" : "pending"),
+    payment_status:
+      latestInvoice?.status ||
+      (tenant.status === "pending_approval" ? "paid" : "pending"),
     contact_email: tenant.onboarding?.contact_email || null,
     coupon_code: tenant.onboarding?.coupon_code || null,
     coupon_snapshot: tenant.onboarding?.coupon_snapshot || null,
@@ -100,7 +113,8 @@ function serializeApplication(tenant, invoice = null) {
     structure_preferences: tenant.onboarding?.structure_preferences || null,
     identity_preferences: tenant.onboarding?.identity_preferences || null,
     status_timeline: tenant.onboarding?.status_timeline || [],
-    application_submitted_at: tenant.onboarding?.application_submitted_at || tenant.createdAt,
+    application_submitted_at:
+      tenant.onboarding?.application_submitted_at || tenant.createdAt,
     application_last_updated_at:
       tenant.onboarding?.application_last_updated_at || tenant.updatedAt,
     approved_at: tenant.onboarding?.approved_at || null,
@@ -114,7 +128,9 @@ async function validateCouponForPlan(code, planCode, email = null) {
     return { valid: false, error: "Coupon code is required" };
   }
 
-  const coupon = await Coupon.findOne({ code: String(code).trim().toUpperCase() });
+  const coupon = await Coupon.findOne({
+    code: String(code).trim().toUpperCase(),
+  });
   if (!coupon || !coupon.is_active) {
     return { valid: false, error: "Coupon is not active" };
   }
@@ -128,7 +144,10 @@ async function validateCouponForPlan(code, planCode, email = null) {
     return { valid: false, error: "Coupon has expired" };
   }
 
-  if (coupon.plan_scope === "selected" && !coupon.plan_codes.includes(planCode)) {
+  if (
+    coupon.plan_scope === "selected" &&
+    !coupon.plan_codes.includes(planCode)
+  ) {
     return { valid: false, error: "Coupon does not apply to this plan" };
   }
 
@@ -141,19 +160,28 @@ async function validateCouponForPlan(code, planCode, email = null) {
       (entry) => entry.email && entry.email === email.toLowerCase(),
     ).length;
     if (applicantUsage >= coupon.per_applicant_limit) {
-      return { valid: false, error: "Coupon usage limit reached for this applicant" };
+      return {
+        valid: false,
+        error: "Coupon usage limit reached for this applicant",
+      };
     }
   }
 
   const plan = getPlanDefinition(planCode);
   const baseAmount = plan.monthly_price_ngn;
   if (coupon.minimum_amount_ngn && baseAmount < coupon.minimum_amount_ngn) {
-    return { valid: false, error: "Coupon minimum purchase requirement not met" };
+    return {
+      valid: false,
+      error: "Coupon minimum purchase requirement not met",
+    };
   }
 
   const discountAmount =
     coupon.discount_type === "percentage"
-      ? Math.min(baseAmount, Math.round((baseAmount * coupon.discount_value) / 100))
+      ? Math.min(
+          baseAmount,
+          Math.round((baseAmount * coupon.discount_value) / 100),
+        )
       : Math.min(baseAmount, coupon.discount_value);
   const finalAmount = Math.max(baseAmount - discountAmount, 0);
 
@@ -257,7 +285,9 @@ class PublicController {
 
   async getOrganizationBySlug(req, res) {
     try {
-      const slug = String(req.params.slug || "").trim().toLowerCase();
+      const slug = String(req.params.slug || "")
+        .trim()
+        .toLowerCase();
       const cacheKey = `public:organization:${slug}`;
       const cached = await cacheService.get(cacheKey);
 
@@ -319,17 +349,27 @@ class PublicController {
         });
       }
 
-      const [plans, testimonials, activeTenants, activeStudents, acceptedVotes] =
-        await Promise.all([
-          Promise.resolve(serializePlanCatalog()),
-          Testimonial.find({ status: "published" })
-            .sort({ highlighted: -1, sort_order: 1, published_at: -1, createdAt: -1 })
-            .limit(8)
-            .lean(),
-          Tenant.countDocuments({ status: "active", is_active: true }),
-          Student.countDocuments({ is_active: true }),
-          Vote.countDocuments({ status: "accepted" }),
-        ]);
+      const [
+        plans,
+        testimonials,
+        activeTenants,
+        activeStudents,
+        acceptedVotes,
+      ] = await Promise.all([
+        Promise.resolve(serializePlanCatalog()),
+        Testimonial.find({ status: "published" })
+          .sort({
+            highlighted: -1,
+            sort_order: 1,
+            published_at: -1,
+            createdAt: -1,
+          })
+          .limit(8)
+          .lean(),
+        Tenant.countDocuments({ status: "active", is_active: true }),
+        Student.countDocuments({ is_active: true }),
+        Vote.countDocuments({ status: "accepted" }),
+      ]);
 
       const payload = {
         stats: {
@@ -366,7 +406,12 @@ class PublicController {
       }
 
       const testimonials = await Testimonial.find({ status: "published" })
-        .sort({ highlighted: -1, sort_order: 1, published_at: -1, createdAt: -1 })
+        .sort({
+          highlighted: -1,
+          sort_order: 1,
+          published_at: -1,
+          createdAt: -1,
+        })
         .limit(24)
         .lean();
 
@@ -391,7 +436,11 @@ class PublicController {
       const payload = buildTenantApplicationPayload(req.body);
       const submit = req.body.submit !== false;
       const couponValidation = payload.coupon_code
-        ? await validateCouponForPlan(payload.coupon_code, payload.plan_code, payload.contact_email)
+        ? await validateCouponForPlan(
+            payload.coupon_code,
+            payload.plan_code,
+            payload.contact_email,
+          )
         : null;
 
       if (couponValidation && !couponValidation.valid) {
@@ -401,14 +450,17 @@ class PublicController {
       const existingTenant = await Tenant.findOne({
         $or: [
           { slug: payload.slug },
-          ...(payload.primary_domain ? [{ primary_domain: payload.primary_domain }] : []),
+          ...(payload.primary_domain
+            ? [{ primary_domain: payload.primary_domain }]
+            : []),
           { "onboarding.contact_email": payload.contact_email },
         ],
       }).select("_id slug status onboarding.contact_email");
 
       if (existingTenant) {
         return res.status(409).json({
-          error: "A tenant application with this slug, domain, or contact email already exists",
+          error:
+            "A tenant application with this slug, domain, or contact email already exists",
         });
       }
 
@@ -443,7 +495,8 @@ class PublicController {
           coupon_code: payload.coupon_code || null,
           coupon_snapshot: couponValidation?.snapshot || null,
           billing_snapshot: {
-            original_amount_ngn: getPlanDefinition(payload.plan_code).monthly_price_ngn,
+            original_amount_ngn: getPlanDefinition(payload.plan_code)
+              .monthly_price_ngn,
             payable_amount_ngn:
               couponValidation?.snapshot?.final_amount_ngn ??
               getPlanDefinition(payload.plan_code).monthly_price_ngn,
@@ -499,12 +552,15 @@ class PublicController {
           amount_ngn:
             couponValidation.snapshot?.original_amount_ngn ||
             getPlanDefinition(applicationTenant.plan_code).monthly_price_ngn,
-          discount_amount_ngn: couponValidation.snapshot?.discount_amount_ngn || 0,
+          discount_amount_ngn:
+            couponValidation.snapshot?.discount_amount_ngn || 0,
         });
         await couponValidation.coupon.save();
       }
       const checkoutUrl =
-        checkout.checkout_url || checkout.invoice?.provider_checkout_url || null;
+        checkout.checkout_url ||
+        checkout.invoice?.provider_checkout_url ||
+        null;
       const nextSteps =
         checkout.action === "checkout_required"
           ? [
@@ -578,28 +634,39 @@ class PublicController {
               recipientType: "platform_admin",
             })
             .catch((err) => {
-              console.error("Failed to notify platform admin about tenant application:", err);
+              console.error(
+                "Failed to notify platform admin about tenant application:",
+                err,
+              );
             }),
         ),
       );
 
       return res.status(201).json({
-        message: checkout.message || "Tenant application submitted successfully",
+        message:
+          checkout.message || "Tenant application submitted successfully",
         action: checkout.action,
         checkout_url: checkoutUrl,
         invoice: checkout.invoice ? serializeInvoice(checkout.invoice) : null,
         next_steps: nextSteps,
-        application: serializeApplication(applicationTenant, checkout.invoice || null),
+        application: serializeApplication(
+          applicationTenant,
+          checkout.invoice || null,
+        ),
       });
     } catch (error) {
       console.error("Submit tenant application error:", error);
-      return res.status(500).json({ error: "Failed to submit tenant application" });
+      return res
+        .status(500)
+        .json({ error: "Failed to submit tenant application" });
     }
   }
 
   async updateTenantApplication(req, res) {
     try {
-      const reference = String(req.params.reference || "").trim().toUpperCase();
+      const reference = String(req.params.reference || "")
+        .trim()
+        .toUpperCase();
       const submit = Boolean(req.body.submit);
       const payload = buildTenantApplicationPayload(req.body);
       const tenant = await Tenant.findOne({ application_reference: reference });
@@ -609,23 +676,35 @@ class PublicController {
       }
 
       if (tenant.status === "active" || tenant.status === "suspended") {
-        return res.status(400).json({ error: "This application can no longer be edited" });
+        return res
+          .status(400)
+          .json({ error: "This application can no longer be edited" });
       }
 
       const existingConflict = await Tenant.findOne({
         _id: { $ne: tenant._id },
         $or: [
           { slug: payload.slug },
-          ...(payload.primary_domain ? [{ primary_domain: payload.primary_domain }] : []),
+          ...(payload.primary_domain
+            ? [{ primary_domain: payload.primary_domain }]
+            : []),
         ],
       }).select("_id");
 
       if (existingConflict) {
-        return res.status(409).json({ error: "Another application already uses that slug or domain" });
+        return res
+          .status(409)
+          .json({
+            error: "Another application already uses that slug or domain",
+          });
       }
 
       const couponValidation = payload.coupon_code
-        ? await validateCouponForPlan(payload.coupon_code, payload.plan_code, payload.contact_email)
+        ? await validateCouponForPlan(
+            payload.coupon_code,
+            payload.plan_code,
+            payload.contact_email,
+          )
         : null;
 
       if (couponValidation && !couponValidation.valid) {
@@ -635,12 +714,14 @@ class PublicController {
       applyApplicationPayloadToTenant(tenant, payload);
       tenant.onboarding.coupon_snapshot = couponValidation?.snapshot || null;
       tenant.onboarding.billing_snapshot = {
-        original_amount_ngn: getPlanDefinition(payload.plan_code).monthly_price_ngn,
+        original_amount_ngn: getPlanDefinition(payload.plan_code)
+          .monthly_price_ngn,
         payable_amount_ngn:
           couponValidation?.snapshot?.final_amount_ngn ??
           getPlanDefinition(payload.plan_code).monthly_price_ngn,
       };
-      tenant.onboarding.payment_required = tenant.onboarding.billing_snapshot.payable_amount_ngn > 0;
+      tenant.onboarding.payment_required =
+        tenant.onboarding.billing_snapshot.payable_amount_ngn > 0;
 
       if (!submit) {
         if (tenant.status !== "draft") {
@@ -683,11 +764,15 @@ class PublicController {
       });
 
       const refreshedTenant = (await Tenant.findById(tenant._id)) || tenant;
-      const latestInvoice = checkout.invoice || (await getLatestTenantInvoice(tenant._id));
+      const latestInvoice =
+        checkout.invoice || (await getLatestTenantInvoice(tenant._id));
       const checkoutUrl =
         checkout.checkout_url || latestInvoice?.provider_checkout_url || null;
 
-      if (checkout.action === "checkout_required" && tenant.onboarding?.contact_email) {
+      if (
+        checkout.action === "checkout_required" &&
+        tenant.onboarding?.contact_email
+      ) {
         emailService
           .sendTenantApplicationPaymentRequired({
             to: tenant.onboarding.contact_email,
@@ -702,7 +787,10 @@ class PublicController {
                 : null,
           })
           .catch((err) => {
-            console.error("Failed to send updated tenant payment-required email:", err);
+            console.error(
+              "Failed to send updated tenant payment-required email:",
+              err,
+            );
           });
       }
 
@@ -722,27 +810,42 @@ class PublicController {
       });
     } catch (error) {
       console.error("Update tenant application error:", error);
-      return res.status(500).json({ error: "Failed to update tenant application" });
+      return res
+        .status(500)
+        .json({ error: "Failed to update tenant application" });
     }
   }
 
   async getTenantApplicationStatus(req, res) {
     try {
-      const reference = String(req.query.reference || "").trim().toUpperCase();
-      const email = String(req.query.email || "")
+      const reference = String(req.query.reference || "")
+        .trim()
+        .toUpperCase();
+      const email = String(
+        req.query.email ||
+          req.query.contact_email ||
+          req.query.work_email ||
+          req.query.primary_email ||
+          "",
+      )
         .trim()
         .toLowerCase();
 
-      if (!reference || !email) {
-        return res
-          .status(400)
-          .json({ error: "reference and email are required" });
+      if (!email) {
+        return res.status(400).json({ error: "email is required" });
       }
 
-      const tenant = await Tenant.findOne({
-        application_reference: reference,
+      const filter = {
         "onboarding.contact_email": email,
-      }).lean();
+      };
+
+      if (reference) {
+        filter.application_reference = reference;
+      }
+
+      const tenant = await Tenant.findOne(filter)
+        .sort({ "onboarding.application_last_updated_at": -1, updatedAt: -1 })
+        .lean();
 
       if (!tenant) {
         return res.status(404).json({ error: "Application not found" });
@@ -757,7 +860,8 @@ class PublicController {
       ) {
         nextActions.push({
           key: "checkout",
-          label: invoice.status === "failed" ? "Retry payment" : "Continue payment",
+          label:
+            invoice.status === "failed" ? "Retry payment" : "Continue payment",
           href: invoice.provider_checkout_url,
         });
       }
@@ -777,21 +881,31 @@ class PublicController {
       });
     } catch (error) {
       console.error("Get tenant application status error:", error);
-      return res.status(500).json({ error: "Failed to fetch application status" });
+      return res
+        .status(500)
+        .json({ error: "Failed to fetch application status" });
     }
   }
 
   async retryTenantApplicationCheckout(req, res) {
     try {
-      const reference = String(req.params.reference || "").trim().toUpperCase();
+      const reference = String(req.params.reference || "")
+        .trim()
+        .toUpperCase();
       const tenant = await Tenant.findOne({ application_reference: reference });
 
       if (!tenant) {
         return res.status(404).json({ error: "Application not found" });
       }
 
-      if (!["draft", "pending_payment", "pending_approval"].includes(tenant.status)) {
-        return res.status(400).json({ error: "Application is no longer eligible for checkout" });
+      if (
+        !["draft", "pending_payment", "pending_approval"].includes(
+          tenant.status,
+        )
+      ) {
+        return res
+          .status(400)
+          .json({ error: "Application is no longer eligible for checkout" });
       }
 
       const checkout = await requestPlanCheckout({
@@ -808,7 +922,8 @@ class PublicController {
           getPlanDefinition(tenant.plan_code).monthly_price_ngn,
       });
 
-      const latestInvoice = checkout.invoice || (await getLatestTenantInvoice(tenant._id));
+      const latestInvoice =
+        checkout.invoice || (await getLatestTenantInvoice(tenant._id));
       const checkoutUrl =
         checkout.checkout_url || latestInvoice?.provider_checkout_url || null;
 
@@ -846,11 +961,15 @@ class PublicController {
 
   async validateCoupon(req, res) {
     try {
-      const code = String(req.params.code || "").trim().toUpperCase();
+      const code = String(req.params.code || "")
+        .trim()
+        .toUpperCase();
       const planCode = String(req.query.plan_code || "pro")
         .trim()
         .toLowerCase();
-      const email = req.query.email ? String(req.query.email).trim().toLowerCase() : null;
+      const email = req.query.email
+        ? String(req.query.email).trim().toLowerCase()
+        : null;
 
       const result = await validateCouponForPlan(code, planCode, email);
       if (!result.valid) {
@@ -878,7 +997,9 @@ class PublicController {
         author_role: String(req.body.author_role || "").trim(),
         institution_name: String(req.body.institution_name || "").trim(),
         quote: String(req.body.quote || "").trim(),
-        avatar_url: req.body.avatar_url ? String(req.body.avatar_url).trim() : null,
+        avatar_url: req.body.avatar_url
+          ? String(req.body.avatar_url).trim()
+          : null,
         rating: Number(req.body.rating || 5),
         source: req.body.source === "tenant" ? "tenant" : "public",
         status: "pending_review",
@@ -902,7 +1023,10 @@ class PublicController {
               roleLabel: "Platform",
             })
             .catch((err) => {
-              console.error("Failed to notify super admin about testimonial submission:", err);
+              console.error(
+                "Failed to notify super admin about testimonial submission:",
+                err,
+              );
             }),
         ),
       );
@@ -919,7 +1043,9 @@ class PublicController {
 
   async resolveCheckout(req, res) {
     try {
-      const reference = String(req.body.reference || req.query.reference || "").trim();
+      const reference = String(
+        req.body.reference || req.query.reference || "",
+      ).trim();
       const resolution = await getInvoiceCheckoutResolution(reference);
 
       if (!resolution) {

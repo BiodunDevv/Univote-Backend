@@ -23,7 +23,9 @@ function resolveRequestIp(req) {
 
 function resolveClientKey(req, fallbackPrefix = "ip") {
   const ipAddress = resolveRequestIp(req);
-  return ipAddress ? `${fallbackPrefix}:${ipAddress}` : `${fallbackPrefix}:unknown`;
+  return ipAddress
+    ? `${fallbackPrefix}:${ipAddress}`
+    : `${fallbackPrefix}:unknown`;
 }
 
 /**
@@ -86,9 +88,9 @@ const authLimiter = createRedisRateLimiter({
   skipSuccessfulRequests: true,
   keyGenerator: (req) => {
     return (
+      req.body.email ||
       req.body.identifier ||
       req.body.matric_no ||
-      req.body.email ||
       resolveClientKey(req, "auth")
     );
   },
@@ -101,7 +103,9 @@ const voteLimiter = createRedisRateLimiter({
   message: "Too many vote attempts, please slow down.",
   keyGenerator: (req) => {
     // Use studentId if authenticated, otherwise IP
-    return req.studentId ? `student:${req.studentId}` : resolveClientKey(req, "vote");
+    return req.studentId
+      ? `student:${req.studentId}`
+      : resolveClientKey(req, "vote");
   },
 });
 
@@ -112,7 +116,9 @@ const adminLimiter = createRedisRateLimiter({
   message: "Too many admin requests, please try again later.",
   keyGenerator: (req) => {
     // Use adminId if authenticated, otherwise IP
-    return req.adminId ? `admin:${req.adminId}` : resolveClientKey(req, "admin");
+    return req.adminId
+      ? `admin:${req.adminId}`
+      : resolveClientKey(req, "admin");
   },
 });
 
@@ -123,7 +129,9 @@ const faceLimiter = createRedisRateLimiter({
   message: "Face verification rate limit exceeded, please try again later.",
   keyGenerator: (req) => {
     // Use studentId for face verification attempts
-    return req.studentId ? `face:${req.studentId}` : resolveClientKey(req, "face");
+    return req.studentId
+      ? `face:${req.studentId}`
+      : resolveClientKey(req, "face");
   },
 });
 
