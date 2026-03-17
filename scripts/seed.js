@@ -140,6 +140,46 @@ const collegesAndDepartments = {
   },
 };
 
+const summitCollegesAndDepartments = {
+  "College of Computing and Digital Innovation": {
+    code: "CCDI",
+    departments: {
+      "Computer Science": "CSC",
+      "Software Engineering": "SWE",
+      "Cyber Security": "CYB",
+      "Data Science": "DTS",
+      "Information Systems": "IFS",
+    },
+  },
+  "College of Business and Policy Studies": {
+    code: "CBPS",
+    departments: {
+      Accounting: "ACC",
+      Economics: "ECO",
+      "Business Administration": "BUS",
+      "Public Policy": "PPL",
+      "International Relations": "INT",
+    },
+  },
+  "College of Allied Health Sciences": {
+    code: "CAHS",
+    departments: {
+      "Nursing Science": "NUR",
+      "Medical Laboratory Science": "MLS",
+      Physiotherapy: "PHT",
+      "Public Health": "PHU",
+    },
+  },
+  "College of Built and Environmental Sciences": {
+    code: "CBES",
+    departments: {
+      Architecture: "ARC",
+      "Quantity Surveying": "QTS",
+      "Urban and Regional Planning": "URP",
+    },
+  },
+};
+
 // Academic staff names for Deans and HODs
 const deanNames = [
   {
@@ -292,19 +332,19 @@ const lastNames = [
  * Format: BU{YY}{DEPT_CODE}{NUMBER}
  * Example: BU22CSC1005 (Computer Science), BU22ACC2001 (Accounting)
  */
-function generateMatricNo(year, deptCode, index) {
+function generateMatricNo(year, deptCode, index, prefix = "BU") {
   const yearCode = year.toString().slice(-2);
   const studentNumber = String(index).padStart(4, "0");
-  return `BU${yearCode}${deptCode}${studentNumber}`;
+  return `${prefix}${yearCode}${deptCode}${studentNumber}`;
 }
 
 /**
  * Generate random email
  */
-function generateEmail(firstName, lastName, matric) {
+function generateEmail(firstName, lastName, matric, domain) {
   const cleanFirst = firstName.toLowerCase().replace(/\s/g, "");
   const cleanLast = lastName.toLowerCase().replace(/\s/g, "");
-  return `${cleanFirst}.${cleanLast}@student.bowenuniversity.edu.ng`;
+  return `${cleanFirst}.${cleanLast}@${domain}`;
 }
 
 /**
@@ -312,6 +352,24 @@ function generateEmail(firstName, lastName, matric) {
  */
 function randomElement(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function getTenantAcademicProfile(tenant) {
+  if (tenant.slug === SECONDARY_TENANT_SLUG) {
+    return {
+      institutionName: "Summit University",
+      collegesMap: summitCollegesAndDepartments,
+      matricPrefix: "SU",
+      studentEmailDomain: "student.summituniversity.edu.ng",
+    };
+  }
+
+  return {
+    institutionName: "Bowen University",
+    collegesMap: collegesAndDepartments,
+    matricPrefix: "BU",
+    studentEmailDomain: "student.bowenuniversity.edu.ng",
+  };
 }
 
 /**
@@ -338,14 +396,12 @@ async function createPasswordHash(password = DEFAULT_PASSWORD) {
   return bcrypt.hash(password, salt);
 }
 
-function buildDepartments() {
+function buildDepartments(collegesMap, institutionName) {
   const departmentsByCollege = [];
   let hodIndex = 0;
   let deanIndex = 0;
 
-  for (const [collegeName, collegeInfo] of Object.entries(
-    collegesAndDepartments,
-  )) {
+  for (const [collegeName, collegeInfo] of Object.entries(collegesMap)) {
     const dean = deanNames[deanIndex % deanNames.length];
     deanIndex += 1;
 
@@ -385,7 +441,7 @@ function buildDepartments() {
     departmentsByCollege.push({
       name: collegeName,
       code: collegeInfo.code,
-      description: `${collegeName} at Bowen University`,
+      description: `${collegeName} at ${institutionName}`,
       dean_name: dean.name,
       dean_email: dean.email,
       departments,
@@ -600,8 +656,8 @@ async function createActiveDemoTenants(
         },
         auth: {
           require_email: true,
-          require_photo: false,
-          require_face_verification: false,
+          require_photo: true,
+          require_face_verification: true,
         },
         features: {
           custom_terminology: true,
@@ -609,7 +665,7 @@ async function createActiveDemoTenants(
           custom_participant_structure: true,
           advanced_notifications: false,
           advanced_reports: false,
-          face_verification: false,
+          face_verification: true,
         },
         participant_fields: {
           full_name: {
@@ -655,25 +711,25 @@ async function createActiveDemoTenants(
             allow_in_eligibility: false,
           },
           college: {
-            enabled: false,
-            required: false,
-            show_in_profile: false,
-            show_in_filters: false,
-            allow_in_eligibility: false,
+            enabled: true,
+            required: true,
+            show_in_profile: true,
+            show_in_filters: true,
+            allow_in_eligibility: true,
           },
           department: {
-            enabled: false,
-            required: false,
-            show_in_profile: false,
-            show_in_filters: false,
-            allow_in_eligibility: false,
+            enabled: true,
+            required: true,
+            show_in_profile: true,
+            show_in_filters: true,
+            allow_in_eligibility: true,
           },
           level: {
-            enabled: false,
-            required: false,
-            show_in_profile: false,
-            show_in_filters: false,
-            allow_in_eligibility: false,
+            enabled: true,
+            required: true,
+            show_in_profile: true,
+            show_in_filters: true,
+            allow_in_eligibility: true,
           },
           photo_url: {
             enabled: true,
@@ -683,10 +739,10 @@ async function createActiveDemoTenants(
             allow_in_eligibility: false,
           },
           face_verification: {
-            enabled: false,
-            required: false,
+            enabled: true,
+            required: true,
             show_in_profile: false,
-            show_in_filters: false,
+            show_in_filters: true,
             allow_in_eligibility: false,
           },
         },
@@ -804,7 +860,7 @@ async function createPipelineTenants() {
   const tenants = await Tenant.insertMany([
     {
       name: "Lakeside University",
-      slug: "lakeside-poly",
+      slug: "lakeside-university",
       application_reference: buildApplicationReference("20260315-LAKE01"),
       primary_domain: buildSeedTenantDomain("lakeside"),
       status: "pending_approval",
@@ -841,8 +897,8 @@ async function createPipelineTenants() {
       },
     },
     {
-      name: "Northfield College",
-      slug: "northfield-college",
+      name: "Northfield University",
+      slug: "northfield-university",
       application_reference: buildApplicationReference("20260315-NORT01"),
       primary_domain: buildSeedTenantDomain("northfield"),
       status: "pending_approval",
@@ -924,12 +980,15 @@ async function seedLinkedWorkspaces(
 
 async function seedTenantColleges(tenant, tenantAdminId) {
   console.log("\n🏛️  Creating colleges and departments for tenant...");
+  const { collegesMap, institutionName } = getTenantAcademicProfile(tenant);
 
-  const collegeDocuments = buildDepartments().map((college) => ({
-    ...college,
-    tenant_id: tenant._id,
-    created_by: tenantAdminId,
-  }));
+  const collegeDocuments = buildDepartments(collegesMap, institutionName).map(
+    (college) => ({
+      ...college,
+      tenant_id: tenant._id,
+      created_by: tenantAdminId,
+    }),
+  );
 
   const colleges = await College.insertMany(collegeDocuments);
   console.log(`✅ Created ${colleges.length} colleges`);
@@ -938,6 +997,7 @@ async function seedTenantColleges(tenant, tenantAdminId) {
 
 async function seedTenantStudents(tenant, colleges) {
   console.log("\n👨‍🎓 Generating tenant students...");
+  const { matricPrefix, studentEmailDomain } = getTenantAcademicProfile(tenant);
 
   const passwordHash = await createPasswordHash();
   const students = [];
@@ -965,6 +1025,7 @@ async function seedTenantStudents(tenant, colleges) {
         2022,
         department.code,
         departmentCounters[department.code],
+        matricPrefix,
       );
       tenantMemberSequence += 1;
       const seedFaceToken = generateSeedFaceToken(
@@ -985,15 +1046,13 @@ async function seedTenantStudents(tenant, colleges) {
             ? `${firstName}.${lastName}`.toLowerCase()
             : null,
         full_name: `${firstName} ${lastName}`,
-        email: generateEmail(firstName, lastName, matricNo),
+        email: generateEmail(firstName, lastName, matricNo, studentEmailDomain),
         password_hash: passwordHash,
         first_login: false,
-        department:
-          tenant.slug === SECONDARY_TENANT_SLUG ? null : department.name,
-        department_code:
-          tenant.slug === SECONDARY_TENANT_SLUG ? null : department.code,
-        college: tenant.slug === SECONDARY_TENANT_SLUG ? null : college.name,
-        level: tenant.slug === SECONDARY_TENANT_SLUG ? null : selectedLevel,
+        department: department.name,
+        department_code: department.code,
+        college: college.name,
+        level: selectedLevel,
         has_voted_sessions: [],
         photo_url: STUDENT_PHOTO_URL,
         face_token: seedFaceToken,

@@ -572,15 +572,25 @@ class PublicController {
         nextActions.push({
           key: "review",
           label: "Await platform approval",
-          href: null,
+          href: "/application-status",
         });
       }
 
       if (tenant.status === "draft") {
         nextActions.push({
           key: "update",
-          label: "Update and resubmit application",
-          href: null,
+          label: "Review draft application",
+          href: `/application-status?reference=${encodeURIComponent(
+            tenant.application_reference || "",
+          )}&email=${encodeURIComponent(email)}`,
+        });
+      }
+
+      if (tenant.status === "active") {
+        nextActions.push({
+          key: "homepage",
+          label: "Return to homepage",
+          href: "/",
         });
       }
 
