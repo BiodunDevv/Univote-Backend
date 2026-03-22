@@ -41,6 +41,16 @@ router.patch(
   auditLogger("update_platform_settings", "platform_settings"),
   platformController.updatePlatformSettings,
 );
+
+/**
+ * @swagger
+ * /platform/settings/biometrics/providers:
+ *   post:
+ *     summary: Create or enable a biometric provider
+ *     tags: [Platform]
+ *     security:
+ *       - BearerAuth: []
+ */
 router.post(
   "/settings/biometrics/providers",
   authenticateAdmin,
@@ -48,6 +58,15 @@ router.post(
   auditLogger("create_biometric_provider", "platform_settings"),
   platformController.createBiometricProvider,
 );
+/**
+ * @swagger
+ * /platform/settings/biometrics/providers/{providerKey}:
+ *   delete:
+ *     summary: Delete a biometric provider
+ *     tags: [Platform]
+ *     security:
+ *       - BearerAuth: []
+ */
 router.delete(
   "/settings/biometrics/providers/:providerKey",
   authenticateAdmin,
@@ -55,11 +74,50 @@ router.delete(
   auditLogger("delete_biometric_provider", "platform_settings"),
   platformController.deleteBiometricProvider,
 );
+/**
+ * @swagger
+ * /platform/settings/biometrics/test:
+ *   post:
+ *     summary: Test a biometric provider
+ *     tags: [Platform]
+ *     security:
+ *       - BearerAuth: []
+ */
 router.post(
   "/settings/biometrics/test",
   authenticateAdmin,
   requireSuperAdmin,
   platformController.testBiometricProvider,
+);
+/**
+ * @swagger
+ * /platform/biometric-metrics:
+ *   get:
+ *     summary: Get platform biometric metrics
+ *     tags: [Platform]
+ *     security:
+ *       - BearerAuth: []
+ */
+router.get(
+  "/biometric-metrics",
+  authenticateAdmin,
+  requireSuperAdmin,
+  platformController.getBiometricMetrics,
+);
+/**
+ * @swagger
+ * /platform/verification-logs:
+ *   get:
+ *     summary: Get platform verification logs
+ *     tags: [Platform]
+ *     security:
+ *       - BearerAuth: []
+ */
+router.get(
+  "/verification-logs",
+  authenticateAdmin,
+  requireSuperAdmin,
+  platformController.getVerificationLogs,
 );
 
 /**

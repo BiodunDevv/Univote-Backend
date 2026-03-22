@@ -58,7 +58,7 @@ router.get("/overview", supportController.getOverview);
  *         name: category
  *         schema:
  *           type: string
- *           enum: [general, account, voting, billing, technical]
+ *           enum: [general, account, voting, technical]
  *       - in: query
  *         name: requester_type
  *         schema:
@@ -96,7 +96,7 @@ router.get("/overview", supportController.getOverview);
  *                 type: string
  *               category:
  *                 type: string
- *                 enum: [general, account, voting, billing, technical]
+ *                 enum: [general, account, voting, technical]
  *               priority:
  *                 type: string
  *                 enum: [low, medium, high, urgent]
@@ -113,7 +113,7 @@ router.post(
     body("description").notEmpty().withMessage("Description is required"),
     body("category")
       .optional()
-      .isIn(["general", "account", "voting", "billing", "technical"])
+      .isIn(["general", "account", "voting", "technical"])
       .withMessage("Valid category is required"),
     body("priority")
       .optional()
@@ -173,7 +173,7 @@ router.patch(
       .withMessage("Valid priority is required"),
     body("category")
       .optional()
-      .isIn(["general", "account", "voting", "billing", "technical"])
+      .isIn(["general", "account", "voting", "technical"])
       .withMessage("Valid category is required"),
     body("assigned_admin_id")
       .optional({ nullable: true })

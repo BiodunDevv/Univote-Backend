@@ -135,6 +135,7 @@ const DEFAULT_TENANT_SETTINGS = {
   },
   voting: {
     require_face_verification: true,
+    face_match_threshold: 80,
   },
 };
 

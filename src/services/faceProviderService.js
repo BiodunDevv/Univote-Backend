@@ -263,7 +263,7 @@ class FaceProviderService {
     return resolved.provider.detectFace(imageUrl);
   }
 
-  async compareFaces(faceToken, imageUrl) {
+  async compareFaces(faceToken, imageUrl, options = {}) {
     const config = await this.validateConfig();
     if (!config.success) {
       return {
@@ -275,10 +275,10 @@ class FaceProviderService {
     }
 
     const resolved = await resolveProvider();
-    return resolved.provider.compareFaces(faceToken, imageUrl);
+    return resolved.provider.compareFaces(faceToken, imageUrl, options);
   }
 
-  async verifyFace(faceToken, imageUrl) {
+  async verifyFace(faceToken, imageUrl, options = {}) {
     const config = await this.validateConfig();
     if (!config.success) {
       return {
@@ -290,7 +290,7 @@ class FaceProviderService {
     }
 
     const resolved = await resolveProvider();
-    return resolved.provider.verifyFace(faceToken, imageUrl);
+    return resolved.provider.verifyFace(faceToken, imageUrl, options);
   }
 
   async testConnection(imageUrl) {

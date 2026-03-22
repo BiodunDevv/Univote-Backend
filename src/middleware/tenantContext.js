@@ -121,7 +121,7 @@ function requireTenantAccess(req, res, next) {
 
   if (!canTenantAccessActiveFeatures(req.tenant)) {
     return res.status(403).json({
-      error: "Tenant access is restricted by subscription status",
+      error: "University access is restricted by the current workspace status",
       code: "TENANT_ACCESS_RESTRICTED",
     });
   }

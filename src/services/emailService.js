@@ -16,7 +16,13 @@ class EmailService {
 
     this.fromName = process.env.EMAIL_FROM_NAME || "Univote";
     this.fromEmail = process.env.EMAIL_FROM_EMAIL || "noreply@univote.com";
-    this.defaultLogoUrl = process.env.EMAIL_LOGO_URL || null;
+    this.publicAppUrl =
+      process.env.FRONTEND_URL ||
+      process.env.PUBLIC_APP_URL ||
+      "http://localhost:3000";
+    this.defaultLogoUrl =
+      process.env.EMAIL_LOGO_URL ||
+      `${this.publicAppUrl.replace(/\/$/, "")}/Darklogo.png`;
     this.defaultSupportEmail =
       process.env.EMAIL_SUPPORT_EMAIL ||
       this.fromEmail ||
@@ -464,80 +470,6 @@ class EmailService {
       to,
       subject: "Your application needs changes",
       html,
-      critical: false,
-    });
-  }
-
-  async sendTenantPaymentConfirmed({
-    to,
-    recipientName,
-    tenant = null,
-    invoiceNumber,
-    applicationReference = null,
-    workspaceUrl = null,
-  }) {
-    const html = this.renderMessageCard({
-      eyebrow: "Payment confirmed",
-      title: "Your payment was received",
-      intro: recipientName
-        ? `Hello ${escapeHtml(recipientName)}, payment for your organisation has been confirmed.`
-        : "Payment for your organisation has been confirmed.",
-      tenant,
-      ctaLabel: workspaceUrl ? "Open workspace" : null,
-      ctaLink: workspaceUrl || null,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Invoice", value: invoiceNumber || "Pending reference" },
-          ...(applicationReference
-            ? [{ label: "Reference", value: applicationReference }]
-            : []),
-          { label: "Processed", value: formatDateTime(Date.now()) },
-        ]),
-      ],
-    });
-
-    return this.dispatch({
-      to,
-      subject: "Payment confirmed",
-      html,
-      tenant,
-      critical: false,
-    });
-  }
-
-  async sendTenantPaymentFailed({
-    to,
-    recipientName,
-    tenant = null,
-    invoiceNumber,
-    retryUrl = null,
-    applicationReference = null,
-  }) {
-    const html = this.renderMessageCard({
-      eyebrow: "Payment failed",
-      title: "We could not complete your payment",
-      intro: recipientName
-        ? `Hello ${escapeHtml(recipientName)}, the latest payment attempt for your organisation did not complete successfully.`
-        : "The latest payment attempt for your organisation did not complete successfully.",
-      tenant,
-      ctaLabel: retryUrl ? "Retry payment" : null,
-      ctaLink: retryUrl || null,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Invoice", value: invoiceNumber || "Pending reference" },
-          ...(applicationReference
-            ? [{ label: "Reference", value: applicationReference }]
-            : []),
-        ]),
-        `<p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#475569;">You can retry payment from the billing workspace or the public application status page.</p>`,
-      ],
-    });
-
-    return this.dispatch({
-      to,
-      subject: "Payment attempt failed",
-      html,
-      tenant,
       critical: false,
     });
   }

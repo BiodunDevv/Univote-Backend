@@ -9,6 +9,7 @@ const College = require("../src/models/College");
 const VotingSession = require("../src/models/VotingSession");
 const Candidate = require("../src/models/Candidate");
 const Vote = require("../src/models/Vote");
+const VerificationLog = require("../src/models/VerificationLog");
 const AuditLog = require("../src/models/AuditLog");
 const Notification = require("../src/models/Notification");
 const Testimonial = require("../src/models/Testimonial");
@@ -951,6 +952,40 @@ async function seedTenantStudents(tenant, colleges) {
   let tenantMemberSequence = 0;
   let createdIndex = 0;
 
+  if (tenant.slug === TENANT_SLUG) {
+    const computerScienceCollege = colleges.find((college) =>
+      college.departments.some((department) => department.code === "CSC"),
+    );
+    const computerScienceDepartment = computerScienceCollege?.departments.find(
+      (department) => department.code === "CSC",
+    );
+
+    if (computerScienceCollege && computerScienceDepartment) {
+      tenantMemberSequence += 1;
+      students.push({
+        tenant_id: tenant._id,
+        matric_no: "BU22CSC1005",
+        member_id: null,
+        employee_id: null,
+        username: null,
+        full_name: "Muhammed Abiodun",
+        email: `muhammed.abiodun@${studentEmailDomain}`,
+        password_hash: passwordHash,
+        first_login: false,
+        department: computerScienceDepartment.name,
+        department_code: computerScienceDepartment.code,
+        college: computerScienceCollege.name,
+        level: "300",
+        has_voted_sessions: [],
+        photo_url: STUDENT_PHOTO_URL,
+        face_token: generateSeedFaceToken(tenant.slug, tenantMemberSequence),
+        is_logged_in: false,
+        is_active: true,
+      });
+      departmentCounters[computerScienceDepartment.code] = 1005;
+    }
+  }
+
   colleges.forEach((college) => {
     college.departments.forEach((department) => {
       departmentCounters[department.code] =
@@ -1016,12 +1051,32 @@ async function seedTenantStudents(tenant, colleges) {
 async function seedTenantSessions(tenant, tenantAdminId) {
   console.log("\n🗳️  Creating sample voting sessions...");
 
+  const now = new Date();
+  const activeStart = addDays(now, -1);
+  const activeEnd = addDays(now, 1);
   const upcomingStart = addDays(new Date(), 5);
   const upcomingEnd = addDays(upcomingStart, 1);
   const endedStart = addDays(new Date(), -20);
   const endedEnd = addDays(new Date(), -19);
 
-  const [upcomingSession, endedSession] = await VotingSession.create([
+  const [activeSession, upcomingSession, endedSession] = await VotingSession.create([
+    {
+      tenant_id: tenant._id,
+      title: "Faculty Presidents Election",
+      description: "Live election used for active ballot verification and QA.",
+      start_time: activeStart,
+      end_time: activeEnd,
+      categories: ["President"],
+      location: {
+        lat: 7.4208,
+        lng: 4.9078,
+        radius_meters: 1500,
+      },
+      is_off_campus_allowed: false,
+      results_public: false,
+      created_by: tenantAdminId,
+      status: "active",
+    },
     {
       tenant_id: tenant._id,
       title: "Student Representative Council Election",
@@ -1061,6 +1116,15 @@ async function seedTenantSessions(tenant, tenantAdminId) {
   const candidates = await Candidate.insertMany([
     {
       tenant_id: tenant._id,
+      session_id: activeSession._id,
+      name: "Teniola Adebayo",
+      position: "President",
+      photo_url: STUDENT_PHOTO_URL,
+      bio: "Focused on student experience, transparent voting, and faster issue resolution.",
+      manifesto: "Reliable faculty representation and stronger welfare follow-up.",
+    },
+    {
+      tenant_id: tenant._id,
       session_id: upcomingSession._id,
       name: "Adebayo Quadri",
       position: "President",
@@ -1091,6 +1155,12 @@ async function seedTenantSessions(tenant, tenantAdminId) {
     },
   ]);
 
+  activeSession.candidates = candidates
+    .filter(
+      (candidate) =>
+        candidate.session_id.toString() === activeSession._id.toString(),
+    )
+    .map((candidate) => candidate._id);
   upcomingSession.candidates = candidates
     .filter(
       (candidate) =>
@@ -1104,9 +1174,176 @@ async function seedTenantSessions(tenant, tenantAdminId) {
     )
     .map((candidate) => candidate._id);
 
-  await Promise.all([upcomingSession.save(), endedSession.save()]);
+  await Promise.all([
+    activeSession.save(),
+    upcomingSession.save(),
+    endedSession.save(),
+  ]);
 
-  console.log("✅ Created 2 sessions with 3 candidates");
+  console.log("✅ Created 3 sessions with 4 candidates");
+  return {
+    activeSession,
+    upcomingSession,
+    endedSession,
+    candidates,
+  };
+}
+
+async function seedVotingBaseline(
+  tenant,
+  tenantAdminId,
+  students,
+  sessionsSeed,
+  tenantAdmin,
+) {
+  if (tenant.slug !== TENANT_SLUG) {
+    return;
+  }
+
+  const seededStudent = students.find(
+    (student) => student.matric_no === "BU22CSC1005",
+  );
+  if (!seededStudent) {
+    return;
+  }
+
+  const endedCandidate = sessionsSeed.candidates.find(
+    (candidate) =>
+      candidate.session_id.toString() === sessionsSeed.endedSession._id.toString(),
+  );
+  const activeCandidate = sessionsSeed.candidates.find(
+    (candidate) =>
+      candidate.session_id.toString() === sessionsSeed.activeSession._id.toString(),
+  );
+
+  if (!endedCandidate || !activeCandidate) {
+    return;
+  }
+
+  await Vote.create({
+    tenant_id: tenant._id,
+    student_id: seededStudent._id,
+    session_id: sessionsSeed.endedSession._id,
+    candidate_id: endedCandidate._id,
+    position: endedCandidate.position,
+    geo_location: {
+      lat: 7.4208,
+      lng: 4.9078,
+    },
+    face_match_score: 94.2,
+    face_verification_passed: true,
+    face_token: seededStudent.face_token,
+    status: "valid",
+    device_id: "seeded-ios-device",
+    ip_address: "127.0.0.1",
+    timestamp: addDays(new Date(), -18),
+  });
+
+  await Candidate.updateOne(
+    { _id: endedCandidate._id },
+    { $inc: { vote_count: 1 } },
+  );
+  await Student.updateOne(
+    { _id: seededStudent._id },
+    { $addToSet: { has_voted_sessions: sessionsSeed.endedSession._id } },
+  );
+
+  await VerificationLog.insertMany([
+    {
+      tenant_id: tenant._id,
+      user_id: seededStudent._id,
+      session_id: sessionsSeed.endedSession._id,
+      confidence_score: 94.2,
+      threshold_used: SEEDED_FACEPP_THRESHOLD,
+      result: "accepted",
+      failure_reason: null,
+      is_genuine_attempt: true,
+      reviewed_by: tenantAdminId,
+      reviewed_at: new Date(),
+      review_note: "Seeded accepted genuine attempt for dashboard baseline.",
+      provider: "facepp",
+      device_id: "seeded-ios-device",
+      ip_address: "127.0.0.1",
+      geo_location: { lat: 7.4208, lng: 4.9078 },
+      image_url: STUDENT_PHOTO_URL,
+      timestamp: addDays(new Date(), -18),
+      meta: {
+        scenario: "correct_accept",
+        seeded_by: tenantAdmin.email,
+      },
+    },
+    {
+      tenant_id: tenant._id,
+      user_id: seededStudent._id,
+      session_id: sessionsSeed.activeSession._id,
+      confidence_score: 71.4,
+      threshold_used: SEEDED_FACEPP_THRESHOLD,
+      result: "rejected",
+      failure_reason: "LOW_CONFIDENCE",
+      is_genuine_attempt: true,
+      reviewed_by: tenantAdminId,
+      reviewed_at: new Date(),
+      review_note: "Seeded false reject attempt for FRR visibility.",
+      provider: "facepp",
+      device_id: "seeded-android-device",
+      ip_address: "127.0.0.2",
+      geo_location: { lat: 7.4209, lng: 4.9079 },
+      image_url: STUDENT_PHOTO_URL,
+      timestamp: addDays(new Date(), -3),
+      meta: {
+        scenario: "false_reject",
+      },
+    },
+    {
+      tenant_id: tenant._id,
+      user_id: seededStudent._id,
+      session_id: sessionsSeed.activeSession._id,
+      confidence_score: 91.3,
+      threshold_used: SEEDED_FACEPP_THRESHOLD,
+      result: "accepted",
+      failure_reason: "FALSE_ACCEPT",
+      is_genuine_attempt: false,
+      reviewed_by: tenantAdminId,
+      reviewed_at: new Date(),
+      review_note: "Seeded impostor acceptance for FAR visibility.",
+      provider: "facepp",
+      device_id: "seeded-web-device",
+      ip_address: "127.0.0.3",
+      geo_location: { lat: 7.421, lng: 4.908 },
+      image_url: STUDENT_PHOTO_URL,
+      timestamp: addDays(new Date(), -2),
+      meta: {
+        scenario: "false_accept",
+        candidate_id: activeCandidate._id,
+      },
+    },
+    {
+      tenant_id: tenant._id,
+      user_id: seededStudent._id,
+      session_id: sessionsSeed.activeSession._id,
+      confidence_score: 38.5,
+      threshold_used: SEEDED_FACEPP_THRESHOLD,
+      result: "rejected",
+      failure_reason: "NO_FACE_DETECTED",
+      is_genuine_attempt: false,
+      reviewed_by: tenantAdminId,
+      reviewed_at: new Date(),
+      review_note: "Seeded impostor rejection for accuracy baseline.",
+      provider: "facepp",
+      device_id: "seeded-web-device",
+      ip_address: "127.0.0.4",
+      geo_location: { lat: 7.4207, lng: 4.9077 },
+      image_url: STUDENT_PHOTO_URL,
+      timestamp: addDays(new Date(), -1),
+      meta: {
+        scenario: "correct_reject",
+      },
+    },
+  ]);
+
+  console.log(
+    `✅ Seeded vote and biometric evaluation baseline for ${seededStudent.full_name} (${seededStudent.matric_no})`,
+  );
 }
 
 async function seedNotifications(tenant, superAdmin, tenantAdmin, students) {
@@ -1339,7 +1576,14 @@ async function seed() {
       primaryTenant,
       primaryColleges,
     );
-    await seedTenantSessions(primaryTenant, tenantAdmin._id);
+    const primarySessions = await seedTenantSessions(primaryTenant, tenantAdmin._id);
+    await seedVotingBaseline(
+      primaryTenant,
+      tenantAdmin._id,
+      primaryStudents,
+      primarySessions,
+      tenantAdmin,
+    );
     await seedNotifications(
       primaryTenant,
       superAdmin,
@@ -1403,6 +1647,9 @@ async function seed() {
     );
     console.log(
       `   - ${TENANT_ADMIN_EMAIL} and ${SECONDARY_TENANT_ADMIN_EMAIL} each have a direct approved university workspace for QA.`,
+    );
+    console.log(
+      "   - Bowen includes BU22CSC1005 (Muhammed Abiodun), one active live-test session, one historical seeded vote, and reviewed biometric logs for FRR/FAR visibility.",
     );
     console.log("=".repeat(60));
   } catch (error) {

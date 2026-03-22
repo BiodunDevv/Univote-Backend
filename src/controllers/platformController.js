@@ -7,6 +7,7 @@ const VotingSession = require("../models/VotingSession");
 const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
 const PlatformSetting = require("../models/PlatformSetting");
+const VerificationLog = require("../models/VerificationLog");
 const {
   cloneDefaultTenantSettings,
   getTenantSettingsCatalog,
@@ -14,6 +15,7 @@ const {
 } = require("../utils/tenantSettings");
 const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
+const { getVerificationMetrics } = require("../services/biometricAnalyticsService");
 
 function serializeTenant(tenant) {
   return {
@@ -302,6 +304,134 @@ async function buildTenantStats(tenantId) {
 }
 
 class PlatformController {
+  async getBiometricMetrics(req, res) {
+    try {
+      const tenantId = req.query.tenant_id || null;
+      const tenant = tenantId ? await Tenant.findById(tenantId).lean() : null;
+      const tenantScopedReq = {
+        ...req,
+        tenantId,
+        tenant,
+      };
+      const metrics = await getVerificationMetrics(tenantScopedReq, req.query || {});
+
+      res.json({
+        tenant: tenant
+          ? {
+              id: tenant._id,
+              name: tenant.name,
+              slug: tenant.slug,
+            }
+          : null,
+        metrics,
+      });
+    } catch (error) {
+      console.error("Get platform biometric metrics error:", error);
+      res.status(500).json({ error: "Failed to get biometric metrics" });
+    }
+  }
+
+  async getVerificationLogs(req, res) {
+    try {
+      const page = Math.max(parseInt(req.query.page || 1, 10), 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit || 25, 10), 1), 100);
+      const filter = {};
+
+      if (req.query.tenant_id) {
+        filter.tenant_id = req.query.tenant_id;
+      }
+      if (req.query.session_id) {
+        filter.session_id = req.query.session_id;
+      }
+      if (req.query.result) {
+        filter.result = req.query.result;
+      }
+      if (req.query.failure_reason) {
+        filter.failure_reason = req.query.failure_reason;
+      }
+      if (req.query.review_state === "reviewed") {
+        filter.is_genuine_attempt = { $in: [true, false] };
+      } else if (req.query.review_state === "pending") {
+        filter.is_genuine_attempt = null;
+      }
+      if (req.query.start_date || req.query.end_date) {
+        filter.timestamp = {};
+        if (req.query.start_date) {
+          filter.timestamp.$gte = new Date(req.query.start_date);
+        }
+        if (req.query.end_date) {
+          filter.timestamp.$lte = new Date(req.query.end_date);
+        }
+      }
+
+      const [logs, total] = await Promise.all([
+        VerificationLog.find(filter)
+          .populate("tenant_id", "name slug")
+          .populate("user_id", "full_name matric_no email")
+          .populate("session_id", "title status")
+          .populate("reviewed_by", "full_name email")
+          .sort({ timestamp: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        VerificationLog.countDocuments(filter),
+      ]);
+
+      res.json({
+        logs: logs.map((log) => ({
+          id: log._id,
+          tenant: log.tenant_id
+            ? {
+                id: log.tenant_id._id,
+                name: log.tenant_id.name,
+                slug: log.tenant_id.slug,
+              }
+            : null,
+          student: log.user_id
+            ? {
+                id: log.user_id._id,
+                full_name: log.user_id.full_name,
+                matric_no: log.user_id.matric_no,
+                email: log.user_id.email,
+              }
+            : null,
+          session: log.session_id
+            ? {
+                id: log.session_id._id,
+                title: log.session_id.title,
+                status: log.session_id.status,
+              }
+            : null,
+          confidence_score: log.confidence_score,
+          threshold_used: log.threshold_used,
+          result: log.result,
+          failure_reason: log.failure_reason,
+          is_genuine_attempt: log.is_genuine_attempt,
+          provider: log.provider,
+          reviewed_by: log.reviewed_by
+            ? {
+                id: log.reviewed_by._id,
+                full_name: log.reviewed_by.full_name,
+                email: log.reviewed_by.email,
+              }
+            : null,
+          reviewed_at: log.reviewed_at,
+          review_note: log.review_note,
+          timestamp: log.timestamp,
+        })),
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit),
+        },
+      });
+    } catch (error) {
+      console.error("Get platform verification logs error:", error);
+      res.status(500).json({ error: "Failed to get verification logs" });
+    }
+  }
+
   async getOverview(_req, res) {
     try {
       const [

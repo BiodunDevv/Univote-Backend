@@ -407,12 +407,8 @@ const options = {
         description: "Tenant and platform announcement publishing, listing, and broadcast delivery",
       },
       {
-        name: "Billing",
-        description: "Plan catalog, invoices, checkout, subscription changes, and entitlement visibility",
-      },
-      {
         name: "Platform",
-        description: "Super-admin platform controls including biometric provider configuration and plan catalog management",
+        description: "Super-admin platform controls including biometric provider configuration, university onboarding, and verification monitoring",
       },
       { name: "Health", description: "Server health checks and keep-alive" },
     ],

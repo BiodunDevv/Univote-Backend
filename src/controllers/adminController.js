@@ -4,6 +4,7 @@ const Admin = require("../models/Admin");
 const VotingSession = require("../models/VotingSession");
 const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
+const AuditLog = require("../models/AuditLog");
 const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
 const constants = require("../config/constants");

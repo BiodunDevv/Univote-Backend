@@ -128,6 +128,12 @@ const tenantSettingsSchema = new mongoose.Schema(
         type: Boolean,
         default: false,
       },
+      face_match_threshold: {
+        type: Number,
+        default: 80,
+        min: 0,
+        max: 100,
+      },
     },
   },
   { _id: false },

@@ -4,8 +4,10 @@ const VotingSession = require("../models/VotingSession");
 const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
 const College = require("../models/College");
+const VerificationLog = require("../models/VerificationLog");
 const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
+const { createVerificationLog } = require("../services/biometricAnalyticsService");
 const { isWithinGeofence, isValidCoordinates } = require("../utils/geofence");
 const cacheService = require("../services/cacheService");
 const {
@@ -13,7 +15,50 @@ const {
   getTenantCacheNamespace,
   assignTenantId,
 } = require("../utils/tenantScope");
-const { getTenantEligibilityPolicy } = require("../utils/tenantSettings");
+const { getTenantEligibilityPolicy, getTenantSettings } = require("../utils/tenantSettings");
+
+function mapVerificationFailureReason(result = {}) {
+  const code = String(result.code || "").trim().toUpperCase();
+  const message = String(result.error || result.message || "")
+    .trim()
+    .toUpperCase();
+
+  if (code === "NO_FACE_DETECTED" || message.includes("NO FACE DETECTED")) {
+    return "NO_FACE_DETECTED";
+  }
+  if (code === "MULTIPLE_FACES" || message.includes("MULTIPLE FACES")) {
+    return "MULTIPLE_FACES";
+  }
+  if (code === "FACE_API_TIMEOUT" || message.includes("TIMED OUT")) {
+    return "FACE_API_TIMEOUT";
+  }
+  if (
+    code === "RATE_LIMIT_EXCEEDED" ||
+    code === "CONCURRENCY_LIMIT_EXCEEDED"
+  ) {
+    return "RATE_LIMIT_TRIGGERED";
+  }
+  if (message.includes("CLEARER PHOTO") || message.includes("IMAGE QUALITY")) {
+    return "LOW_QUALITY_IMAGE";
+  }
+  if (code === "BIOMETRIC_PROVIDER_NOT_CONFIGURED" || code === "FACE_API_ERROR") {
+    return "FACE_API_ERROR";
+  }
+  return "FACE_VERIFICATION_FAILED";
+}
+
+async function logVerificationAttempt(req, payload = {}) {
+  if (!req.tenantId && !req.tenant?._id) {
+    return null;
+  }
+
+  try {
+    return await createVerificationLog(req, payload);
+  } catch (error) {
+    console.error("Verification log write failed:", error);
+    return null;
+  }
+}
 
 class VoteController {
   /**
@@ -30,6 +75,10 @@ class VoteController {
       const { session_id, choices, image_url, lat, lng, device_id } = req.body;
       const studentId = req.studentId;
       const tenantNamespace = getTenantCacheNamespace(req);
+      const tenantSettings = getTenantSettings(req.tenant);
+      const biometricThreshold = Number(
+        tenantSettings.voting?.face_match_threshold || 80,
+      );
 
       // Validate required fields
       if (
@@ -40,12 +89,32 @@ class VoteController {
         lng === undefined
       ) {
         await mongoSession.abortTransaction();
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "MISSING_REQUIRED_FIELDS",
+          device_id,
+          ip_address: req.ip,
+          image_url: image_url || null,
+        });
         return res.status(400).json({ error: "Missing required fields" });
       }
 
       // Validate coordinates
       if (!isValidCoordinates(lat, lng)) {
         await mongoSession.abortTransaction();
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "NO_LOCATION",
+          device_id,
+          ip_address: req.ip,
+          image_url,
+        });
         return res.status(400).json({ error: "Invalid coordinates" });
       }
 
@@ -59,6 +128,17 @@ class VoteController {
 
       if (!voteLockAcquired) {
         await mongoSession.abortTransaction();
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "CONCURRENT_REQUEST",
+          device_id,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+        });
         return res.status(409).json({
           error: "You have already voted in this session",
           code: "ALREADY_VOTED",
@@ -73,6 +153,17 @@ class VoteController {
         await mongoSession.abortTransaction();
         // Release lock on error
         await cacheService.del(voteLockKey);
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "USER_NOT_FOUND",
+          device_id,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+        });
         return res.status(404).json({ error: "Student not found" });
       }
 
@@ -84,6 +175,17 @@ class VoteController {
         await mongoSession.abortTransaction();
         // Release lock on error
         await cacheService.del(voteLockKey);
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "SESSION_NOT_FOUND",
+          device_id,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+        });
         return res.status(404).json({ error: "Voting session not found" });
       }
 
@@ -95,6 +197,18 @@ class VoteController {
         await mongoSession.abortTransaction();
         // Release lock on error
         await cacheService.del(voteLockKey);
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "SESSION_INACTIVE",
+          device_id,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+          meta: { session_status: session.status },
+        });
         return res.status(400).json({
           error: `Voting session is ${session.status}. You can only vote during active sessions.`,
         });
@@ -104,6 +218,17 @@ class VoteController {
       if (student.has_voted_sessions.includes(session_id)) {
         await mongoSession.abortTransaction();
         await cacheService.del(voteLockKey);
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "ALREADY_VOTED",
+          device_id,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+        });
         return res.status(409).json({
           error: "You have already voted in this session",
           code: "ALREADY_VOTED",
@@ -120,6 +245,17 @@ class VoteController {
       ) {
         await mongoSession.abortTransaction();
         await cacheService.del(voteLockKey);
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "COLLEGE_MISMATCH",
+          device_id,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+        });
         return res.status(403).json({
           error:
             "You are not eligible for this voting session (college mismatch)",
@@ -148,6 +284,17 @@ class VoteController {
         if (!departmentNames.includes(student.department)) {
           await mongoSession.abortTransaction();
           await cacheService.del(voteLockKey);
+          await logVerificationAttempt(req, {
+            user_id: studentId,
+            session_id,
+            threshold_used: biometricThreshold,
+            result: "rejected",
+            failure_reason: "DEPARTMENT_MISMATCH",
+            device_id,
+            ip_address: req.ip,
+            image_url,
+            geo_location: { lat, lng },
+          });
           return res.status(403).json({
             error:
               "You are not eligible for this voting session (department mismatch)",
@@ -163,6 +310,17 @@ class VoteController {
         if (!session.eligible_levels.includes(student.level)) {
           await mongoSession.abortTransaction();
           await cacheService.del(voteLockKey);
+          await logVerificationAttempt(req, {
+            user_id: studentId,
+            session_id,
+            threshold_used: biometricThreshold,
+            result: "rejected",
+            failure_reason: "LEVEL_MISMATCH",
+            device_id,
+            ip_address: req.ip,
+            image_url,
+            geo_location: { lat, lng },
+          });
           return res.status(403).json({
             error:
               "You are not eligible for this voting session (level mismatch)",
@@ -184,6 +342,17 @@ class VoteController {
         if (!withinGeofence) {
           await mongoSession.abortTransaction();
           await cacheService.del(voteLockKey);
+          await logVerificationAttempt(req, {
+            user_id: studentId,
+            session_id,
+            threshold_used: biometricThreshold,
+            result: "rejected",
+            failure_reason: "GEOFENCE_VIOLATION",
+            device_id,
+            ip_address: req.ip,
+            image_url,
+            geo_location: { lat, lng },
+          });
           return res.status(403).json({
             error:
               "You are outside the voting geofence. Please ensure you are within the designated voting location.",
@@ -199,6 +368,17 @@ class VoteController {
       if (!student.face_token) {
         await mongoSession.abortTransaction();
         await cacheService.del(voteLockKey);
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "NO_FACE_TOKEN",
+          device_id,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+        });
         return res.status(400).json({
           error:
             "No registered face found. Please contact administrator to register your face.",
@@ -210,11 +390,33 @@ class VoteController {
       const faceVerification = await faceProviderService.verifyFace(
         student.face_token,
         image_url,
+        {
+          threshold_override: biometricThreshold,
+        },
       );
 
       if (!faceVerification.success) {
         await mongoSession.abortTransaction();
         await cacheService.del(voteLockKey);
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          confidence_score:
+            typeof faceVerification.confidence === "number"
+              ? faceVerification.confidence
+              : null,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: mapVerificationFailureReason(faceVerification),
+          device_id,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+          meta: {
+            provider_code: faceVerification.code || null,
+            provider_error: faceVerification.error || null,
+          },
+        });
         return res.status(400).json({
           error: faceVerification.error,
           code: "FACE_VERIFICATION_FAILED",
@@ -225,6 +427,18 @@ class VoteController {
       if (!faceVerification.is_match) {
         await mongoSession.abortTransaction();
         await cacheService.del(voteLockKey);
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          confidence_score: faceVerification.confidence,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "LOW_CONFIDENCE",
+          device_id,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+        });
 
         return res.status(403).json({
           error: faceVerification.message,
@@ -240,6 +454,18 @@ class VoteController {
       if (!Array.isArray(choices) || choices.length === 0) {
         await mongoSession.abortTransaction();
         await cacheService.del(voteLockKey);
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          confidence_score: faceConfidence,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "INVALID_CHOICES",
+          device_id,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+        });
         return res.status(400).json({ error: "Invalid choices format" });
       }
 
@@ -254,6 +480,18 @@ class VoteController {
       if (candidates.length !== choices.length) {
         await mongoSession.abortTransaction();
         await cacheService.del(voteLockKey);
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          confidence_score: faceConfidence,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "INVALID_CANDIDATE_SELECTION",
+          device_id,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+        });
         return res.status(400).json({ error: "Invalid candidate selection" });
       }
 
@@ -336,6 +574,23 @@ class VoteController {
       );
 
       // Send vote confirmation email
+      await logVerificationAttempt(req, {
+        user_id: studentId,
+        session_id,
+        confidence_score: faceConfidence,
+        threshold_used: biometricThreshold,
+        result: "accepted",
+        failure_reason: null,
+        device_id,
+        ip_address: req.ip,
+        image_url,
+        geo_location: { lat, lng },
+        meta: {
+          verified_face_token: verifiedFaceToken,
+          choice_count: choices.length,
+        },
+      });
+
       emailService
         .sendVoteConfirmation(student, session, voteDetails, req.tenant || null)
         .catch((err) => {
@@ -356,6 +611,25 @@ class VoteController {
         await cacheService.del(voteLockKey);
       }
       console.error("Submit vote error:", error);
+      await logVerificationAttempt(req, {
+        user_id: req.studentId || null,
+        session_id: req.body?.session_id || null,
+        threshold_used: Number(
+          getTenantSettings(req.tenant).voting?.face_match_threshold || 80,
+        ),
+        result: "rejected",
+        failure_reason: "DB_WRITE_FAIL",
+        device_id: req.body?.device_id || null,
+        ip_address: req.ip,
+        image_url: req.body?.image_url || null,
+        geo_location:
+          typeof req.body?.lat === "number" && typeof req.body?.lng === "number"
+            ? { lat: req.body.lat, lng: req.body.lng }
+            : undefined,
+        meta: {
+          error: error.message,
+        },
+      });
       res.status(500).json({ error: "Failed to submit vote" });
     } finally {
       mongoSession.endSession();

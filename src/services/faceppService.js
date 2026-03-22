@@ -63,6 +63,7 @@ class FacePPService {
         return {
           success: false,
           error: "No face detected. Please upload a clear facial photo.",
+          code: "NO_FACE_DETECTED",
         };
       }
 
@@ -71,6 +72,7 @@ class FacePPService {
           success: false,
           error:
             "Multiple faces detected. Please submit a single-person photo.",
+          code: "MULTIPLE_FACES",
         };
       }
 
@@ -108,18 +110,28 @@ class FacePPService {
         };
       }
 
+      if (error.code === "ECONNABORTED") {
+        return {
+          success: false,
+          error: "Face verification timed out. Please retry.",
+          code: "FACE_API_TIMEOUT",
+        };
+      }
+
       if (error.response?.data) {
         return {
           success: false,
           error:
             error.response.data.error_message ||
             "Face detection failed. Please try again.",
+          code: "FACE_API_ERROR",
         };
       }
 
       return {
         success: false,
         error: "Face detection failed. Please try again with a clearer image.",
+        code: "FACE_API_ERROR",
       };
     }
   }
@@ -161,7 +173,7 @@ class FacePPService {
    * @param {string} imageUrl2 - URL of new image to compare (voting selfie)
    * @returns {Object} Comparison result with confidence score
    */
-  async compareFaces(faceToken1, imageUrl2) {
+  async compareFaces(faceToken1, imageUrl2, options = {}) {
     try {
       if (!this.apiKey || !this.apiSecret) {
         return {
@@ -204,7 +216,9 @@ class FacePPService {
 
       const confidence = response.data.confidence || 0;
       const threshold =
-        response.data.thresholds?.["1e-5"] || this.confidenceThreshold;
+        typeof options.threshold_override === "number"
+          ? Number(options.threshold_override)
+          : this.confidenceThreshold;
 
       return {
         success: true,
@@ -245,18 +259,28 @@ class FacePPService {
         };
       }
 
+      if (error.code === "ECONNABORTED") {
+        return {
+          success: false,
+          error: "Face verification timed out. Please retry.",
+          code: "FACE_API_TIMEOUT",
+        };
+      }
+
       if (error.response?.data) {
         return {
           success: false,
           error:
             error.response.data.error_message ||
             "Face comparison failed. Please try again.",
+          code: "FACE_API_ERROR",
         };
       }
 
       return {
         success: false,
         error: "Face comparison failed. Please try again.",
+        code: "FACE_API_ERROR",
       };
     }
   }
@@ -268,8 +292,12 @@ class FacePPService {
    * @param {string} newImageUrl - URL of image to verify
    * @returns {Object} Verification result
    */
-  async verifyFace(registeredFaceToken, newImageUrl) {
-    return await this.compareFaces(registeredFaceToken, newImageUrl);
+  async verifyFace(registeredFaceToken, newImageUrl, options = {}) {
+    return await this.compareFaces(
+      registeredFaceToken,
+      newImageUrl,
+      options,
+    );
   }
 
   /**

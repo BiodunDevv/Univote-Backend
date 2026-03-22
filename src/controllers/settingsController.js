@@ -7,9 +7,14 @@ const College = require("../models/College");
 const Tenant = require("../models/Tenant");
 const TenantAdminMembership = require("../models/TenantAdminMembership");
 const PlatformSetting = require("../models/PlatformSetting");
+const VerificationLog = require("../models/VerificationLog");
 const bcrypt = require("bcryptjs");
 const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
+const {
+  buildVerificationLogFilter,
+  getVerificationMetrics,
+} = require("../services/biometricAnalyticsService");
 const {
   getTenantScopedFilter,
   prependTenantMatch,
@@ -33,9 +38,11 @@ function serializeTenantSettingsPayload(tenant) {
       id: tenant._id,
       name: tenant.name,
       slug: tenant.slug,
+      primary_domain: tenant.primary_domain || null,
       status: tenant.status,
       plan_code: tenant.plan_code,
       branding: tenant.branding || {},
+      onboarding: tenant.onboarding || {},
     },
     labels: settings.labels,
     identity: getTenantIdentityMetadata(tenant),
@@ -50,12 +57,92 @@ function serializeTenantSettingsPayload(tenant) {
   };
 }
 
+function serializeVerificationLog(log) {
+  return {
+    id: log._id,
+    tenant_id: log.tenant_id,
+    user_id: log.user_id
+      ? {
+          id: log.user_id._id,
+          full_name: log.user_id.full_name,
+          matric_no: log.user_id.matric_no,
+          email: log.user_id.email,
+        }
+      : null,
+    session_id: log.session_id
+      ? {
+          id: log.session_id._id,
+          title: log.session_id.title,
+          status: log.session_id.status,
+        }
+      : null,
+    reviewed_by: log.reviewed_by
+      ? {
+          id: log.reviewed_by._id,
+          full_name: log.reviewed_by.full_name,
+          email: log.reviewed_by.email,
+        }
+      : null,
+    confidence_score: log.confidence_score,
+    threshold_used: log.threshold_used,
+    result: log.result,
+    failure_reason: log.failure_reason,
+    is_genuine_attempt: log.is_genuine_attempt,
+    review_note: log.review_note,
+    reviewed_at: log.reviewed_at,
+    provider: log.provider,
+    device_id: log.device_id,
+    ip_address: log.ip_address,
+    geo_location: log.geo_location,
+    image_url: log.image_url,
+    timestamp: log.timestamp,
+    createdAt: log.createdAt,
+    updatedAt: log.updatedAt,
+  };
+}
+
 async function getOrCreatePlatformSetting() {
   let platformSetting = await PlatformSetting.findOne({ key: "defaults" });
   if (!platformSetting) {
     platformSetting = await PlatformSetting.create({ key: "defaults" });
   }
   return platformSetting;
+}
+
+function normalizeExportFilters(filters = {}) {
+  return {
+    session_id: filters.session_id ? String(filters.session_id) : null,
+    college: filters.college ? String(filters.college).trim() : null,
+    department: filters.department ? String(filters.department).trim() : null,
+    level: filters.level ? String(filters.level).trim() : null,
+    status: filters.status ? String(filters.status).trim() : null,
+    role: filters.role ? String(filters.role).trim() : null,
+    is_active:
+      typeof filters.is_active === "boolean" ? filters.is_active : undefined,
+  };
+}
+
+function buildStudentExportFilter(req, filters = {}) {
+  const normalized = normalizeExportFilters(filters);
+  const match = {};
+
+  if (normalized.college) match.college = normalized.college;
+  if (normalized.department) match.department = normalized.department;
+  if (normalized.level) match.level = normalized.level;
+  if (normalized.is_active !== undefined) match.is_active = normalized.is_active;
+
+  return getTenantScopedFilter(req, match);
+}
+
+function buildVoteExportFilter(req, filters = {}) {
+  const normalized = normalizeExportFilters(filters);
+  const match = {};
+
+  if (normalized.session_id) {
+    match.session_id = normalized.session_id;
+  }
+
+  return getTenantScopedFilter(req, match);
 }
 
 function buildAuditLogFilter(req, overrides = {}) {
@@ -443,6 +530,8 @@ class SettingsController {
                 name: req.tenant.name,
                 slug: req.tenant.slug,
                 plan_code: req.tenant.plan_code,
+                biometric_threshold:
+                  getTenantSettings(req.tenant).voting.face_match_threshold,
               }
             : null,
         },
@@ -713,6 +802,134 @@ class SettingsController {
     }
   }
 
+  async getBiometricMetrics(req, res) {
+    try {
+      const metrics = await getVerificationMetrics(req, req.query || {});
+      const threshold = getTenantSettings(req.tenant).voting.face_match_threshold;
+
+      res.json({
+        threshold,
+        metrics,
+      });
+    } catch (error) {
+      console.error("Get biometric metrics error:", error);
+      res.status(500).json({ error: "Failed to get biometric metrics" });
+    }
+  }
+
+  async getVerificationLogs(req, res) {
+    try {
+      const page = Math.max(parseInt(req.query.page || 1, 10), 1);
+      const limit = Math.min(
+        Math.max(parseInt(req.query.limit || 25, 10), 1),
+        100,
+      );
+      const filter = buildVerificationLogFilter(req, req.query || {});
+
+      const [logs, total] = await Promise.all([
+        VerificationLog.find(filter)
+          .populate("user_id", "full_name matric_no email")
+          .populate("session_id", "title status")
+          .populate("reviewed_by", "full_name email")
+          .sort({ timestamp: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        VerificationLog.countDocuments(filter),
+      ]);
+
+      res.json({
+        logs: logs.map(serializeVerificationLog),
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit),
+        },
+      });
+    } catch (error) {
+      console.error("Get verification logs error:", error);
+      res.status(500).json({ error: "Failed to get verification logs" });
+    }
+  }
+
+  async reviewVerificationLog(req, res) {
+    try {
+      const { id } = req.params;
+      const { is_genuine_attempt, review_note } = req.body;
+
+      if (typeof is_genuine_attempt !== "boolean") {
+        return res.status(400).json({
+          error: "is_genuine_attempt must be provided as a boolean",
+        });
+      }
+
+      const log = await VerificationLog.findOneAndUpdate(
+        getTenantScopedFilter(req, { _id: id }),
+        {
+          $set: {
+            is_genuine_attempt,
+            review_note: review_note ? String(review_note).trim() : null,
+            reviewed_by: req.adminId,
+            reviewed_at: new Date(),
+          },
+        },
+        { new: true },
+      )
+        .populate("user_id", "full_name matric_no email")
+        .populate("session_id", "title status")
+        .populate("reviewed_by", "full_name email")
+        .lean();
+
+      if (!log) {
+        return res.status(404).json({ error: "Verification log not found" });
+      }
+
+      res.json({
+        message: "Verification log review updated successfully",
+        log: serializeVerificationLog(log),
+      });
+    } catch (error) {
+      console.error("Review verification log error:", error);
+      res.status(500).json({ error: "Failed to review verification log" });
+    }
+  }
+
+  async updateBiometricThreshold(req, res) {
+    try {
+      const nextThreshold = Number(req.body.face_match_threshold);
+
+      if (Number.isNaN(nextThreshold) || nextThreshold < 0 || nextThreshold > 100) {
+        return res.status(400).json({
+          error: "face_match_threshold must be a number between 0 and 100",
+        });
+      }
+
+      const tenant = await Tenant.findById(req.tenantId);
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      tenant.settings = mergeTenantSettings({
+        ...(tenant.settings || {}),
+        voting: {
+          ...(tenant.settings?.voting || {}),
+          face_match_threshold: nextThreshold,
+        },
+      });
+
+      await tenant.save();
+
+      res.json({
+        message: "Biometric threshold updated successfully",
+        threshold: tenant.settings.voting.face_match_threshold,
+      });
+    } catch (error) {
+      console.error("Update biometric threshold error:", error);
+      res.status(500).json({ error: "Failed to update biometric threshold" });
+    }
+  }
+
   /**
    * Get database statistics
    * GET /api/admin/settings/database-stats
@@ -846,11 +1063,11 @@ class SettingsController {
 
       let data;
       let filename;
-      const scopedFilters = getTenantScopedFilter(req, filters);
+      const normalizedFilters = normalizeExportFilters(filters);
 
       switch (data_type) {
         case "students":
-          data = await Student.find(scopedFilters)
+          data = await Student.find(buildStudentExportFilter(req, normalizedFilters))
             .select(
               "-password_hash -active_token -face_token -embedding_vector",
             )
@@ -859,7 +1076,7 @@ class SettingsController {
           break;
 
         case "votes":
-          data = await Vote.find(scopedFilters)
+          data = await Vote.find(buildVoteExportFilter(req, normalizedFilters))
             .populate("student_id", "matric_no full_name")
             .populate("session_id", "title")
             .lean();
@@ -867,7 +1084,9 @@ class SettingsController {
           break;
 
         case "sessions":
-          data = await VotingSession.find(scopedFilters)
+          data = await VotingSession.find(
+            getTenantScopedFilter(req, normalizedFilters.status ? { status: normalizedFilters.status } : {}),
+          )
             .populate("candidates")
             .lean();
           filename = `sessions_export_${Date.now()}.${format}`;
@@ -875,9 +1094,9 @@ class SettingsController {
 
         case "admins":
           if (req.tenantId) {
-            data = await buildTenantAdminExportRows(req, filters);
+            data = await buildTenantAdminExportRows(req, normalizedFilters);
           } else {
-            data = await Admin.find(filters)
+            data = await Admin.find(normalizedFilters)
               .select("-password_hash -reset_password_code")
               .lean();
           }
@@ -885,7 +1104,7 @@ class SettingsController {
           break;
 
         case "audit_logs":
-          data = await AuditLog.find(buildAuditLogFilter(req, filters)).lean();
+          data = await AuditLog.find(buildAuditLogFilter(req, normalizedFilters)).lean();
           // Get admin details for audit logs
           const adminIds = [
             ...new Set(
@@ -929,16 +1148,31 @@ class SettingsController {
           return res.status(404).json({ error: "No data to export" });
         }
 
-        const keys = Object.keys(data[0]);
+        const flattened = data.map((row) => {
+          const nextRow = {};
+          Object.entries(row).forEach(([key, value]) => {
+            if (value && typeof value === "object" && !Array.isArray(value)) {
+              nextRow[key] = JSON.stringify(value);
+              return;
+            }
+            if (Array.isArray(value)) {
+              nextRow[key] = JSON.stringify(value);
+              return;
+            }
+            nextRow[key] = value;
+          });
+          return nextRow;
+        });
+
+        const keys = Object.keys(flattened[0]);
         const csv = [
           keys.join(","),
-          ...data.map((row) =>
+          ...flattened.map((row) =>
             keys
               .map((key) => {
                 const value = row[key];
-                return typeof value === "object"
-                  ? JSON.stringify(value)
-                  : value;
+                const serialized = value ?? "";
+                return `"${String(serialized).replace(/"/g, '""')}"`;
               })
               .join(","),
           ),
@@ -958,9 +1192,12 @@ class SettingsController {
           `attachment; filename="${filename}"`,
         );
         return res.json({
+          filename,
+          format,
+          record_count: data.length,
+          filters: normalizedFilters,
+          exported_at: new Date(),
           data_type,
-          export_date: new Date(),
-          total_records: data.length,
           data,
         });
       }
@@ -1073,6 +1310,7 @@ class SettingsController {
 
       const {
         name,
+        slug,
         primary_domain,
         support_email,
         primary_color,
@@ -1084,6 +1322,33 @@ class SettingsController {
       } = req.body;
 
       if (name !== undefined) tenant.name = String(name || "").trim() || tenant.name;
+      if (slug !== undefined) {
+        const normalizedSlug = String(slug || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "-")
+          .replace(/-{2,}/g, "-")
+          .replace(/^-|-$/g, "");
+
+        if (!normalizedSlug) {
+          return res.status(400).json({ error: "A valid slug is required" });
+        }
+
+        if (normalizedSlug !== tenant.slug) {
+          const existingTenant = await Tenant.findOne({
+            slug: normalizedSlug,
+            _id: { $ne: tenant._id },
+          }).lean();
+
+          if (existingTenant) {
+            return res.status(409).json({
+              error: "That university slug is already in use",
+            });
+          }
+        }
+
+        tenant.slug = normalizedSlug;
+      }
       if (primary_domain !== undefined) {
         tenant.primary_domain = primary_domain
           ? String(primary_domain).trim().toLowerCase()

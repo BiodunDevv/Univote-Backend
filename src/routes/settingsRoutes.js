@@ -92,6 +92,22 @@ router.patch(
   settingsController.updateProfile,
 );
 
+/**
+ * @swagger
+ * /admin/settings/tenant-profile:
+ *   get:
+ *     summary: Get tenant profile settings
+ *     description: Retrieve the active university workspace profile, branding, and onboarding contact details.
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *   patch:
+ *     summary: Update tenant profile settings
+ *     description: Update the active university workspace name, slug, domain, support email, branding, and onboarding contact details.
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ */
 router.get(
   "/tenant-profile",
   ...tenantSettingsAccess,
@@ -105,6 +121,20 @@ router.patch(
   settingsController.updateTenantProfile,
 );
 
+/**
+ * @swagger
+ * /admin/settings/identity:
+ *   get:
+ *     summary: Get tenant identity settings
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *   patch:
+ *     summary: Update tenant identity settings
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ */
 router.get("/identity", ...tenantSettingsAccess, settingsController.getIdentitySettings);
 router.patch(
   "/identity",
@@ -113,6 +143,20 @@ router.patch(
   settingsController.updateIdentitySettings,
 );
 
+/**
+ * @swagger
+ * /admin/settings/labels:
+ *   get:
+ *     summary: Get tenant terminology settings
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *   patch:
+ *     summary: Update tenant terminology settings
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ */
 router.get("/labels", ...tenantSettingsAccess, settingsController.getLabelSettings);
 router.patch(
   "/labels",
@@ -121,6 +165,20 @@ router.patch(
   settingsController.updateLabelSettings,
 );
 
+/**
+ * @swagger
+ * /admin/settings/auth-policy:
+ *   get:
+ *     summary: Get tenant auth and verification policy
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *   patch:
+ *     summary: Update tenant auth and verification policy
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ */
 router.get(
   "/auth-policy",
   ...tenantSettingsAccess,
@@ -133,6 +191,20 @@ router.patch(
   settingsController.updateAuthPolicySettings,
 );
 
+/**
+ * @swagger
+ * /admin/settings/participant-fields:
+ *   get:
+ *     summary: Get tenant participant field policy
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *   patch:
+ *     summary: Update tenant participant field policy
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ */
 router.get(
   "/participant-fields",
   ...tenantSettingsAccess,
@@ -427,8 +499,74 @@ router.post("/test-email", ...tenantSettingsAccess, settingsController.testEmail
  *                   type: string
  *       500:
  *         description: Face++ configuration error
- */
+*/
 router.post("/test-facepp", ...tenantSettingsAccess, settingsController.testFacepp);
+
+/**
+ * @swagger
+ * /admin/settings/biometric-metrics:
+ *   get:
+ *     summary: Get tenant biometric metrics
+ *     description: Return tenant-scoped FAR, FRR, accuracy, confidence trend, and failure-reason summaries.
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ */
+router.get(
+  "/biometric-metrics",
+  ...tenantSettingsAccess,
+  settingsController.getBiometricMetrics,
+);
+
+/**
+ * @swagger
+ * /admin/settings/verification-logs:
+ *   get:
+ *     summary: Get tenant verification logs
+ *     description: Return paginated tenant-scoped biometric verification attempts for review.
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ */
+router.get(
+  "/verification-logs",
+  ...tenantSettingsAccess,
+  settingsController.getVerificationLogs,
+);
+
+/**
+ * @swagger
+ * /admin/settings/verification-logs/{id}/review:
+ *   patch:
+ *     summary: Review a verification log
+ *     description: Mark a biometric verification attempt as genuine or impostor for FAR/FRR evaluation.
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ */
+router.patch(
+  "/verification-logs/:id/review",
+  ...tenantSettingsAccess,
+  auditLogger("review_verification_log", "verification_log"),
+  settingsController.reviewVerificationLog,
+);
+
+/**
+ * @swagger
+ * /admin/settings/biometric-threshold:
+ *   patch:
+ *     summary: Update tenant biometric threshold
+ *     description: Update the tenant-specific Face++ match threshold used during vote-time verification.
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ */
+router.patch(
+  "/biometric-threshold",
+  ...tenantSettingsAccess,
+  auditLogger("update_biometric_threshold", "tenant_settings"),
+  settingsController.updateBiometricThreshold,
+);
 
 /**
  * @swagger
