@@ -3,18 +3,6 @@ const { cloneDefaultTenantSettings } = require("../utils/tenantSettings");
 
 const brandingSchema = new mongoose.Schema(
   {
-    primary_color: {
-      type: String,
-      default: "#0f172a",
-    },
-    accent_color: {
-      type: String,
-      default: "#2563eb",
-    },
-    logo_url: {
-      type: String,
-      default: null,
-    },
     support_email: {
       type: String,
       default: null,

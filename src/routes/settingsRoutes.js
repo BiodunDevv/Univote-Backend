@@ -121,102 +121,6 @@ router.patch(
   settingsController.updateTenantProfile,
 );
 
-/**
- * @swagger
- * /admin/settings/identity:
- *   get:
- *     summary: Get tenant identity settings
- *     tags: [Settings]
- *     security:
- *       - BearerAuth: []
- *   patch:
- *     summary: Update tenant identity settings
- *     tags: [Settings]
- *     security:
- *       - BearerAuth: []
- */
-router.get("/identity", ...tenantSettingsAccess, settingsController.getIdentitySettings);
-router.patch(
-  "/identity",
-  ...tenantSettingsAccess,
-  auditLogger("update_tenant_identity_settings", "tenant_settings"),
-  settingsController.updateIdentitySettings,
-);
-
-/**
- * @swagger
- * /admin/settings/labels:
- *   get:
- *     summary: Get tenant terminology settings
- *     tags: [Settings]
- *     security:
- *       - BearerAuth: []
- *   patch:
- *     summary: Update tenant terminology settings
- *     tags: [Settings]
- *     security:
- *       - BearerAuth: []
- */
-router.get("/labels", ...tenantSettingsAccess, settingsController.getLabelSettings);
-router.patch(
-  "/labels",
-  ...tenantSettingsAccess,
-  auditLogger("update_tenant_label_settings", "tenant_settings"),
-  settingsController.updateLabelSettings,
-);
-
-/**
- * @swagger
- * /admin/settings/auth-policy:
- *   get:
- *     summary: Get tenant auth and verification policy
- *     tags: [Settings]
- *     security:
- *       - BearerAuth: []
- *   patch:
- *     summary: Update tenant auth and verification policy
- *     tags: [Settings]
- *     security:
- *       - BearerAuth: []
- */
-router.get(
-  "/auth-policy",
-  ...tenantSettingsAccess,
-  settingsController.getAuthPolicySettings,
-);
-router.patch(
-  "/auth-policy",
-  ...tenantSettingsAccess,
-  auditLogger("update_tenant_auth_policy", "tenant_settings"),
-  settingsController.updateAuthPolicySettings,
-);
-
-/**
- * @swagger
- * /admin/settings/participant-fields:
- *   get:
- *     summary: Get tenant participant field policy
- *     tags: [Settings]
- *     security:
- *       - BearerAuth: []
- *   patch:
- *     summary: Update tenant participant field policy
- *     tags: [Settings]
- *     security:
- *       - BearerAuth: []
- */
-router.get(
-  "/participant-fields",
-  ...tenantSettingsAccess,
-  settingsController.getParticipantFields,
-);
-router.patch(
-  "/participant-fields",
-  ...tenantSettingsAccess,
-  auditLogger("update_tenant_participant_fields", "tenant_settings"),
-  settingsController.updateParticipantFields,
-);
-
 router.get(
   "/feature-access",
   ...tenantSettingsAccess,
@@ -549,23 +453,6 @@ router.patch(
   ...tenantSettingsAccess,
   auditLogger("review_verification_log", "verification_log"),
   settingsController.reviewVerificationLog,
-);
-
-/**
- * @swagger
- * /admin/settings/biometric-threshold:
- *   patch:
- *     summary: Update tenant biometric threshold
- *     description: Update the tenant-specific Face++ match threshold used during vote-time verification.
- *     tags: [Settings]
- *     security:
- *       - BearerAuth: []
- */
-router.patch(
-  "/biometric-threshold",
-  ...tenantSettingsAccess,
-  auditLogger("update_biometric_threshold", "tenant_settings"),
-  settingsController.updateBiometricThreshold,
 );
 
 /**

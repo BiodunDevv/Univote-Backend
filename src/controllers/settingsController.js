@@ -20,19 +20,11 @@ const {
   prependTenantMatch,
 } = require("../utils/tenantScope");
 const {
-  DEFAULT_PARTICIPANT_FIELDS,
-  getTenantEligibilityPolicy,
-  getTenantIdentityMetadata,
-  getTenantParticipantFieldMetadata,
   getTenantSettings,
-  getTenantSettingsCatalog,
-  mergeTenantSettings,
-  normalizeIdentifierKey,
 } = require("../utils/tenantSettings");
 const { getTenantEntitlements, hasTenantFeature } = require("../services/planAccessService");
 
 function serializeTenantSettingsPayload(tenant) {
-  const settings = getTenantSettings(tenant);
   return {
     tenant: {
       id: tenant._id,
@@ -44,15 +36,6 @@ function serializeTenantSettingsPayload(tenant) {
       branding: tenant.branding || {},
       onboarding: tenant.onboarding || {},
     },
-    labels: settings.labels,
-    identity: getTenantIdentityMetadata(tenant),
-    auth_policy: settings.auth,
-    participant_fields: getTenantParticipantFieldMetadata(tenant),
-    eligibility_policy: getTenantEligibilityPolicy(tenant),
-    support: settings.support,
-    notifications: settings.notifications,
-    voting: settings.voting,
-    features: settings.features,
     entitlements: getTenantEntitlements(tenant),
   };
 }
@@ -1313,9 +1296,6 @@ class SettingsController {
         slug,
         primary_domain,
         support_email,
-        primary_color,
-        accent_color,
-        logo_url,
         contact_name,
         contact_email,
         contact_phone,
@@ -1360,9 +1340,6 @@ class SettingsController {
         ...(support_email !== undefined
           ? { support_email: support_email ? String(support_email).trim().toLowerCase() : null }
           : {}),
-        ...(primary_color !== undefined ? { primary_color } : {}),
-        ...(accent_color !== undefined ? { accent_color } : {}),
-        ...(logo_url !== undefined ? { logo_url: logo_url || null } : {}),
       };
 
       tenant.onboarding = {
