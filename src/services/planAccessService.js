@@ -1,19 +1,28 @@
 const Student = require("../models/Student");
 const VotingSession = require("../models/VotingSession");
 const TenantAdminMembership = require("../models/TenantAdminMembership");
-const {
-  comparePlanRank,
-  getPlanDefinition,
-} = require("../config/billingPlans");
-
-const FEATURE_MIN_PLAN = {
-  advanced_analytics: "pro_plus",
-  realtime_support: "pro_plus",
-  push_notifications: "pro_plus",
-  advanced_reports: "pro_plus",
-  custom_terminology: "pro_plus",
-  custom_identity_policy: "pro_plus",
-  custom_branding: "enterprise",
+const UNIVERSITY_DEFAULT_PLAN = {
+  code: "university",
+  name: "University",
+  rank: 1,
+  monthly_price_ngn: 0,
+  support_sla: "Standard",
+  limits: {
+    admins: 9999,
+    students: 500000,
+    active_sessions: 5000,
+  },
+  entitlements: {
+    custom_terminology: true,
+    custom_identity_policy: true,
+    custom_participant_structure: true,
+    custom_branding: true,
+    advanced_analytics: true,
+    advanced_reports: true,
+    realtime_support: true,
+    push_notifications: true,
+    face_verification: true,
+  },
 };
 
 function readMapLikeValue(mapLike, key) {
@@ -25,7 +34,10 @@ function readMapLikeValue(mapLike, key) {
 }
 
 function getTenantPlanDefinition(tenant) {
-  return getPlanDefinition(tenant?.plan_code || "pro");
+  return {
+    ...UNIVERSITY_DEFAULT_PLAN,
+    code: tenant?.plan_code || UNIVERSITY_DEFAULT_PLAN.code,
+  };
 }
 
 function getTenantLimit(tenant, quotaKey) {
@@ -45,23 +57,11 @@ function hasTenantFeature(tenant, featureKey) {
   if (typeof override === "boolean") {
     return override;
   }
-
-  const planEntitlement =
-    getTenantPlanDefinition(tenant).entitlements?.[featureKey];
-  if (typeof planEntitlement === "boolean") {
-    return planEntitlement;
-  }
-
-  const minimumPlan = FEATURE_MIN_PLAN[featureKey];
-  if (!minimumPlan) {
-    return false;
-  }
-
-  return comparePlanRank(tenant?.plan_code || "pro", minimumPlan) >= 0;
+  return true;
 }
 
 function getFeatureMinimumPlan(featureKey) {
-  return FEATURE_MIN_PLAN[featureKey] || null;
+  return featureKey ? "university" : null;
 }
 
 async function getTenantUsageSnapshot(tenantId) {
@@ -111,7 +111,7 @@ async function getTenantQuotaStatus(
 }
 
 function buildQuotaErrorMessage(quotaStatus, entityLabel) {
-  return `Your current plan allows ${quotaStatus.limit} ${entityLabel}. Upgrade the tenant plan before adding more.`;
+  return `The current university workspace limit allows ${quotaStatus.limit} ${entityLabel}.`;
 }
 
 function getTenantEntitlements(tenant) {

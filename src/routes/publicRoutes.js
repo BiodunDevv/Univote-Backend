@@ -139,9 +139,6 @@ router.post(
  *                 format: email
  *               contact_phone:
  *                 type: string
- *               institution_type:
- *                 type: string
- *                 enum: [university, college, polytechnic, faculty, organization]
  *               student_count_estimate:
  *                 type: integer
  *               admin_count_estimate:
@@ -168,10 +165,6 @@ router.post(
       ),
     body("contact_name").notEmpty().withMessage("Contact name is required"),
     body("contact_email").isEmail().withMessage("Contact email must be valid"),
-    body("institution_type")
-      .optional()
-      .isIn(["university", "college", "polytechnic", "faculty", "organization"])
-      .withMessage("Valid institution type is required"),
     body("student_count_estimate")
       .optional({ nullable: true, checkFalsy: true })
       .isInt({ min: 0 })

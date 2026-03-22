@@ -1277,10 +1277,11 @@ class AdminController {
    */
   async createAdmin(req, res) {
     try {
-      const { email, password, full_name, role } = req.body;
+      const { email, full_name, role } = req.body;
+      const password = constants.defaultPassword;
 
       // Validate required fields
-      if (!email || !password || !full_name) {
+      if (!email || !full_name) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 

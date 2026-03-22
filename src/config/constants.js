@@ -93,7 +93,7 @@ module.exports = {
 
   levels: ["100", "200", "300", "400", "500", "600"],
 
-  defaultPassword: "1234",
+  defaultPassword: "123456789",
 
   faceConfidenceThreshold: 80, // Confidence threshold for face matching (0-100)
 

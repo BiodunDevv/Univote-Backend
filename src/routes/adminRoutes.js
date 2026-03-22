@@ -559,9 +559,6 @@ router.delete(
  *               email:
  *                 type: string
  *                 format: email
- *               password:
- *                 type: string
- *                 minLength: 8
  *               full_name:
  *                 type: string
  *               role:
@@ -591,9 +588,6 @@ router.post(
   requireSuperAdmin,
   [
     body("email").isEmail().withMessage("Valid email is required"),
-    body("password")
-      .isLength({ min: 8 })
-      .withMessage("Password must be at least 8 characters"),
     body("full_name").notEmpty().withMessage("Full name is required"),
     validate,
   ],
@@ -1298,7 +1292,7 @@ router.get(
  *         description: Tenant admin membership list
  *   post:
  *     summary: Create or attach a tenant admin user
- *     description: Creates a new global admin identity if the email does not exist, then attaches it to the active tenant with the chosen role and permissions.
+ *     description: Creates a new global admin identity if the email does not exist, then attaches it to the active tenant with the chosen fixed role bundle.
  *     tags: [Admin - Tenant Admin Users]
  *     security:
  *       - BearerAuth: []
@@ -1315,16 +1309,9 @@ router.get(
  *                 format: email
  *               full_name:
  *                 type: string
- *               password:
- *                 type: string
- *                 description: Required when creating a brand-new admin identity.
  *               role:
  *                 type: string
  *                 enum: [owner, admin, support, analyst]
- *               permissions:
- *                 type: array
- *                 items:
- *                   type: string
  *     responses:
  *       201:
  *         description: Tenant admin user created
@@ -1349,16 +1336,11 @@ router.post(
   requirePermission("admins.manage", "tenant.manage"),
   [
     body("email").isEmail().withMessage("Valid email is required"),
-    body("password")
-      .optional()
-      .isLength({ min: 6 })
-      .withMessage("Password must be at least 6 characters"),
     body("full_name").notEmpty().withMessage("Full name is required"),
     body("role")
       .optional()
       .isIn(["owner", "admin", "support", "analyst"])
       .withMessage("Valid tenant role is required"),
-    body("permissions").optional().isArray(),
     validate,
   ],
   auditLogger("create_tenant_admin_member", "admin_users"),
@@ -1387,7 +1369,7 @@ router.post(
  *         description: Membership not found
  *   patch:
  *     summary: Update tenant admin membership
- *     description: Updates tenant role, permissions, activation state, or linked admin full name for the active tenant.
+ *     description: Updates tenant role, activation state, or linked admin full name for the active tenant. Permissions always follow the fixed role bundle.
  *     tags: [Admin - Tenant Admin Users]
  *     security:
  *       - BearerAuth: []
@@ -1408,10 +1390,6 @@ router.post(
  *               role:
  *                 type: string
  *                 enum: [owner, admin, support, analyst]
- *               permissions:
- *                 type: array
- *                 items:
- *                   type: string
  *               is_active:
  *                 type: boolean
  *     responses:
@@ -1450,7 +1428,6 @@ router.patch(
       .optional()
       .isIn(["owner", "admin", "support", "analyst"])
       .withMessage("Valid tenant role is required"),
-    body("permissions").optional().isArray(),
     body("is_active")
       .optional()
       .isBoolean()

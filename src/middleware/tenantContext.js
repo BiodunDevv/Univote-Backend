@@ -1,9 +1,4 @@
 const Tenant = require("../models/Tenant");
-const { getTenantBillingSnapshotBySlug } = require("../services/subscriptionService");
-const {
-  getFeatureMinimumPlan,
-  hasTenantFeature,
-} = require("../services/planAccessService");
 
 function normalizeSlug(value) {
   return String(value || "")
@@ -66,7 +61,7 @@ async function resolveTenantContext(req, _res, next) {
       return next();
     }
 
-    const tenant = await getTenantBillingSnapshotBySlug(slug);
+    const tenant = await Tenant.findOne({ slug, is_active: true }).lean();
 
     if (tenant) {
       req.tenant = tenant;
@@ -92,7 +87,7 @@ function requireTenantContext(req, res, next) {
     });
   }
 
-  if (req.tenant.status === "suspended" || req.tenant.subscription_status === "suspended") {
+  if (req.tenant.status === "suspended") {
     return res.status(403).json({
       error: "Tenant is suspended",
       code: "TENANT_SUSPENDED",
@@ -105,11 +100,11 @@ function requireTenantContext(req, res, next) {
 function canTenantAccessActiveFeatures(tenant) {
   if (!tenant) return false;
 
-  if (tenant.status === "suspended" || tenant.subscription_status === "suspended") {
+  if (tenant.status === "suspended") {
     return false;
   }
 
-  return tenant.subscription_status === "trial" || tenant.subscription_status === "active";
+  return tenant.status === "active" || tenant.status === "pending_approval";
 }
 
 function requireTenantAccess(req, res, next) {
@@ -143,24 +138,8 @@ function requireTenantFeature(featureKey) {
       });
     }
 
-    if (!canTenantAccessActiveFeatures(req.tenant)) {
-      return res.status(403).json({
-        error: "Tenant access is restricted by subscription status",
-        code: "TENANT_ACCESS_RESTRICTED",
-      });
-    }
-
-    if (hasTenantFeature(req.tenant, featureKey)) {
-      return next();
-    }
-
-    return res.status(403).json({
-      error: `This feature requires the ${getFeatureMinimumPlan(featureKey) || "required"} plan or higher`,
-      code: "PLAN_FEATURE_REQUIRED",
-      feature: featureKey,
-      required_plan: getFeatureMinimumPlan(featureKey),
-      current_plan: req.tenant.plan_code || "pro",
-    });
+    void featureKey;
+    return next();
   };
 }
 

@@ -2,14 +2,7 @@ jest.mock("../models/Tenant", () => ({
   findOne: jest.fn(),
 }));
 
-jest.mock("../services/subscriptionService", () => ({
-  getTenantBillingSnapshotBySlug: jest.fn(),
-}));
-
 const Tenant = require("../models/Tenant");
-const {
-  getTenantBillingSnapshotBySlug,
-} = require("../services/subscriptionService");
 const {
   resolveTenantContext,
   requireTenantContext,
@@ -38,17 +31,21 @@ describe("tenantContext middleware", () => {
     };
     const next = jest.fn();
 
-    getTenantBillingSnapshotBySlug.mockResolvedValue({
-      _id: "tenant-1",
-      slug: "bowen-university",
-      status: "active",
-      subscription_status: "active",
-      is_active: true,
+    Tenant.findOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: "tenant-1",
+        slug: "bowen-university",
+        status: "active",
+        is_active: true,
+      }),
     });
 
     await resolveTenantContext(req, {}, next);
 
-    expect(getTenantBillingSnapshotBySlug).toHaveBeenCalledWith("bowen-university");
+    expect(Tenant.findOne).toHaveBeenCalledWith({
+      slug: "bowen-university",
+      is_active: true,
+    });
     expect(req.tenantSlug).toBe("bowen-university");
     expect(req.tenantId).toBe("tenant-1");
     expect(req.tenantFilter).toEqual({ tenant_id: "tenant-1" });
@@ -66,12 +63,13 @@ describe("tenantContext middleware", () => {
     const req = { headers: { host: "localhost:5000" } };
     const next = jest.fn();
 
-    getTenantBillingSnapshotBySlug.mockResolvedValue({
-      _id: "tenant-2",
-      slug: "default-campus",
-      status: "active",
-      subscription_status: "trial",
-      is_active: true,
+    Tenant.findOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: "tenant-2",
+        slug: "default-campus",
+        status: "active",
+        is_active: true,
+      }),
     });
 
     await resolveTenantContext(req, {}, next);

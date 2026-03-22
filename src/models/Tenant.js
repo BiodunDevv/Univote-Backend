@@ -25,73 +25,6 @@ const brandingSchema = new mongoose.Schema(
   { _id: false },
 );
 
-const billingRefsSchema = new mongoose.Schema(
-  {
-    paystack_customer_code: {
-      type: String,
-      default: null,
-    },
-    paystack_subscription_code: {
-      type: String,
-      default: null,
-    },
-    paystack_plan_code: {
-      type: String,
-      default: null,
-    },
-  },
-  { _id: false },
-);
-
-const billingStateSchema = new mongoose.Schema(
-  {
-    billing_cycle: {
-      type: String,
-      enum: ["monthly", "annual"],
-      default: "monthly",
-    },
-    currency: {
-      type: String,
-      default: "NGN",
-    },
-    current_period_start: {
-      type: Date,
-      default: null,
-    },
-    current_period_end: {
-      type: Date,
-      default: null,
-    },
-    grace_ends_at: {
-      type: Date,
-      default: null,
-    },
-    last_payment_at: {
-      type: Date,
-      default: null,
-    },
-    next_plan_code: {
-      type: String,
-      enum: ["pro", "pro_plus", "enterprise", null],
-      default: null,
-    },
-    next_plan_effective_at: {
-      type: Date,
-      default: null,
-    },
-    next_plan_requested_at: {
-      type: Date,
-      default: null,
-    },
-    last_invoice_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Invoice",
-      default: null,
-    },
-  },
-  { _id: false },
-);
-
 const tenantSettingsSchema = new mongoose.Schema(
   {
     labels: {
@@ -224,7 +157,7 @@ const tenantSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["draft", "pending_payment", "pending_approval", "active", "suspended"],
+      enum: ["draft", "pending_approval", "active", "suspended"],
       default: "draft",
     },
     primary_domain: {
@@ -235,21 +168,8 @@ const tenantSchema = new mongoose.Schema(
     },
     plan_code: {
       type: String,
-      enum: ["pro", "pro_plus", "enterprise"],
-      default: "pro",
-    },
-    subscription_status: {
-      type: String,
-      enum: ["trial", "active", "grace", "expired", "suspended"],
-      default: "trial",
-    },
-    billing_refs: {
-      type: billingRefsSchema,
-      default: () => ({}),
-    },
-    billing: {
-      type: billingStateSchema,
-      default: () => ({}),
+      enum: ["university"],
+      default: "university",
     },
     branding: {
       type: brandingSchema,
@@ -287,7 +207,7 @@ const tenantSchema = new mongoose.Schema(
       },
       institution_type: {
         type: String,
-        enum: ["university", "college", "polytechnic", "faculty", "organization", null],
+        enum: ["university", null],
         default: "university",
       },
       student_count_estimate: {
@@ -328,24 +248,6 @@ const tenantSchema = new mongoose.Schema(
       },
       rejection_reason: {
         type: String,
-        default: null,
-      },
-      payment_required: {
-        type: Boolean,
-        default: true,
-      },
-      coupon_code: {
-        type: String,
-        default: null,
-        uppercase: true,
-        trim: true,
-      },
-      coupon_snapshot: {
-        type: mongoose.Schema.Types.Mixed,
-        default: null,
-      },
-      billing_snapshot: {
-        type: mongoose.Schema.Types.Mixed,
         default: null,
       },
       structure_preferences: {
@@ -394,9 +296,7 @@ const tenantSchema = new mongoose.Schema(
   },
 );
 
-tenantSchema.index({ status: 1, subscription_status: 1 });
+tenantSchema.index({ status: 1 });
 tenantSchema.index({ primary_domain: 1 }, { sparse: true });
-tenantSchema.index({ "billing.current_period_end": 1, subscription_status: 1 });
-tenantSchema.index({ "billing.next_plan_effective_at": 1 });
 
 module.exports = mongoose.model("Tenant", tenantSchema);

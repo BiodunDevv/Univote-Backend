@@ -10,7 +10,7 @@ const options = {
       title: "Univote API",
       version: "1.0.0",
       description:
-        "Multi-tenant voting and participant management API with organization discovery, participant identity policy, announcements, billing, support, biometric verification, geofencing, and real-time results.",
+        "University voting and student management API with onboarding, announcements, support, biometric verification, geofencing, and real-time results.",
       contact: {
         name: "Univote Support",
         email: "support@univote.online",
@@ -133,22 +133,6 @@ const options = {
             status: { type: "string" },
             created_at: { type: "string", format: "date-time" },
             published_at: { type: "string", format: "date-time", nullable: true },
-          },
-        },
-        BillingPlan: {
-          type: "object",
-          properties: {
-            code: { type: "string" },
-            name: { type: "string" },
-            monthly_price: { type: "number", nullable: true },
-            yearly_price: { type: "number", nullable: true },
-            participant_quota: { type: "integer", nullable: true },
-            admin_quota: { type: "integer", nullable: true },
-            active_session_quota: { type: "integer", nullable: true },
-            entitlements: {
-              type: "object",
-              additionalProperties: { type: "boolean" },
-            },
           },
         },
         BiometricProviderConfig: {

@@ -367,14 +367,9 @@ class PublicController {
         slug: payload.slug,
         application_reference: createApplicationReference(),
         primary_domain: payload.primary_domain,
-        plan_code: "pro",
+        plan_code: "university",
         status: submit ? "pending_approval" : "draft",
-        subscription_status: "trial",
         is_active: true,
-        billing: {
-          billing_cycle: "monthly",
-          currency: "NGN",
-        },
         settings: getMandatoryVerificationSettings(),
         onboarding: {
           contact_name: payload.contact_name,
@@ -387,7 +382,6 @@ class PublicController {
           demo_requested: payload.demo_requested,
           application_submitted_at: submit ? now : null,
           application_last_updated_at: now,
-          payment_required: false,
           structure_preferences: getDefaultUniversityStructure(),
           identity_preferences: null,
         },
@@ -494,7 +488,6 @@ class PublicController {
       }
 
       applyApplicationPayloadToTenant(tenant, payload);
-      tenant.onboarding.payment_required = false;
       tenant.settings = {
         ...(tenant.settings || {}),
         ...getMandatoryVerificationSettings(),

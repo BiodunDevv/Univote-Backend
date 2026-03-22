@@ -22,12 +22,9 @@ function serializeTenant(tenant) {
     slug: tenant.slug,
     status: tenant.status,
     primary_domain: tenant.primary_domain,
-    plan_code: tenant.plan_code,
-    subscription_status: tenant.subscription_status,
     is_active: tenant.is_active,
     branding: tenant.branding || {},
     onboarding: tenant.onboarding || {},
-    billing: tenant.billing || {},
     settings: mergeTenantSettings(tenant.settings || {}),
     createdAt: tenant.createdAt,
     updatedAt: tenant.updatedAt,
@@ -40,8 +37,6 @@ async function getOrCreatePlatformSetting() {
     platformSetting = await PlatformSetting.create({
       key: "defaults",
       defaults: cloneDefaultTenantSettings(),
-      plan_entitlements: getTenantSettingsCatalog(),
-      plan_catalog: clonePlanCatalog(),
     });
   }
   return platformSetting;
@@ -313,15 +308,11 @@ class PlatformController {
         totalTenants,
         activeTenants,
         suspendedTenants,
-        expiringTenants,
         totalTenantAdmins,
       ] = await Promise.all([
         Tenant.countDocuments({}),
         Tenant.countDocuments({ status: "active", is_active: true }),
-        Tenant.countDocuments({
-          $or: [{ status: "suspended" }, { subscription_status: "suspended" }],
-        }),
-        Tenant.countDocuments({ subscription_status: "grace" }),
+        Tenant.countDocuments({ status: "suspended" }),
         TenantAdminMembership.countDocuments({ is_active: true }),
       ]);
 
@@ -330,7 +321,7 @@ class PlatformController {
           total_tenants: totalTenants,
           active_tenants: activeTenants,
           suspended_tenants: suspendedTenants,
-          grace_period_tenants: expiringTenants,
+          grace_period_tenants: 0,
           active_tenant_admins: totalTenantAdmins,
         },
       });
@@ -347,10 +338,6 @@ class PlatformController {
       const skip = (page - 1) * limit;
       const search = String(req.query.search || "").trim();
       const status = String(req.query.status || "").trim();
-      const subscriptionStatus = String(
-        req.query.subscription_status || "",
-      ).trim();
-
       const filter = {};
 
       if (search) {
@@ -362,8 +349,6 @@ class PlatformController {
       }
 
       if (status) filter.status = status;
-      if (subscriptionStatus) filter.subscription_status = subscriptionStatus;
-
       const [tenants, total] = await Promise.all([
         Tenant.find(filter)
           .sort({ createdAt: -1 })
@@ -391,7 +376,6 @@ class PlatformController {
         name,
         slug,
         primary_domain,
-        plan_code,
         contact_name,
         contact_email,
         owner_admin_id,
@@ -427,13 +411,8 @@ class PlatformController {
         primary_domain: primary_domain
           ? String(primary_domain).trim().toLowerCase()
           : null,
-        plan_code: plan_code || "pro",
-        status: "pending_payment",
-        subscription_status: "trial",
-        billing: {
-          billing_cycle: "monthly",
-          currency: "NGN",
-        },
+        plan_code: "university",
+        status: "pending_approval",
         onboarding: {
           contact_name: contact_name ? String(contact_name).trim() : null,
           contact_email: contact_email
@@ -541,10 +520,7 @@ class PlatformController {
         admin_count_estimate,
         notes,
         demo_requested,
-        payment_required,
-        plan_code,
         status,
-        subscription_status,
         is_active,
         rejection_reason,
       } = req.body;
@@ -554,9 +530,6 @@ class PlatformController {
         return res.status(404).json({ error: "Tenant not found" });
       }
       const previousStatus = tenant.status;
-      const previousPlanCode = tenant.plan_code;
-      const previousSubscriptionStatus = tenant.subscription_status;
-
       if (primary_domain) {
         const normalizedDomain = String(primary_domain).trim().toLowerCase();
         const conflictingTenant = await Tenant.findOne({
@@ -625,15 +598,8 @@ class PlatformController {
         tenant.onboarding.demo_requested = Boolean(demo_requested);
       }
 
-      if (payment_required !== undefined) {
-        tenant.onboarding.payment_required = Boolean(payment_required);
-      }
-
-      if (plan_code !== undefined) tenant.plan_code = plan_code;
+      tenant.plan_code = "university";
       if (status !== undefined) tenant.status = status;
-      if (subscription_status !== undefined) {
-        tenant.subscription_status = subscription_status;
-      }
       if (is_active !== undefined) tenant.is_active = Boolean(is_active);
 
       if (rejection_reason !== undefined) {
@@ -663,24 +629,11 @@ class PlatformController {
         tenant.onboarding.rejected_at = new Date();
       }
 
-      if (tenant.status === "active" && !tenant.billing?.current_period_end) {
-        tenant.billing = {
-          ...(tenant.billing?.toObject?.() || tenant.billing || {}),
-          billing_cycle: tenant.billing?.billing_cycle || "monthly",
-          currency: tenant.billing?.currency || "NGN",
-          current_period_start: new Date(),
-          current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          last_payment_at: new Date(),
-        };
-      }
-
       await tenant.save();
 
       if (
         tenant.onboarding?.contact_email &&
-        (previousStatus !== tenant.status ||
-          previousPlanCode !== tenant.plan_code ||
-          previousSubscriptionStatus !== tenant.subscription_status)
+        previousStatus !== tenant.status
       ) {
         const workspaceUrl = tenant.primary_domain
           ? `https://${tenant.primary_domain}`
@@ -1011,52 +964,6 @@ class PlatformController {
       return res
         .status(500)
         .json({ error: "Failed to test biometric provider" });
-    }
-  }
-
-  async updatePlatformPlan(req, res) {
-    try {
-      const { code } = req.params;
-      const platformSetting = await getOrCreatePlatformSetting();
-      const currentCatalog = clonePlanCatalog(
-        platformSetting.plan_catalog || undefined,
-      );
-      const existingPlan = currentCatalog[code];
-
-      if (!existingPlan) {
-        return res.status(404).json({ error: "Plan not found" });
-      }
-
-      const nextPlan = normalizePlanDefinition({
-        ...existingPlan,
-        ...req.body,
-        code,
-        limits: {
-          ...existingPlan.limits,
-          ...(req.body?.limits || {}),
-        },
-        entitlements: {
-          ...existingPlan.entitlements,
-          ...(req.body?.entitlements || {}),
-        },
-        features: Array.isArray(req.body?.features)
-          ? req.body.features
-          : existingPlan.features,
-      });
-
-      currentCatalog[code] = nextPlan;
-      platformSetting.plan_catalog = currentCatalog;
-      await platformSetting.save();
-      setPlanCatalog(currentCatalog);
-
-      return res.json({
-        message: `${nextPlan.name} updated successfully`,
-        plan: nextPlan,
-        plans: serializePlanCatalog(),
-      });
-    } catch (error) {
-      console.error("Update platform plan error:", error);
-      return res.status(500).json({ error: "Failed to update plan" });
     }
   }
 }

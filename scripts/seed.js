@@ -14,11 +14,9 @@ const Notification = require("../src/models/Notification");
 const Testimonial = require("../src/models/Testimonial");
 const PlatformSetting = require("../src/models/PlatformSetting");
 const Announcement = require("../src/models/Announcement");
-const LinkedAdminWorkspace = require("../src/models/LinkedAdminWorkspace");
-const { addDays } = require("../src/services/subscriptionService");
 const { cloneDefaultTenantSettings } = require("../src/utils/tenantSettings");
 
-const DEFAULT_PASSWORD = "123456";
+const DEFAULT_PASSWORD = "123456789";
 const DEPLOY_ROOT_DOMAIN = String(
   process.env.SEED_ROOT_DOMAIN ||
     process.env.APP_ROOT_DOMAIN ||
@@ -42,6 +40,12 @@ const SEEDED_FACEPP_BASE_URL =
 const SEEDED_FACEPP_THRESHOLD = Number(
   process.env.FACE_CONFIDENCE_THRESHOLD || 80,
 );
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
 
 // Cloudinary image URL for student photos
 const STUDENT_PHOTO_URL =
@@ -569,7 +573,6 @@ async function createActiveDemoTenants(
   console.log("\n🏢 Creating active demo tenants...");
 
   const now = new Date();
-  const currentPeriodEnd = addDays(now, 30);
 
   const [primaryTenant, secondaryTenant] = await Tenant.create([
     {
@@ -621,13 +624,6 @@ async function createActiveDemoTenants(
             at: now,
           },
         ],
-      },
-      billing: {
-        billing_cycle: "monthly",
-        currency: "NGN",
-        current_period_start: now,
-        current_period_end: currentPeriodEnd,
-        last_payment_at: now,
       },
     },
     {
@@ -755,7 +751,7 @@ async function createActiveDemoTenants(
         student_count_estimate: 2800,
         admin_count_estimate: 5,
         notes:
-          "Secondary active tenant for multi-organization workspace switching.",
+          "Secondary active tenant for university workflow verification.",
         demo_requested: false,
         application_submitted_at: addDays(now, -10),
         application_last_updated_at: addDays(now, -7),
@@ -769,13 +765,6 @@ async function createActiveDemoTenants(
             at: addDays(now, -8),
           },
         ],
-      },
-      billing: {
-        billing_cycle: "monthly",
-        currency: "NGN",
-        current_period_start: addDays(now, -2),
-        current_period_end: addDays(currentPeriodEnd, -2),
-        last_payment_at: addDays(now, -2),
       },
     },
   ]);
@@ -891,10 +880,6 @@ async function createPipelineTenants() {
           },
         ],
       },
-      billing: {
-        billing_cycle: "monthly",
-        currency: "NGN",
-      },
     },
     {
       name: "Northfield University",
@@ -931,51 +916,12 @@ async function createPipelineTenants() {
           },
         ],
       },
-      billing: {
-        billing_cycle: "monthly",
-        currency: "NGN",
-        current_period_start: addDays(now, -1),
-        current_period_end: addDays(now, 29),
-        last_payment_at: addDays(now, -1),
-      },
     },
   ]);
 
   console.log(`✅ Created ${tenants.length} onboarding pipeline tenants`);
 
   return tenants;
-}
-
-async function seedLinkedWorkspaces(
-  primaryTenantAdmin,
-  secondaryTenantAdmin,
-  primaryTenant,
-  secondaryTenant,
-) {
-  console.log("\n🔗 Creating linked admin workspace data...");
-
-  await LinkedAdminWorkspace.insertMany([
-    {
-      source_admin_id: primaryTenantAdmin._id,
-      target_admin_id: secondaryTenantAdmin._id,
-      tenant_id: secondaryTenant._id,
-      linked_by_admin_id: primaryTenantAdmin._id,
-      label: "Summit linked workspace",
-      is_active: true,
-      last_used_at: new Date(),
-    },
-    {
-      source_admin_id: secondaryTenantAdmin._id,
-      target_admin_id: primaryTenantAdmin._id,
-      tenant_id: primaryTenant._id,
-      linked_by_admin_id: secondaryTenantAdmin._id,
-      label: "Bowen linked workspace",
-      is_active: true,
-      last_used_at: new Date(),
-    },
-  ]);
-
-  console.log("✅ Seeded linked workspace access");
 }
 
 async function seedTenantColleges(tenant, tenantAdminId) {
@@ -1385,12 +1331,6 @@ async function seed() {
       secondaryTenantSupportAdmin._id,
     );
     await createPipelineTenants();
-    await seedLinkedWorkspaces(
-      tenantAdmin,
-      secondaryTenantAdmin,
-      primaryTenant,
-      secondaryTenant,
-    );
     const primaryColleges = await seedTenantColleges(
       primaryTenant,
       tenantAdmin._id,
@@ -1462,7 +1402,7 @@ async function seed() {
       `   - Set DEFAULT_TENANT_SLUG=${TENANT_SLUG} locally for quick tenant admin testing.`,
     );
     console.log(
-      `   - ${TENANT_ADMIN_EMAIL} and ${SECONDARY_TENANT_ADMIN_EMAIL} each have a direct approved workspace and a linked cross-workspace switch for QA.`,
+      `   - ${TENANT_ADMIN_EMAIL} and ${SECONDARY_TENANT_ADMIN_EMAIL} each have a direct approved university workspace for QA.`,
     );
     console.log("=".repeat(60));
   } catch (error) {

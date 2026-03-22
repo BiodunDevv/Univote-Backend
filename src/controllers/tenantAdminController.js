@@ -11,7 +11,7 @@ const {
   getTenantQuotaStatus,
 } = require("../services/planAccessService");
 const emailService = require("../services/emailService");
-const { generateTemporaryPassword } = require("../utils/passwordUtils");
+const constants = require("../config/constants");
 
 function serializeMembership(membership, admin) {
   return {
@@ -29,6 +29,10 @@ function serializeMembership(membership, admin) {
     createdAt: membership.createdAt,
     updatedAt: membership.updatedAt,
   };
+}
+
+function isSupportedTenantRole(role) {
+  return getTenantRoleCatalog().some((entry) => entry.code === role);
 }
 
 async function buildMembershipResponse(membership) {
@@ -217,12 +221,21 @@ class TenantAdminController {
 
   async createMember(req, res) {
     try {
-      const { email, password, full_name, role, permissions } = req.body;
+      const { email, full_name, role } = req.body;
       const normalizedEmail = String(email).trim().toLowerCase();
       const targetRole = role || "admin";
+      const tempPassword = constants.defaultPassword;
 
-      // Generate temporary password if not provided
-      const tempPassword = password || generateTemporaryPassword();
+      if (!isSupportedTenantRole(targetRole)) {
+        return res.status(400).json({ error: "Invalid tenant role" });
+      }
+
+      const canManageTenant = req.adminMembership?.role === "owner";
+      if (targetRole === "owner" && !canManageTenant) {
+        return res.status(403).json({
+          error: "Only the current tenant owner can assign the owner role",
+        });
+      }
 
       let admin = await Admin.findOne({ email: normalizedEmail });
 
@@ -241,7 +254,6 @@ class TenantAdminController {
           full_name: String(full_name).trim(),
           role: "admin",
           is_active: true,
-          requires_password_change: !password, // Only require change if we generated the password
         });
       } else if (full_name) {
         admin.full_name = String(full_name).trim();
@@ -278,10 +290,7 @@ class TenantAdminController {
         tenant_id: req.tenantId,
         admin_id: admin._id,
         role: targetRole,
-        permissions:
-          Array.isArray(permissions) && permissions.length > 0
-            ? permissions
-            : getDefaultPermissionsForRole(targetRole),
+        permissions: getDefaultPermissionsForRole(targetRole),
         is_active: true,
       });
 
@@ -319,7 +328,7 @@ class TenantAdminController {
   async updateMember(req, res) {
     try {
       const { id } = req.params;
-      const { full_name, role, permissions, is_active } = req.body;
+      const { full_name, role, is_active } = req.body;
 
       const membership = await TenantAdminMembership.findOne({
         _id: id,
@@ -352,14 +361,19 @@ class TenantAdminController {
       }
 
       if (role !== undefined) {
-        membership.role = role;
-      }
+        if (!isSupportedTenantRole(role)) {
+          return res.status(400).json({ error: "Invalid tenant role" });
+        }
 
-      if (permissions !== undefined) {
-        membership.permissions =
-          Array.isArray(permissions) && permissions.length > 0
-            ? permissions
-            : getDefaultPermissionsForRole(membership.role);
+        const canManageTenant = req.adminMembership?.role === "owner";
+        if (role === "owner" && !canManageTenant) {
+          return res.status(403).json({
+            error: "Only the current tenant owner can assign the owner role",
+          });
+        }
+
+        membership.role = role;
+        membership.permissions = getDefaultPermissionsForRole(role);
       }
 
       if (is_active !== undefined) {
@@ -397,6 +411,13 @@ class TenantAdminController {
       if (membership.admin_id.toString() === req.adminId.toString()) {
         return res.status(400).json({
           error: "Cannot remove your own tenant membership",
+        });
+      }
+
+      const canManageTenant = req.adminMembership?.role === "owner";
+      if (membership.role === "owner" && !canManageTenant) {
+        return res.status(403).json({
+          error: "Only the current tenant owner can remove an owner account",
         });
       }
 

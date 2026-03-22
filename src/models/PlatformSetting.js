@@ -29,14 +29,6 @@ const platformSettingSchema = new mongoose.Schema(
         default: () => ["college", "department", "level"],
       },
     },
-    plan_entitlements: {
-      type: mongoose.Schema.Types.Mixed,
-      default: () => ({}),
-    },
-    plan_catalog: {
-      type: mongoose.Schema.Types.Mixed,
-      default: () => null,
-    },
     biometrics: {
       active_provider: {
         type: String,

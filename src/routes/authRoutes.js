@@ -137,67 +137,6 @@ router.post(
 
 /**
  * @swagger
- * /auth/switch-tenant:
- *   post:
- *     summary: Switch tenant workspace for a logged-in tenant admin
- *     description: Issues a fresh tenant-scoped admin token for another tenant the current admin belongs to.
- *     tags: [Auth]
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [tenant_slug]
- *             properties:
- *               tenant_slug:
- *                 type: string
- *                 example: bowen-demo
- *     responses:
- *       200:
- *         description: Tenant switched successfully
- *       403:
- *         description: Admin does not belong to the requested tenant
- */
-router.post(
-  "/switch-tenant",
-  authenticateAdmin,
-  [
-    body("tenant_slug").notEmpty().withMessage("tenant_slug is required"),
-    validate,
-  ],
-  auditLogger("switch_tenant", "auth"),
-  authController.switchTenant,
-);
-
-router.post(
-  "/link-organization",
-  authenticateAdmin,
-  [
-    body("tenant_slug").notEmpty().withMessage("tenant_slug is required"),
-    body("email").isEmail().withMessage("Valid email is required"),
-    body("password").notEmpty().withMessage("Password is required"),
-    validate,
-  ],
-  auditLogger("link_organization", "auth"),
-  authController.linkOrganization,
-);
-
-router.post(
-  "/unlink-organization",
-  authenticateAdmin,
-  [
-    body("tenant_slug").notEmpty().withMessage("tenant_slug is required"),
-    validate,
-  ],
-  auditLogger("unlink_organization", "auth"),
-  authController.unlinkOrganization,
-);
-
-/**
- * @swagger
  * /auth/change-password:
  *   patch:
  *     summary: Change password

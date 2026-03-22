@@ -35,7 +35,6 @@ function serializeTenantSettingsPayload(tenant) {
       slug: tenant.slug,
       status: tenant.status,
       plan_code: tenant.plan_code,
-      subscription_status: tenant.subscription_status,
       branding: tenant.branding || {},
     },
     labels: settings.labels,
@@ -426,7 +425,7 @@ class SettingsController {
       // Get other settings
       const otherConfig = {
         bcrypt_rounds: parseInt(process.env.BCRYPT_ROUNDS || 10),
-        default_student_password: "univote2024",
+        default_student_password: "123456789",
         environment: process.env.NODE_ENV || "development",
         port: process.env.PORT || 3000,
       };
@@ -444,7 +443,6 @@ class SettingsController {
                 name: req.tenant.name,
                 slug: req.tenant.slug,
                 plan_code: req.tenant.plan_code,
-                subscription_status: req.tenant.subscription_status,
               }
             : null,
         },
@@ -1028,7 +1026,6 @@ class SettingsController {
         health.checks.tenant = {
           status: "healthy",
           message: `${req.tenant.name} is on ${req.tenant.plan_code}`,
-          subscription_status: req.tenant.subscription_status,
         };
       }
 
