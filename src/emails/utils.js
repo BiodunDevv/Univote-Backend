@@ -14,12 +14,19 @@ function formatDateTime(value) {
   });
 }
 
+function formatDate(value) {
+  return new Date(value || Date.now()).toLocaleDateString("en-NG", {
+    dateStyle: "medium",
+  });
+}
+
 function stripHtml(value) {
   return String(value || "").replace(/<[^>]+>/g, "").trim();
 }
 
 module.exports = {
   escapeHtml,
+  formatDate,
   formatDateTime,
   stripHtml,
 };

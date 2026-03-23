@@ -1,6 +1,11 @@
 const { renderEmailLayout } = require("./layout");
-const { renderKeyValueRows, renderList } = require("./fragments");
-const { escapeHtml, formatDateTime, stripHtml } = require("./utils");
+const {
+  renderKeyValueRows,
+  renderList,
+  renderSection,
+  renderSummaryStrip,
+} = require("./fragments");
+const { escapeHtml, formatDate, formatDateTime, stripHtml } = require("./utils");
 
 function renderMessageCard({ branding, eyebrow, title, intro, sections, ctaLabel, ctaLink, footnote }) {
   return renderEmailLayout({
@@ -17,9 +22,12 @@ function renderMessageCard({ branding, eyebrow, title, intro, sections, ctaLabel
 
 module.exports = {
   escapeHtml,
+  formatDate,
   formatDateTime,
   renderKeyValueRows,
   renderList,
+  renderSection,
+  renderSummaryStrip,
   renderMessageCard,
   stripHtml,
 };

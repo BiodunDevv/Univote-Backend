@@ -1,10 +1,13 @@
 const SibApiV3Sdk = require("@sendinblue/client");
 const {
   escapeHtml,
+  formatDate,
   formatDateTime,
   renderKeyValueRows,
   renderList,
   renderMessageCard,
+  renderSection,
+  renderSummaryStrip,
   stripHtml,
 } = require("../emails");
 
@@ -22,7 +25,7 @@ class EmailService {
       "http://localhost:3000";
     this.defaultLogoUrl =
       process.env.EMAIL_LOGO_URL ||
-      `${this.publicAppUrl.replace(/\/$/, "")}/Darklogo.png`;
+      `${this.publicAppUrl.replace(/\/$/, "")}/Whitelogo.png`;
     this.defaultSupportEmail =
       process.env.EMAIL_SUPPORT_EMAIL ||
       this.fromEmail ||
@@ -32,18 +35,14 @@ class EmailService {
   }
 
   getBranding(tenant = null) {
-    const primaryColor = tenant?.branding?.primary_color || "#0f172a";
-    const accentColor = tenant?.branding?.accent_color || "#1d4ed8";
     const appName = tenant?.name || this.fromName;
-    const logoUrl = tenant?.branding?.logo_url || this.defaultLogoUrl;
+    const logoUrl = this.defaultLogoUrl;
     const supportEmail =
       tenant?.branding?.support_email || this.defaultSupportEmail;
 
     return {
       appName,
       logoUrl,
-      primaryColor,
-      accentColor,
       supportEmail,
     };
   }
@@ -122,6 +121,14 @@ class EmailService {
 
   renderKeyValueRows(rows = []) {
     return renderKeyValueRows(rows);
+  }
+
+  renderSection(title, body) {
+    return renderSection(title, body);
+  }
+
+  renderSummaryStrip(items = []) {
+    return renderSummaryStrip(items);
   }
 
   renderMessageCard({ tenant = null, ...rest }) {

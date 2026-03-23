@@ -110,6 +110,15 @@ class FacePPService {
         };
       }
 
+      if (error.response?.data?.error_message === "INVALID_FACE_TOKEN") {
+        return {
+          success: false,
+          error:
+            "The registered face data is no longer valid. Please contact an administrator to re-enroll your face verification profile.",
+          code: "INVALID_FACE_TOKEN",
+        };
+      }
+
       if (error.code === "ECONNABORTED") {
         return {
           success: false,
@@ -223,11 +232,11 @@ class FacePPService {
       return {
         success: true,
         confidence: confidence,
-        is_match: confidence >= this.confidenceThreshold,
-        threshold: this.confidenceThreshold,
+        is_match: confidence >= threshold,
+        threshold,
         face_token2: faceToken2,
         message:
-          confidence >= this.confidenceThreshold
+          confidence >= threshold
             ? "Face verified successfully"
             : `Face not matched (confidence: ${confidence.toFixed(
                 2
@@ -256,6 +265,15 @@ class FacePPService {
           success: false,
           error: "Too many requests. Please wait a moment and try again.",
           code: "RATE_LIMIT_EXCEEDED",
+        };
+      }
+
+      if (error.response?.data?.error_message === "INVALID_FACE_TOKEN") {
+        return {
+          success: false,
+          error:
+            "The registered face data is no longer valid. Please contact an administrator to re-enroll your face verification profile.",
+          code: "INVALID_FACE_TOKEN",
         };
       }
 

@@ -32,6 +32,9 @@ function mapVerificationFailureReason(result = {}) {
   if (code === "FACE_API_TIMEOUT" || message.includes("TIMED OUT")) {
     return "FACE_API_TIMEOUT";
   }
+  if (code === "INVALID_FACE_TOKEN" || message.includes("INVALID_FACE_TOKEN")) {
+    return "NO_FACE_TOKEN";
+  }
   if (
     code === "RATE_LIMIT_EXCEEDED" ||
     code === "CONCURRENCY_LIMIT_EXCEEDED"
@@ -45,6 +48,23 @@ function mapVerificationFailureReason(result = {}) {
     return "FACE_API_ERROR";
   }
   return "FACE_VERIFICATION_FAILED";
+}
+
+function isLikelyMobileVotingDevice(value = "") {
+  const normalized = String(value || "").toLowerCase();
+
+  if (!normalized) return false;
+
+  return (
+    normalized.includes("iphone") ||
+    normalized.includes("ipad") ||
+    normalized.includes("ipod") ||
+    normalized.includes("android") ||
+    normalized.includes("mobile") ||
+    normalized.includes("opera mini") ||
+    normalized.includes("iemobile") ||
+    normalized.includes("standalone")
+  );
 }
 
 async function logVerificationAttempt(req, payload = {}) {
@@ -79,6 +99,8 @@ class VoteController {
       const biometricThreshold = Number(
         tenantSettings.voting?.face_match_threshold || 80,
       );
+      const deviceFingerprint =
+        device_id || req.headers["user-agent"] || "unknown-device";
 
       // Validate required fields
       if (
@@ -95,7 +117,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "MISSING_REQUIRED_FIELDS",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url: image_url || null,
         });
@@ -111,7 +133,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "NO_LOCATION",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
         });
@@ -134,7 +156,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "CONCURRENT_REQUEST",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
           geo_location: { lat, lng },
@@ -159,7 +181,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "USER_NOT_FOUND",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
           geo_location: { lat, lng },
@@ -181,7 +203,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "SESSION_NOT_FOUND",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
           geo_location: { lat, lng },
@@ -203,7 +225,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "SESSION_INACTIVE",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
           geo_location: { lat, lng },
@@ -224,7 +246,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "ALREADY_VOTED",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
           geo_location: { lat, lng },
@@ -251,7 +273,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "COLLEGE_MISMATCH",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
           geo_location: { lat, lng },
@@ -290,7 +312,7 @@ class VoteController {
             threshold_used: biometricThreshold,
             result: "rejected",
             failure_reason: "DEPARTMENT_MISMATCH",
-            device_id,
+            device_id: deviceFingerprint,
             ip_address: req.ip,
             image_url,
             geo_location: { lat, lng },
@@ -316,7 +338,7 @@ class VoteController {
             threshold_used: biometricThreshold,
             result: "rejected",
             failure_reason: "LEVEL_MISMATCH",
-            device_id,
+            device_id: deviceFingerprint,
             ip_address: req.ip,
             image_url,
             geo_location: { lat, lng },
@@ -348,7 +370,7 @@ class VoteController {
             threshold_used: biometricThreshold,
             result: "rejected",
             failure_reason: "GEOFENCE_VIOLATION",
-            device_id,
+            device_id: deviceFingerprint,
             ip_address: req.ip,
             image_url,
             geo_location: { lat, lng },
@@ -359,6 +381,27 @@ class VoteController {
             code: "GEOFENCE_VIOLATION",
           });
         }
+      }
+
+      if (!isLikelyMobileVotingDevice(deviceFingerprint)) {
+        await mongoSession.abortTransaction();
+        await cacheService.del(voteLockKey);
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "DEVICE_NOT_ALLOWED",
+          device_id: deviceFingerprint,
+          ip_address: req.ip,
+          image_url,
+          geo_location: { lat, lng },
+        });
+        return res.status(403).json({
+          error:
+            "Voting is only available on a mobile device for this ballot. Please open the student app on your phone and try again.",
+          code: "MOBILE_DEVICE_REQUIRED",
+        });
       }
 
       // Face++ Face Verification
@@ -374,7 +417,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "NO_FACE_TOKEN",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
           geo_location: { lat, lng },
@@ -408,7 +451,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: mapVerificationFailureReason(faceVerification),
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
           geo_location: { lat, lng },
@@ -419,7 +462,10 @@ class VoteController {
         });
         return res.status(400).json({
           error: faceVerification.error,
-          code: "FACE_VERIFICATION_FAILED",
+          code:
+            faceVerification.code === "INVALID_FACE_TOKEN"
+              ? "NO_REGISTERED_FACE"
+              : "FACE_VERIFICATION_FAILED",
         });
       }
 
@@ -434,7 +480,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "LOW_CONFIDENCE",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
           geo_location: { lat, lng },
@@ -461,7 +507,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "INVALID_CHOICES",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
           geo_location: { lat, lng },
@@ -487,7 +533,7 @@ class VoteController {
           threshold_used: biometricThreshold,
           result: "rejected",
           failure_reason: "INVALID_CANDIDATE_SELECTION",
-          device_id,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
           geo_location: { lat, lng },
@@ -530,7 +576,7 @@ class VoteController {
           face_verification_passed: true,
           face_token: verifiedFaceToken,
           status: "valid",
-          device_id: device_id || null,
+          device_id: deviceFingerprint,
           ip_address: req.ip,
         });
 
@@ -581,7 +627,7 @@ class VoteController {
         threshold_used: biometricThreshold,
         result: "accepted",
         failure_reason: null,
-        device_id,
+        device_id: deviceFingerprint,
         ip_address: req.ip,
         image_url,
         geo_location: { lat, lng },
@@ -619,7 +665,8 @@ class VoteController {
         ),
         result: "rejected",
         failure_reason: "DB_WRITE_FAIL",
-        device_id: req.body?.device_id || null,
+        device_id:
+          req.body?.device_id || req.headers["user-agent"] || "unknown-device",
         ip_address: req.ip,
         image_url: req.body?.image_url || null,
         geo_location:

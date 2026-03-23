@@ -632,6 +632,7 @@ class AdminController {
             level,
             first_login: true,
             photo_url: structure.photo_url || photoUrl,
+            photo_review_status: structure.photo_url || photoUrl ? "pending" : "approved",
             face_token: faceToken,
           });
 
@@ -1420,6 +1421,7 @@ class AdminController {
       const studentsWithFaceStatus = students.map((student) => ({
         ...student,
         has_facial_data: !!student.face_token,
+        photo_review_status: student.photo_review_status || "pending",
         face_token: undefined, // Remove face_token from response
       }));
 
@@ -1594,6 +1596,7 @@ class AdminController {
       const studentsWithFaceStatus = students.map((student) => ({
         ...student,
         has_facial_data: !!student.face_token,
+        photo_review_status: student.photo_review_status || "pending",
         face_token: undefined, // Remove face_token from response
       }));
 
@@ -1688,6 +1691,7 @@ class AdminController {
       const studentsWithFaceStatus = students.map((student) => ({
         ...student,
         has_facial_data: !!student.face_token,
+        photo_review_status: student.photo_review_status || "pending",
         face_token: undefined, // Remove face_token from response
       }));
 
@@ -1743,6 +1747,7 @@ class AdminController {
       student.has_facial_data = !!(
         studentWithFaceToken && studentWithFaceToken.face_token
       );
+      student.photo_review_status = student.photo_review_status || "pending";
 
       // Get voting history
       const votes = (await Vote.find(getTenantScopedFilter(req, { student_id: id }))
@@ -1778,6 +1783,8 @@ class AdminController {
         level,
         is_active,
         photo_url,
+        clear_profile_photo_cooldown,
+        photo_review_status,
       } = req.body;
 
       const student = await Student.findOne(getTenantScopedFilter(req, { _id: id }));
@@ -1821,37 +1828,57 @@ class AdminController {
         student.level = structure.level;
       }
       if (is_active !== undefined) student.is_active = is_active;
+      if (clear_profile_photo_cooldown) {
+        student.last_profile_photo_updated_at = null;
+      }
+      if (photo_review_status !== undefined) {
+        student.photo_review_status = photo_review_status;
+        student.photo_reviewed_at =
+          photo_review_status === "approved" || photo_review_status === "rejected"
+            ? new Date()
+            : null;
+        student.photo_reviewed_by_admin_id =
+          photo_review_status === "approved" || photo_review_status === "rejected"
+            ? req.adminId
+            : null;
+      }
 
       // Handle photo_url update with Face++ re-registration
       let faceUpdateWarning = null;
       if (photo_url !== undefined && structure.photo_url !== student.photo_url) {
         student.photo_url = structure.photo_url;
+        student.photo_review_status = structure.photo_url ? "pending" : "approved";
+        student.photo_reviewed_at = null;
+        student.photo_reviewed_by_admin_id = null;
+      }
 
-        // If photo URL is provided, re-register face with Face++
-        if (structure.photo_url) {
-          try {
-            const faceDetection = await faceProviderService.detectFace(structure.photo_url);
+      // Re-verify the saved student photo on every admin save when a photo exists.
+      if (student.photo_url) {
+        try {
+          const faceDetection = await faceProviderService.detectFace(student.photo_url);
 
-            if (faceDetection.success) {
-              student.face_token = faceDetection.face_token;
-            } else {
-              // Face detection failed - keep old face_token and warn admin
-              faceUpdateWarning = `Photo URL updated but face registration failed: ${faceDetection.error}. Old facial data retained.`;
-              console.warn(
-                `Face re-registration failed for student ${student.matric_no}: ${faceDetection.error}`,
-              );
-            }
-          } catch (error) {
-            faceUpdateWarning = `Photo URL updated but face registration encountered an error. Old facial data retained.`;
-            console.error(
-              `Face re-registration error for student ${student.matric_no}:`,
-              error,
+          if (faceDetection.success) {
+            student.face_token = faceDetection.face_token;
+          } else {
+            faceUpdateWarning =
+              faceUpdateWarning ||
+              `Student record saved but face registration failed: ${faceDetection.error}. Existing facial data was retained.`;
+            console.warn(
+              `Face re-registration failed for student ${student.matric_no}: ${faceDetection.error}`,
             );
           }
-        } else {
-          // Photo URL removed - clear face_token
-          student.face_token = null;
+        } catch (error) {
+          faceUpdateWarning =
+            faceUpdateWarning ||
+            "Student record saved but face registration encountered an error. Existing facial data was retained.";
+          console.error(
+            `Face re-registration error for student ${student.matric_no}:`,
+            error,
+          );
         }
+      } else if (photo_url !== undefined) {
+        // Photo URL removed - clear face_token
+        student.face_token = null;
       }
 
       await student.save();
@@ -1871,6 +1898,9 @@ class AdminController {
           department_code: student.department_code,
           level: student.level,
           photo_url: student.photo_url,
+          last_profile_photo_updated_at:
+            student.last_profile_photo_updated_at || null,
+          photo_review_status: student.photo_review_status || "pending",
           has_facial_data: !!student.face_token,
           is_active: student.is_active,
         },

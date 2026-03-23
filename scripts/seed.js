@@ -16,6 +16,7 @@ const Testimonial = require("../src/models/Testimonial");
 const PlatformSetting = require("../src/models/PlatformSetting");
 const Announcement = require("../src/models/Announcement");
 const { cloneDefaultTenantSettings } = require("../src/utils/tenantSettings");
+const faceppService = require("../src/services/faceppService");
 
 const DEFAULT_PASSWORD = "123456789";
 const DEPLOY_ROOT_DOMAIN = String(
@@ -51,10 +52,6 @@ function addDays(date, days) {
 // Cloudinary image URL for student photos
 const STUDENT_PHOTO_URL =
   "https://res.cloudinary.com/df4f0usnh/image/upload/v1761725926/univote/candidates/isxi22irk87hyzglhl0s.jpg";
-
-function generateSeedFaceToken(tenantSlug, index) {
-  return `seed-face-${tenantSlug}-${String(index).padStart(4, "0")}`;
-}
 
 function buildSeedTenantDomain(slug) {
   return `${slug}.${DEPLOY_ROOT_DOMAIN}`;
@@ -944,13 +941,8 @@ async function seedTenantColleges(tenant, tenantAdminId) {
 
 async function seedTenantStudents(tenant, colleges) {
   console.log("\n👨‍🎓 Generating tenant students...");
-  const { matricPrefix, studentEmailDomain } = getTenantAcademicProfile(tenant);
-
   const passwordHash = await createPasswordHash();
   const students = [];
-  const departmentCounters = {};
-  let tenantMemberSequence = 0;
-  let createdIndex = 0;
 
   if (tenant.slug === TENANT_SLUG) {
     const computerScienceCollege = colleges.find((college) =>
@@ -961,7 +953,6 @@ async function seedTenantStudents(tenant, colleges) {
     );
 
     if (computerScienceCollege && computerScienceDepartment) {
-      tenantMemberSequence += 1;
       students.push({
         tenant_id: tenant._id,
         matric_no: "BU22CSC1005",
@@ -969,83 +960,87 @@ async function seedTenantStudents(tenant, colleges) {
         employee_id: null,
         username: null,
         full_name: "Muhammed Abiodun",
-        email: `muhammed.abiodun@${studentEmailDomain}`,
+        email: "muhammedabiodun42@gmail.com",
         password_hash: passwordHash,
         first_login: false,
         department: computerScienceDepartment.name,
         department_code: computerScienceDepartment.code,
         college: computerScienceCollege.name,
-        level: "300",
+        level: "400",
         has_voted_sessions: [],
         photo_url: STUDENT_PHOTO_URL,
-        face_token: generateSeedFaceToken(tenant.slug, tenantMemberSequence),
+        photo_review_status: "approved",
+        face_token: null,
         is_logged_in: false,
         is_active: true,
       });
-      departmentCounters[computerScienceDepartment.code] = 1005;
     }
   }
-
-  colleges.forEach((college) => {
-    college.departments.forEach((department) => {
-      departmentCounters[department.code] =
-        (departmentCounters[department.code] || 0) + 1;
-
-      const firstName = firstNames[createdIndex % firstNames.length];
-      const lastName = lastNames[createdIndex % lastNames.length];
-      createdIndex += 1;
-
-      const selectedLevel =
-        department.available_levels[
-          Math.min(1, department.available_levels.length - 1)
-        ] ||
-        department.available_levels[0] ||
-        "100";
-
-      const matricNo = generateMatricNo(
-        2022,
-        department.code,
-        departmentCounters[department.code],
-        matricPrefix,
-      );
-      tenantMemberSequence += 1;
-      const seedFaceToken = generateSeedFaceToken(
-        tenant.slug,
-        tenantMemberSequence,
-      );
-
-      students.push({
-        tenant_id: tenant._id,
-        matric_no: matricNo,
-        member_id:
-          tenant.slug === SECONDARY_TENANT_SLUG
-            ? `MEM-${String(tenantMemberSequence).padStart(4, "0")}`
-            : null,
-        employee_id: null,
-        username:
-          tenant.slug === SECONDARY_TENANT_SLUG
-            ? `${firstName}.${lastName}`.toLowerCase()
-            : null,
-        full_name: `${firstName} ${lastName}`,
-        email: generateEmail(firstName, lastName, matricNo, studentEmailDomain),
-        password_hash: passwordHash,
-        first_login: false,
-        department: department.name,
-        department_code: department.code,
-        college: college.name,
-        level: selectedLevel,
-        has_voted_sessions: [],
-        photo_url: STUDENT_PHOTO_URL,
-        face_token: seedFaceToken,
-        is_logged_in: false,
-        is_active: true,
-      });
-    });
-  });
 
   const insertedStudents = await Student.insertMany(students);
   console.log(`✅ Created ${insertedStudents.length} tenant students`);
   return insertedStudents;
+}
+
+function isFaceppConfiguredForSeed() {
+  return Boolean(SEEDED_FACEPP_KEY && SEEDED_FACEPP_SECRET);
+}
+
+async function enrollSeedStudentFaces(students) {
+  if (!isFaceppConfiguredForSeed()) {
+    console.log(
+      "ℹ️  Face++ credentials not available during seed. Student facial enrollment skipped.",
+    );
+    return {
+      enrolled: 0,
+      skipped: students.length,
+      failed: 0,
+    };
+  }
+
+  faceppService.configure({
+    api_key: SEEDED_FACEPP_KEY,
+    api_secret: SEEDED_FACEPP_SECRET,
+    base_url: SEEDED_FACEPP_BASE_URL,
+    confidence_threshold: SEEDED_FACEPP_THRESHOLD,
+  });
+
+  let enrolled = 0;
+  let failed = 0;
+
+  for (const student of students) {
+    if (!student.photo_url) {
+      failed += 1;
+      continue;
+    }
+
+    const detection = await faceppService.detectFace(student.photo_url);
+    if (!detection.success || !detection.face_token) {
+      failed += 1;
+      await Student.updateOne(
+        { _id: student._id },
+        { $set: { face_token: null } },
+      );
+      continue;
+    }
+
+    await Student.updateOne(
+      { _id: student._id },
+      { $set: { face_token: detection.face_token } },
+    );
+    student.face_token = detection.face_token;
+    enrolled += 1;
+  }
+
+  console.log(
+    `✅ Face enrollment summary: ${enrolled} enrolled, ${failed} failed, 0 fake tokens written`,
+  );
+
+  return {
+    enrolled,
+    skipped: 0,
+    failed,
+  };
 }
 
 async function seedTenantSessions(tenant, tenantAdminId) {
@@ -1351,25 +1346,7 @@ async function seedNotifications(tenant, superAdmin, tenantAdmin, students) {
 
   const student = students[0];
   const secondStudent = students[1];
-
-  await Notification.insertMany([
-    {
-      tenant_id: tenant._id,
-      recipient_type: "admin",
-      recipient_admin_id: tenantAdmin._id,
-      type: "support.ticket.created",
-      title: "New support ticket: Face verification help",
-      message: `${student.full_name} opened a support ticket about facial verification.`,
-      link: "/dashboard/support",
-      priority: "high",
-      metadata: {
-        ticket_number: "SUP-SEEDED-001",
-        requester_type: "student",
-      },
-      created_by_type: "student",
-      created_by_id: student._id,
-      is_read: false,
-    },
+  const notifications = [
     {
       recipient_type: "super_admin",
       recipient_admin_id: superAdmin._id,
@@ -1385,7 +1362,27 @@ async function seedNotifications(tenant, superAdmin, tenantAdmin, students) {
       created_by_type: "system",
       is_read: false,
     },
-    {
+  ];
+
+  if (student) {
+    notifications.unshift({
+      tenant_id: tenant._id,
+      recipient_type: "admin",
+      recipient_admin_id: tenantAdmin._id,
+      type: "support.ticket.created",
+      title: "New support ticket: Face verification help",
+      message: `${student.full_name} opened a support ticket about facial verification.`,
+      link: "/dashboard/support",
+      priority: "high",
+      metadata: {
+        ticket_number: "SUP-SEEDED-001",
+        requester_type: "student",
+      },
+      created_by_type: "student",
+      created_by_id: student._id,
+      is_read: false,
+    });
+    notifications.push({
       tenant_id: tenant._id,
       recipient_type: "student",
       recipient_student_id: student._id,
@@ -1401,8 +1398,8 @@ async function seedNotifications(tenant, superAdmin, tenantAdmin, students) {
       created_by_type: "admin",
       created_by_id: tenantAdmin._id,
       is_read: false,
-    },
-    {
+    });
+    notifications.push({
       tenant_id: tenant._id,
       recipient_type: "student",
       recipient_student_id: secondStudent?._id || student._id,
@@ -1418,8 +1415,10 @@ async function seedNotifications(tenant, superAdmin, tenantAdmin, students) {
       created_by_type: "system",
       is_read: true,
       read_at: new Date(),
-    },
-  ]);
+    });
+  }
+
+  await Notification.insertMany(notifications);
 
   console.log("✅ Seeded sample notifications");
 }
@@ -1576,6 +1575,7 @@ async function seed() {
       primaryTenant,
       primaryColleges,
     );
+    await enrollSeedStudentFaces(primaryStudents);
     const primarySessions = await seedTenantSessions(primaryTenant, tenantAdmin._id);
     await seedVotingBaseline(
       primaryTenant,
@@ -1600,6 +1600,7 @@ async function seed() {
       secondaryTenant,
       secondaryColleges,
     );
+    await enrollSeedStudentFaces(secondaryStudents);
     await seedTenantSessions(secondaryTenant, secondaryTenantAdmin._id);
     await seedNotifications(
       secondaryTenant,

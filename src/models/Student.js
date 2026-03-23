@@ -89,6 +89,24 @@ const studentSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    last_profile_photo_updated_at: {
+      type: Date,
+      default: null,
+    },
+    photo_review_status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    photo_reviewed_at: {
+      type: Date,
+      default: null,
+    },
+    photo_reviewed_by_admin_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      default: null,
+    },
     face_token: {
       type: String,
       default: null,

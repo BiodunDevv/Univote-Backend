@@ -1,4 +1,5 @@
 const Admin = require("../models/Admin");
+const Student = require("../models/Student");
 const SupportMessage = require("../models/SupportMessage");
 const SupportTicket = require("../models/SupportTicket");
 const Tenant = require("../models/Tenant");
@@ -796,7 +797,13 @@ class SupportController {
       }
 
       const ticket = result.ticket;
-      const { status, priority, category, assigned_admin_id } = req.body;
+      const {
+        status,
+        priority,
+        category,
+        assigned_admin_id,
+        profile_photo_reset,
+      } = req.body;
       const previousState = {
         status: ticket.status,
         priority: ticket.priority,
@@ -856,6 +863,18 @@ class SupportController {
             role: tenantMembership?.role || assignee.role,
           };
         }
+      }
+
+      if (profile_photo_reset) {
+        if (ticket.requester_type !== "student") {
+          return res.status(400).json({
+            error: "Photo reset is only available for student support requests",
+          });
+        }
+
+        await Student.findByIdAndUpdate(ticket.requester_id, {
+          $set: { last_profile_photo_updated_at: null },
+        });
       }
 
       await ticket.save();

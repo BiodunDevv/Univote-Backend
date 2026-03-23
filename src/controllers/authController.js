@@ -82,10 +82,26 @@ function serializeStudent(student) {
     college: student.college,
     level: student.level,
     photo_url: student.photo_url,
+    last_profile_photo_updated_at: student.last_profile_photo_updated_at || null,
+    next_profile_photo_update_at: student.last_profile_photo_updated_at
+      ? new Date(
+          new Date(student.last_profile_photo_updated_at).setMonth(
+            new Date(student.last_profile_photo_updated_at).getMonth() + 6,
+          ),
+        )
+      : null,
     has_facial_data: !!student.face_token,
+    photo_review_status: student.photo_review_status || "pending",
     created_at: student.createdAt || student.created_at,
     last_login_at: student.last_login_at,
   };
+}
+
+function calculateNextPhotoUpdateAt(value) {
+  if (!value) return null;
+  const next = new Date(value);
+  next.setMonth(next.getMonth() + 6);
+  return next;
 }
 
 function serializeAdmin(admin, membership = null) {
@@ -597,7 +613,13 @@ class AuthController {
           college: student.college,
           level: student.level,
           photo_url: student.photo_url,
+          last_profile_photo_updated_at:
+            student.last_profile_photo_updated_at || null,
+          next_profile_photo_update_at: calculateNextPhotoUpdateAt(
+            student.last_profile_photo_updated_at,
+          ),
           has_facial_data: !!student.face_token,
+          photo_review_status: student.photo_review_status || "pending",
           is_logged_in: student.is_logged_in,
           first_login: student.first_login,
           last_login_at: student.last_login_at,
@@ -665,7 +687,35 @@ class AuthController {
       }
 
       if (photo_url !== undefined) {
-        student.photo_url = photo_url ? photo_url.trim() : null;
+        const normalizedPhotoUrl = photo_url ? photo_url.trim() : null;
+        const isChangingPhoto = normalizedPhotoUrl !== student.photo_url;
+
+        if (isChangingPhoto && normalizedPhotoUrl) {
+          const nextAllowedUpdateAt = calculateNextPhotoUpdateAt(
+            student.last_profile_photo_updated_at,
+          );
+
+          if (nextAllowedUpdateAt && nextAllowedUpdateAt.getTime() > Date.now()) {
+            return res.status(409).json({
+              error:
+                "Your profile photo was updated recently. Submit a support request if you need an early reset.",
+              code: "PROFILE_PHOTO_COOLDOWN",
+              next_profile_photo_update_at: nextAllowedUpdateAt,
+              last_profile_photo_updated_at:
+                student.last_profile_photo_updated_at || null,
+            });
+          }
+        }
+
+        if (isChangingPhoto) {
+          student.photo_url = normalizedPhotoUrl;
+          student.last_profile_photo_updated_at = normalizedPhotoUrl
+            ? new Date()
+            : null;
+          student.photo_review_status = normalizedPhotoUrl ? "pending" : "approved";
+          student.photo_reviewed_at = null;
+          student.photo_reviewed_by_admin_id = null;
+        }
       }
 
       await student.save();
@@ -688,7 +738,13 @@ class AuthController {
           college: student.college,
           level: student.level,
           photo_url: student.photo_url,
+          last_profile_photo_updated_at:
+            student.last_profile_photo_updated_at || null,
+          next_profile_photo_update_at: calculateNextPhotoUpdateAt(
+            student.last_profile_photo_updated_at,
+          ),
           has_facial_data: !!student.face_token,
+          photo_review_status: student.photo_review_status || "pending",
           is_logged_in: student.is_logged_in,
           first_login: student.first_login,
           last_login_at: student.last_login_at,
