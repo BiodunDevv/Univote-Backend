@@ -40,9 +40,6 @@ function getParticipantIdentifierValue(student, tenant) {
     student?.[key] ||
     student?.display_identifier ||
     student?.matric_no ||
-    student?.member_id ||
-    student?.employee_id ||
-    student?.username ||
     student?.email ||
     "unknown"
   );
@@ -53,11 +50,6 @@ function buildParticipantIdentityPayload(tenant, payload = {}) {
   const primary = settings.identity.primary_identifier;
   const normalized = {
     matric_no: payload.matric_no ? String(payload.matric_no).trim().toUpperCase() : null,
-    member_id: payload.member_id ? String(payload.member_id).trim().toUpperCase() : null,
-    employee_id: payload.employee_id
-      ? String(payload.employee_id).trim().toUpperCase()
-      : null,
-    username: payload.username ? String(payload.username).trim().toLowerCase() : null,
     email: payload.email ? String(payload.email).trim().toLowerCase() : null,
   };
 
@@ -85,15 +77,29 @@ function normalizeParticipantFieldValue(fieldKey, value) {
     return normalized.toLowerCase();
   }
 
-  if (["matric_no", "member_id", "employee_id", "department_code"].includes(fieldKey)) {
+  if (["matric_no", "department_code"].includes(fieldKey)) {
     return normalized.toUpperCase();
   }
 
-  if (fieldKey === "username") {
-    return normalized.toLowerCase();
-  }
-
   return normalized;
+}
+
+function getStudentFaceEnrollmentState(student) {
+  const isEnrolled = Boolean(
+    student?.aws_face_id ||
+      (student?.last_face_enrolled_at && !student?.last_face_enrollment_error),
+  );
+
+  return {
+    has_facial_data: isEnrolled,
+    face_enrollment_status: isEnrolled
+      ? "enrolled"
+      : student?.last_face_enrollment_error
+        ? "failed"
+        : "pending",
+    last_face_enrolled_at: student?.last_face_enrolled_at || null,
+    last_face_enrollment_error: student?.last_face_enrollment_error || null,
+  };
 }
 
 function getParticipantFieldValue(payload, fieldKey) {
@@ -570,15 +576,6 @@ class AdminController {
               ...(identity.normalized.matric_no
                 ? [{ matric_no: identity.normalized.matric_no }]
                 : []),
-              ...(identity.normalized.member_id
-                ? [{ member_id: identity.normalized.member_id }]
-                : []),
-              ...(identity.normalized.employee_id
-                ? [{ employee_id: identity.normalized.employee_id }]
-                : []),
-              ...(identity.normalized.username
-                ? [{ username: identity.normalized.username }]
-                : []),
               ...(email ? [{ email }] : []),
             ].filter(Boolean),
           });
@@ -595,34 +592,12 @@ class AdminController {
           }
 
           // Optional: Process facial registration if photo_url is provided
-          let faceToken = null;
           let photoUrl = row.photo_url || null;
+          let faceEnrollmentWarning = null;
 
-          if (photoUrl) {
-            const faceDetection = await faceProviderService.detectFace(photoUrl);
-
-            if (faceDetection.success) {
-              faceToken = faceDetection.face_token;
-            } else {
-              // Face detection failed - log warning but continue without face data
-              console.warn(
-                `Face detection failed for ${participantIdentifier}: ${faceDetection.error}`,
-              );
-              results.errors.push({
-                matric_no: participantIdentifier,
-                full_name,
-                warning: `Student created but face registration failed: ${faceDetection.error}`,
-              });
-            }
-          }
-
-          // Create new student (only if not exists)
           const student = new Student({
             ...assignTenantId(req, {}),
             matric_no: identity.normalized.matric_no,
-            member_id: identity.normalized.member_id,
-            employee_id: identity.normalized.employee_id,
-            username: identity.normalized.username,
             full_name,
             email,
             password_hash: defaultPasswordHash,
@@ -632,12 +607,44 @@ class AdminController {
             level,
             first_login: true,
             photo_url: structure.photo_url || photoUrl,
-            photo_review_status: structure.photo_url || photoUrl ? "pending" : "approved",
-            face_token: faceToken,
           });
 
           await student.save();
+
+          if (student.photo_url) {
+            const faceEnrollment = await faceProviderService.indexStudentFace(
+              student.photo_url,
+              req.tenant,
+              student,
+            );
+
+            if (faceEnrollment.success) {
+              student.aws_face_id = faceEnrollment.aws_face_id;
+              student.aws_face_image_id = faceEnrollment.aws_face_image_id;
+              student.aws_face_collection_id = faceEnrollment.aws_face_collection_id;
+              student.last_face_enrolled_at = faceEnrollment.enrolled_at || new Date();
+              student.last_face_enrollment_error = null;
+              await student.save();
+            } else {
+              student.last_face_enrollment_error = faceEnrollment.error;
+              student.last_face_enrolled_at = null;
+              await student.save();
+              faceEnrollmentWarning = `Student created but biometric enrollment failed: ${faceEnrollment.error}`;
+              console.warn(
+                `AWS face enrollment failed for ${participantIdentifier}: ${faceEnrollment.error}`,
+              );
+            }
+          }
+
           results.created++;
+
+          if (faceEnrollmentWarning) {
+            results.errors.push({
+              matric_no: participantIdentifier,
+              full_name,
+              warning: faceEnrollmentWarning,
+            });
+          }
 
           // Welcome email will be sent after first login and password change
         } catch (error) {
@@ -1391,10 +1398,10 @@ class AdminController {
       }
 
       if (has_facial_data === "true") {
-        filter.face_token = { $exists: true, $ne: null };
+        filter.aws_face_id = { $exists: true, $ne: null };
       }
       if (has_facial_data === "false") {
-        filter.$or = [{ face_token: { $exists: false } }, { face_token: null }];
+        filter.$or = [{ aws_face_id: { $exists: false } }, { aws_face_id: null }];
       }
 
       // Search by name, email, or matric number using text index
@@ -1409,7 +1416,7 @@ class AdminController {
 
       const [students, count] = await Promise.all([
         Student.find(scopedFilter)
-          .select("-password_hash -active_token -embedding_vector")
+          .select("-password_hash -active_token")
           .limit(limitNumber)
           .skip((pageNumber - 1) * limitNumber)
           .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
@@ -1420,9 +1427,7 @@ class AdminController {
       // Add computed field for facial data status
       const studentsWithFaceStatus = students.map((student) => ({
         ...student,
-        has_facial_data: !!student.face_token,
-        photo_review_status: student.photo_review_status || "pending",
-        face_token: undefined, // Remove face_token from response
+        ...getStudentFaceEnrollmentState(student),
       }));
 
       res.json({
@@ -1464,7 +1469,7 @@ class AdminController {
         Student.countDocuments(getTenantScopedFilter(req, { is_active: true })),
         Student.countDocuments(getTenantScopedFilter(req, { is_active: false })),
         Student.countDocuments(
-          getTenantScopedFilter(req, { face_token: { $exists: true, $ne: null } }),
+          getTenantScopedFilter(req, { aws_face_id: { $exists: true, $ne: null } }),
         ),
         College.find(getTenantScopedFilter(req, {}))
           .select("name code departments._id departments.name departments.code")
@@ -1572,7 +1577,7 @@ class AdminController {
 
       const [students, total, departmentBreakdown] = await Promise.all([
         Student.find(filter)
-          .select("-password_hash -active_token -embedding_vector")
+          .select("-password_hash -active_token")
           .limit(limit * 1)
           .skip((page - 1) * limit)
           .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
@@ -1595,9 +1600,7 @@ class AdminController {
       // Add computed field for facial data status
       const studentsWithFaceStatus = students.map((student) => ({
         ...student,
-        has_facial_data: !!student.face_token,
-        photo_review_status: student.photo_review_status || "pending",
-        face_token: undefined, // Remove face_token from response
+        ...getStudentFaceEnrollmentState(student),
       }));
 
       res.json({
@@ -1662,7 +1665,7 @@ class AdminController {
 
       const [students, total, levelBreakdown] = await Promise.all([
         Student.find(filter)
-          .select("-password_hash -active_token -embedding_vector")
+          .select("-password_hash -active_token")
           .limit(limit * 1)
           .skip((page - 1) * limit)
           .sort(search ? { score: { $meta: "textScore" } } : { matric_no: 1 })
@@ -1690,9 +1693,7 @@ class AdminController {
       // Add computed field for facial data status
       const studentsWithFaceStatus = students.map((student) => ({
         ...student,
-        has_facial_data: !!student.face_token,
-        photo_review_status: student.photo_review_status || "pending",
-        face_token: undefined, // Remove face_token from response
+        ...getStudentFaceEnrollmentState(student),
       }));
 
       res.json({
@@ -1729,25 +1730,16 @@ class AdminController {
     try {
       const { id } = req.params;
 
-      // Get student data and face_token status separately
       const studentFilter = getTenantScopedFilter(req, { _id: id });
-
-      const [student, studentWithFaceToken] = await Promise.all([
-        Student.findOne(studentFilter)
-          .select("-password_hash -active_token -face_token -embedding_vector")
-          .lean(),
-        Student.findOne(studentFilter).select("face_token").lean(),
-      ]);
+      const student = await Student.findOne(studentFilter)
+        .select("-password_hash -active_token")
+        .lean();
 
       if (!student) {
         return res.status(404).json({ error: "Student not found" });
       }
 
-      // Add computed field for facial data status
-      student.has_facial_data = !!(
-        studentWithFaceToken && studentWithFaceToken.face_token
-      );
-      student.photo_review_status = student.photo_review_status || "pending";
+      Object.assign(student, getStudentFaceEnrollmentState(student));
 
       // Get voting history
       const votes = (await Vote.find(getTenantScopedFilter(req, { student_id: id }))
@@ -1784,7 +1776,6 @@ class AdminController {
         is_active,
         photo_url,
         clear_profile_photo_cooldown,
-        photo_review_status,
       } = req.body;
 
       const student = await Student.findOne(getTenantScopedFilter(req, { _id: id }));
@@ -1831,54 +1822,59 @@ class AdminController {
       if (clear_profile_photo_cooldown) {
         student.last_profile_photo_updated_at = null;
       }
-      if (photo_review_status !== undefined) {
-        student.photo_review_status = photo_review_status;
-        student.photo_reviewed_at =
-          photo_review_status === "approved" || photo_review_status === "rejected"
-            ? new Date()
-            : null;
-        student.photo_reviewed_by_admin_id =
-          photo_review_status === "approved" || photo_review_status === "rejected"
-            ? req.adminId
-            : null;
-      }
 
-      // Handle photo_url update with Face++ re-registration
       let faceUpdateWarning = null;
       if (photo_url !== undefined && structure.photo_url !== student.photo_url) {
+        if (student.photo_url && student.aws_face_id && student.aws_face_collection_id) {
+          await faceProviderService.deleteStudentFace(student);
+        }
         student.photo_url = structure.photo_url;
-        student.photo_review_status = structure.photo_url ? "pending" : "approved";
-        student.photo_reviewed_at = null;
-        student.photo_reviewed_by_admin_id = null;
+        student.aws_face_id = null;
+        student.aws_face_image_id = null;
+        student.aws_face_collection_id = null;
+        student.last_face_enrolled_at = null;
+        student.last_face_enrollment_error = null;
       }
 
-      // Re-verify the saved student photo on every admin save when a photo exists.
       if (student.photo_url) {
         try {
-          const faceDetection = await faceProviderService.detectFace(student.photo_url);
+          const faceEnrollment = await faceProviderService.indexStudentFace(
+            student.photo_url,
+            req.tenant,
+            student,
+          );
 
-          if (faceDetection.success) {
-            student.face_token = faceDetection.face_token;
+          if (faceEnrollment.success) {
+            student.aws_face_id = faceEnrollment.aws_face_id;
+            student.aws_face_image_id = faceEnrollment.aws_face_image_id;
+            student.aws_face_collection_id = faceEnrollment.aws_face_collection_id;
+            student.last_face_enrolled_at = faceEnrollment.enrolled_at || new Date();
+            student.last_face_enrollment_error = null;
           } else {
             faceUpdateWarning =
               faceUpdateWarning ||
-              `Student record saved but face registration failed: ${faceDetection.error}. Existing facial data was retained.`;
+              `Student record saved but biometric enrollment failed: ${faceEnrollment.error}.`;
+            student.last_face_enrollment_error = faceEnrollment.error;
+            student.last_face_enrolled_at = null;
             console.warn(
-              `Face re-registration failed for student ${student.matric_no}: ${faceDetection.error}`,
+              `AWS face enrollment failed for student ${student.matric_no}: ${faceEnrollment.error}`,
             );
           }
         } catch (error) {
           faceUpdateWarning =
             faceUpdateWarning ||
-            "Student record saved but face registration encountered an error. Existing facial data was retained.";
+            "Student record saved but biometric enrollment encountered an error.";
           console.error(
-            `Face re-registration error for student ${student.matric_no}:`,
+            `AWS face enrollment error for student ${student.matric_no}:`,
             error,
           );
         }
       } else if (photo_url !== undefined) {
-        // Photo URL removed - clear face_token
-        student.face_token = null;
+        student.aws_face_id = null;
+        student.aws_face_image_id = null;
+        student.aws_face_collection_id = null;
+        student.last_face_enrolled_at = null;
+        student.last_face_enrollment_error = null;
       }
 
       await student.save();
@@ -1888,9 +1884,6 @@ class AdminController {
         student: {
           id: student._id,
           matric_no: student.matric_no,
-          member_id: student.member_id,
-          employee_id: student.employee_id,
-          username: student.username,
           full_name: student.full_name,
           email: student.email,
           college: student.college,
@@ -1900,8 +1893,7 @@ class AdminController {
           photo_url: student.photo_url,
           last_profile_photo_updated_at:
             student.last_profile_photo_updated_at || null,
-          photo_review_status: student.photo_review_status || "pending",
-          has_facial_data: !!student.face_token,
+          ...getStudentFaceEnrollmentState(student),
           is_active: student.is_active,
         },
       };
@@ -2440,28 +2432,12 @@ class AdminController {
             {
               $project: {
                 matric_no: 1,
-                member_id: 1,
-                employee_id: 1,
-                username: 1,
                 email: 1,
                 full_name: 1,
                 department: 1,
                 college: 1,
                 display_identifier: {
-                  $ifNull: [
-                    "$member_id",
-                    {
-                      $ifNull: [
-                        "$employee_id",
-                        {
-                          $ifNull: [
-                            "$username",
-                            { $ifNull: ["$matric_no", "$email"] },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
+                  $ifNull: ["$matric_no", "$email"],
                 },
                 votes_cast: {
                   $size: { $ifNull: ["$has_voted_sessions", []] },

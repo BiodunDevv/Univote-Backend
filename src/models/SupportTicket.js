@@ -117,6 +117,15 @@ const supportTicketSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    photo_reset_decision_status: {
+      type: String,
+      enum: ["pending", "approved", "declined"],
+      default: null,
+    },
+    photo_reset_decided_at: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

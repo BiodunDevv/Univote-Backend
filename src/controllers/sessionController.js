@@ -169,7 +169,7 @@ class SessionController {
     const [student, colleges] = await Promise.all([
       Student.findOne(getTenantScopedFilter(req, { _id: studentId }))
         .select(
-          "matric_no member_id employee_id username display_identifier full_name email college department level photo_url has_voted_sessions tenant_id",
+          "matric_no full_name email college department level photo_url has_voted_sessions tenant_id",
         )
         .lean(),
       College.find(getTenantScopedFilter(req, {}))

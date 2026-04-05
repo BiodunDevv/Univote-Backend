@@ -32,8 +32,8 @@ function mapVerificationFailureReason(result = {}) {
   if (code === "FACE_API_TIMEOUT" || message.includes("TIMED OUT")) {
     return "FACE_API_TIMEOUT";
   }
-  if (code === "INVALID_FACE_TOKEN" || message.includes("INVALID_FACE_TOKEN")) {
-    return "NO_FACE_TOKEN";
+  if (code === "NO_REGISTERED_FACE" || message.includes("NO REGISTERED FACE")) {
+    return "NO_REGISTERED_FACE";
   }
   if (
     code === "RATE_LIMIT_EXCEEDED" ||
@@ -44,8 +44,11 @@ function mapVerificationFailureReason(result = {}) {
   if (message.includes("CLEARER PHOTO") || message.includes("IMAGE QUALITY")) {
     return "LOW_QUALITY_IMAGE";
   }
-  if (code === "BIOMETRIC_PROVIDER_NOT_CONFIGURED" || code === "FACE_API_ERROR") {
-    return "FACE_API_ERROR";
+  if (code === "LOW_QUALITY_IMAGE" || message.includes("QUALITY")) {
+    return "LOW_QUALITY_IMAGE";
+  }
+  if (code === "AWS_BIOMETRIC_ERROR" || code === "BIOMETRIC_PROVIDER_NOT_CONFIGURED") {
+    return "AWS_BIOMETRIC_ERROR";
   }
   return "FACE_VERIFICATION_FAILED";
 }
@@ -404,11 +407,7 @@ class VoteController {
         });
       }
 
-      // Face++ Face Verification
-      console.log("Starting face verification...");
-
-      // Check if student has registered face token
-      if (!student.face_token) {
+      if (!student.aws_face_id || !student.aws_face_collection_id) {
         await mongoSession.abortTransaction();
         await cacheService.del(voteLockKey);
         await logVerificationAttempt(req, {
@@ -416,7 +415,7 @@ class VoteController {
           session_id,
           threshold_used: biometricThreshold,
           result: "rejected",
-          failure_reason: "NO_FACE_TOKEN",
+          failure_reason: "NO_REGISTERED_FACE",
           device_id: deviceFingerprint,
           ip_address: req.ip,
           image_url,
@@ -424,14 +423,13 @@ class VoteController {
         });
         return res.status(400).json({
           error:
-            "No registered face found. Please contact administrator to register your face.",
+            "No enrolled face was found for this student. Please contact your administrator.",
           code: "NO_REGISTERED_FACE",
         });
       }
 
-      // Verify face matches registered face
       const faceVerification = await faceProviderService.verifyFace(
-        student.face_token,
+        student,
         image_url,
         {
           threshold_override: biometricThreshold,
@@ -463,7 +461,7 @@ class VoteController {
         return res.status(400).json({
           error: faceVerification.error,
           code:
-            faceVerification.code === "INVALID_FACE_TOKEN"
+            faceVerification.code === "NO_REGISTERED_FACE"
               ? "NO_REGISTERED_FACE"
               : "FACE_VERIFICATION_FAILED",
         });
@@ -493,7 +491,7 @@ class VoteController {
         });
       }
 
-      const verifiedFaceToken = faceVerification.face_token2;
+      const verifiedFaceId = faceVerification.matched_face_id;
       const faceConfidence = faceVerification.confidence;
 
       // Validate choices
@@ -574,7 +572,7 @@ class VoteController {
           geo_location: { lat, lng },
           face_match_score: faceConfidence,
           face_verification_passed: true,
-          face_token: verifiedFaceToken,
+          aws_matched_face_id: verifiedFaceId,
           status: "valid",
           device_id: deviceFingerprint,
           ip_address: req.ip,
@@ -589,9 +587,6 @@ class VoteController {
 
       // Save all votes
       await Vote.insertMany(voteRecords, { session: mongoSession });
-
-      // Face++ verification is complete - no post-vote face registration needed
-      // The student's face_token is already stored and was verified during this vote
 
       // Add session to student's has_voted_sessions
       await Student.updateOne(
@@ -632,7 +627,7 @@ class VoteController {
         image_url,
         geo_location: { lat, lng },
         meta: {
-          verified_face_token: verifiedFaceToken,
+          verified_face_id: verifiedFaceId,
           choice_count: choices.length,
         },
       });

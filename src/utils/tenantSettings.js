@@ -1,18 +1,9 @@
-const PARTICIPANT_IDENTIFIER_TYPES = [
-  "matric_no",
-  "email",
-  "member_id",
-  "employee_id",
-  "username",
-];
+const PARTICIPANT_IDENTIFIER_TYPES = ["matric_no", "email"];
 
 const PARTICIPANT_FIELD_KEYS = [
   "full_name",
   "email",
   "matric_no",
-  "member_id",
-  "employee_id",
-  "username",
   "college",
   "department",
   "level",
@@ -40,27 +31,6 @@ const DEFAULT_PARTICIPANT_FIELDS = {
     required: true,
     show_in_profile: true,
     show_in_filters: true,
-    allow_in_eligibility: false,
-  },
-  member_id: {
-    enabled: true,
-    required: false,
-    show_in_profile: true,
-    show_in_filters: true,
-    allow_in_eligibility: false,
-  },
-  employee_id: {
-    enabled: true,
-    required: false,
-    show_in_profile: true,
-    show_in_filters: true,
-    allow_in_eligibility: false,
-  },
-  username: {
-    enabled: true,
-    required: false,
-    show_in_profile: true,
-    show_in_filters: false,
     allow_in_eligibility: false,
   },
   college: {
@@ -142,26 +112,17 @@ const DEFAULT_TENANT_SETTINGS = {
 const IDENTIFIER_LABELS = {
   matric_no: "Matric Number",
   email: "Email Address",
-  member_id: "Member ID",
-  employee_id: "Employee ID",
-  username: "Username",
 };
 
 const IDENTIFIER_PLACEHOLDERS = {
   matric_no: "BU22CSC1001",
-  email: "name@organization.org",
-  member_id: "MEM-1001",
-  employee_id: "EMP-1001",
-  username: "jane.doe",
+  email: "name@university.edu.ng",
 };
 
 const PARTICIPANT_FIELD_LABELS = {
   full_name: "Full Name",
   email: "Email Address",
   matric_no: "Matric Number",
-  member_id: "Member ID",
-  employee_id: "Employee ID",
-  username: "Username",
   college: "College",
   department: "Department",
   level: "Level",
@@ -410,12 +371,6 @@ function buildParticipantLookupFilter(identifierKey, value) {
   switch (normalizeIdentifierKey(identifierKey)) {
     case "email":
       return { email: normalized.toLowerCase() };
-    case "member_id":
-      return { member_id: normalized.toUpperCase() };
-    case "employee_id":
-      return { employee_id: normalized.toUpperCase() };
-    case "username":
-      return { username: normalized.toLowerCase() };
     case "matric_no":
     default:
       return { matric_no: normalized.toUpperCase() };

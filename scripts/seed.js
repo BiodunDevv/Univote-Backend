@@ -16,7 +16,7 @@ const Testimonial = require("../src/models/Testimonial");
 const PlatformSetting = require("../src/models/PlatformSetting");
 const Announcement = require("../src/models/Announcement");
 const { cloneDefaultTenantSettings } = require("../src/utils/tenantSettings");
-const faceppService = require("../src/services/faceppService");
+const faceProviderService = require("../src/services/faceProviderService");
 
 const DEFAULT_PASSWORD = "123456789";
 const DEPLOY_ROOT_DOMAIN = String(
@@ -35,12 +35,11 @@ const PRIMARY_TENANT_OPS_ADMIN_EMAIL = "ops.bowen@gmail.com";
 const SECONDARY_TENANT_SUPPORT_ADMIN_EMAIL = "support.summit@gmail.com";
 const TENANT_SLUG = "bowen-demo";
 const SECONDARY_TENANT_SLUG = "summit-demo";
-const SEEDED_FACEPP_KEY = process.env.FACEPP_API_KEY || null;
-const SEEDED_FACEPP_SECRET = process.env.FACEPP_API_SECRET || null;
-const SEEDED_FACEPP_BASE_URL =
-  process.env.FACEPP_BASE_URL || "https://api-us.faceplusplus.com/facepp/v3";
-const SEEDED_FACEPP_THRESHOLD = Number(
-  process.env.FACE_CONFIDENCE_THRESHOLD || 80,
+const SEEDED_AWS_REGION = process.env.AWS_REGION || "us-east-1";
+const SEEDED_AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || null;
+const SEEDED_AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || null;
+const SEEDED_AWS_THRESHOLD = Number(
+  process.env.AWS_REKOGNITION_SIMILARITY_THRESHOLD || 80,
 );
 
 function addDays(date, days) {
@@ -525,40 +524,25 @@ async function seedPlatformDefaults() {
     key: "defaults",
     defaults: cloneDefaultTenantSettings(),
     biometrics: {
-      active_provider: "facepp",
+      active_provider: "aws_rekognition",
       providers: {
-        facepp: {
-          enabled: true,
-          api_key: SEEDED_FACEPP_KEY,
-          api_secret: SEEDED_FACEPP_SECRET,
-          base_url: SEEDED_FACEPP_BASE_URL,
-          confidence_threshold: SEEDED_FACEPP_THRESHOLD,
-        },
         aws_rekognition: {
-          enabled: false,
-          region: "us-east-1",
-          access_key_id: null,
-          secret_access_key: null,
-          similarity_threshold: 90,
-        },
-        azure_face: {
-          enabled: false,
-          endpoint: null,
-          api_key: null,
-          confidence_threshold: 80,
-        },
-        google_vision: {
-          enabled: false,
-          project_id: null,
-          api_key: null,
-          confidence_threshold: 80,
+          enabled: true,
+          region: SEEDED_AWS_REGION,
+          access_key_id: SEEDED_AWS_ACCESS_KEY_ID,
+          secret_access_key: SEEDED_AWS_SECRET_ACCESS_KEY,
+          similarity_threshold: SEEDED_AWS_THRESHOLD,
+          collection_prefix:
+            process.env.AWS_REKOGNITION_COLLECTION_PREFIX || "univote-students",
+          liveness_required: true,
+          liveness_threshold: 90,
         },
       },
     },
   });
 
   console.log(
-    `✅ Platform defaults seeded (Face++ ${SEEDED_FACEPP_KEY && SEEDED_FACEPP_SECRET ? "configured from env" : "left unconfigured for secure setup"})`,
+    `✅ Platform defaults seeded (AWS Rekognition ${SEEDED_AWS_ACCESS_KEY_ID && SEEDED_AWS_SECRET_ACCESS_KEY ? "configured from env" : "left unconfigured for secure setup"})`,
   );
 }
 
@@ -638,16 +622,6 @@ async function createActiveDemoTenants(
       },
       settings: {
         ...cloneDefaultTenantSettings(),
-        labels: {
-          participant_singular: "Member",
-          participant_plural: "Members",
-        },
-        identity: {
-          primary_identifier: "member_id",
-          allowed_identifiers: ["member_id"],
-          recovery_identifiers: ["email"],
-          display_identifier: "member_id",
-        },
         auth: {
           require_email: true,
           require_photo: true,
@@ -660,85 +634,6 @@ async function createActiveDemoTenants(
           advanced_notifications: false,
           advanced_reports: false,
           face_verification: true,
-        },
-        participant_fields: {
-          full_name: {
-            enabled: true,
-            required: true,
-            show_in_profile: true,
-            show_in_filters: false,
-            allow_in_eligibility: false,
-          },
-          email: {
-            enabled: true,
-            required: true,
-            show_in_profile: true,
-            show_in_filters: false,
-            allow_in_eligibility: false,
-          },
-          matric_no: {
-            enabled: false,
-            required: false,
-            show_in_profile: false,
-            show_in_filters: false,
-            allow_in_eligibility: false,
-          },
-          member_id: {
-            enabled: true,
-            required: true,
-            show_in_profile: true,
-            show_in_filters: true,
-            allow_in_eligibility: false,
-          },
-          employee_id: {
-            enabled: false,
-            required: false,
-            show_in_profile: false,
-            show_in_filters: false,
-            allow_in_eligibility: false,
-          },
-          username: {
-            enabled: true,
-            required: false,
-            show_in_profile: true,
-            show_in_filters: false,
-            allow_in_eligibility: false,
-          },
-          college: {
-            enabled: true,
-            required: true,
-            show_in_profile: true,
-            show_in_filters: true,
-            allow_in_eligibility: true,
-          },
-          department: {
-            enabled: true,
-            required: true,
-            show_in_profile: true,
-            show_in_filters: true,
-            allow_in_eligibility: true,
-          },
-          level: {
-            enabled: true,
-            required: true,
-            show_in_profile: true,
-            show_in_filters: true,
-            allow_in_eligibility: true,
-          },
-          photo_url: {
-            enabled: true,
-            required: false,
-            show_in_profile: true,
-            show_in_filters: false,
-            allow_in_eligibility: false,
-          },
-          face_verification: {
-            enabled: true,
-            required: true,
-            show_in_profile: false,
-            show_in_filters: true,
-            allow_in_eligibility: false,
-          },
         },
       },
       onboarding: {
@@ -940,56 +835,70 @@ async function seedTenantColleges(tenant, tenantAdminId) {
 }
 
 async function seedTenantStudents(tenant, colleges) {
-  console.log("\n👨‍🎓 Generating tenant students...");
+  console.log(`\n👨‍🎓 Generating tenant students for ${tenant.slug}...`);
   const passwordHash = await createPasswordHash();
   const students = [];
 
-  if (tenant.slug === TENANT_SLUG) {
-    const computerScienceCollege = colleges.find((college) =>
-      college.departments.some((department) => department.code === "CSC"),
+  if (tenant.slug !== TENANT_SLUG) {
+    console.log(
+      `ℹ️  No demo students configured for ${tenant.slug}. Skipping student generation for this tenant.`,
     );
-    const computerScienceDepartment = computerScienceCollege?.departments.find(
-      (department) => department.code === "CSC",
-    );
-
-    if (computerScienceCollege && computerScienceDepartment) {
-      students.push({
-        tenant_id: tenant._id,
-        matric_no: "BU22CSC1005",
-        member_id: null,
-        employee_id: null,
-        username: null,
-        full_name: "Muhammed Abiodun",
-        email: "muhammedabiodun42@gmail.com",
-        password_hash: passwordHash,
-        first_login: false,
-        department: computerScienceDepartment.name,
-        department_code: computerScienceDepartment.code,
-        college: computerScienceCollege.name,
-        level: "400",
-        has_voted_sessions: [],
-        photo_url: STUDENT_PHOTO_URL,
-        photo_review_status: "approved",
-        face_token: null,
-        is_logged_in: false,
-        is_active: true,
-      });
-    }
+    return [];
   }
 
+  const computerScienceCollege = colleges.find((college) =>
+    college.departments.some((department) => {
+      const normalizedName = String(department.name || "").trim().toLowerCase();
+      const normalizedCode = String(department.code || "").trim().toUpperCase();
+      return normalizedCode === "CSC" || normalizedName === "computer science";
+    }),
+  );
+  const computerScienceDepartment = computerScienceCollege?.departments.find(
+    (department) => {
+      const normalizedName = String(department.name || "").trim().toLowerCase();
+      const normalizedCode = String(department.code || "").trim().toUpperCase();
+      return normalizedCode === "CSC" || normalizedName === "computer science";
+    },
+  );
+
+  if (!computerScienceCollege || !computerScienceDepartment) {
+    throw new Error(
+      `Unable to locate the seeded Computer Science department for tenant ${tenant.slug}.`,
+    );
+  }
+
+  students.push({
+    tenant_id: tenant._id,
+    matric_no: "BU22CSC1005",
+    full_name: "Muhammed Abiodun",
+    email: "muhammedabiodun42@gmail.com",
+    password_hash: passwordHash,
+    first_login: false,
+    department: computerScienceDepartment.name,
+    department_code: computerScienceDepartment.code,
+    college: computerScienceCollege.name,
+    level: "400",
+    has_voted_sessions: [],
+    photo_url: STUDENT_PHOTO_URL,
+    is_logged_in: false,
+    is_active: true,
+  });
+
   const insertedStudents = await Student.insertMany(students);
-  console.log(`✅ Created ${insertedStudents.length} tenant students`);
+  console.log(
+    `✅ Created ${insertedStudents.length} tenant student${insertedStudents.length === 1 ? "" : "s"} for ${tenant.slug}`,
+  );
   return insertedStudents;
 }
 
-function isFaceppConfiguredForSeed() {
-  return Boolean(SEEDED_FACEPP_KEY && SEEDED_FACEPP_SECRET);
+function isAwsConfiguredForSeed() {
+  return Boolean(SEEDED_AWS_ACCESS_KEY_ID && SEEDED_AWS_SECRET_ACCESS_KEY);
 }
 
 async function enrollSeedStudentFaces(students) {
-  if (!isFaceppConfiguredForSeed()) {
+  if (!isAwsConfiguredForSeed()) {
     console.log(
-      "ℹ️  Face++ credentials not available during seed. Student facial enrollment skipped.",
+      "ℹ️  AWS Rekognition credentials not available during seed. Student facial enrollment skipped.",
     );
     return {
       enrolled: 0,
@@ -997,13 +906,6 @@ async function enrollSeedStudentFaces(students) {
       failed: 0,
     };
   }
-
-  faceppService.configure({
-    api_key: SEEDED_FACEPP_KEY,
-    api_secret: SEEDED_FACEPP_SECRET,
-    base_url: SEEDED_FACEPP_BASE_URL,
-    confidence_threshold: SEEDED_FACEPP_THRESHOLD,
-  });
 
   let enrolled = 0;
   let failed = 0;
@@ -1014,26 +916,48 @@ async function enrollSeedStudentFaces(students) {
       continue;
     }
 
-    const detection = await faceppService.detectFace(student.photo_url);
-    if (!detection.success || !detection.face_token) {
+    const enrollment = await faceProviderService.indexStudentFace(
+      student.photo_url,
+      { _id: student.tenant_id, slug: student.tenant_id.toString() },
+      student,
+    );
+    if (!enrollment.success || !enrollment.aws_face_id) {
       failed += 1;
       await Student.updateOne(
         { _id: student._id },
-        { $set: { face_token: null } },
+        {
+          $set: {
+            aws_face_id: null,
+            aws_face_image_id: null,
+            aws_face_collection_id: null,
+            last_face_enrolled_at: null,
+            last_face_enrollment_error: enrollment.error || "Enrollment failed",
+          },
+        },
       );
       continue;
     }
 
     await Student.updateOne(
       { _id: student._id },
-      { $set: { face_token: detection.face_token } },
+      {
+        $set: {
+          aws_face_id: enrollment.aws_face_id,
+          aws_face_image_id: enrollment.aws_face_image_id,
+          aws_face_collection_id: enrollment.aws_face_collection_id,
+          last_face_enrolled_at: enrollment.enrolled_at || new Date(),
+          last_face_enrollment_error: null,
+        },
+      },
     );
-    student.face_token = detection.face_token;
+    student.aws_face_id = enrollment.aws_face_id;
+    student.aws_face_image_id = enrollment.aws_face_image_id;
+    student.aws_face_collection_id = enrollment.aws_face_collection_id;
     enrolled += 1;
   }
 
   console.log(
-    `✅ Face enrollment summary: ${enrolled} enrolled, ${failed} failed, 0 fake tokens written`,
+    `✅ AWS face enrollment summary: ${enrolled} enrolled, ${failed} failed, 0 fake tokens written`,
   );
 
   return {
@@ -1043,7 +967,62 @@ async function enrollSeedStudentFaces(students) {
   };
 }
 
-async function seedTenantSessions(tenant, tenantAdminId) {
+function buildSeedSessionEligibility(tenant, colleges = []) {
+  if (!Array.isArray(colleges) || colleges.length === 0) {
+    return {
+      eligible_college: null,
+      eligible_departments: null,
+      eligible_levels: null,
+    };
+  }
+
+  let selectedCollege = null;
+  let selectedDepartment = null;
+
+  if (tenant.slug === TENANT_SLUG) {
+    selectedCollege = colleges.find(
+      (college) =>
+        college.name === "College of Computing and Communication Studies",
+    );
+    selectedDepartment = selectedCollege?.departments.find(
+      (department) => department.name === "Computer Science",
+    );
+  }
+
+  if (!selectedCollege) {
+    selectedCollege = colleges.find(
+      (college) =>
+        Array.isArray(college.departments) && college.departments.length > 0,
+    );
+  }
+
+  if (!selectedDepartment) {
+    selectedDepartment = selectedCollege?.departments?.[0] || null;
+  }
+
+  if (!selectedCollege || !selectedDepartment) {
+    return {
+      eligible_college: null,
+      eligible_departments: null,
+      eligible_levels: null,
+    };
+  }
+
+  const availableLevels = Array.isArray(selectedDepartment.available_levels)
+    ? selectedDepartment.available_levels.map(String)
+    : [];
+  const preferredLevel = availableLevels.includes("400")
+    ? "400"
+    : availableLevels[0] || "400";
+
+  return {
+    eligible_college: selectedCollege.name,
+    eligible_departments: [selectedDepartment._id.toString()],
+    eligible_levels: [preferredLevel],
+  };
+}
+
+async function seedTenantSessions(tenant, tenantAdminId, colleges = []) {
   console.log("\n🗳️  Creating sample voting sessions...");
 
   const now = new Date();
@@ -1053,6 +1032,8 @@ async function seedTenantSessions(tenant, tenantAdminId) {
   const upcomingEnd = addDays(upcomingStart, 1);
   const endedStart = addDays(new Date(), -20);
   const endedEnd = addDays(new Date(), -19);
+
+  const seededEligibility = buildSeedSessionEligibility(tenant, colleges);
 
   const [activeSession, upcomingSession, endedSession] = await VotingSession.create([
     {
@@ -1068,6 +1049,9 @@ async function seedTenantSessions(tenant, tenantAdminId) {
         radius_meters: 1500,
       },
       is_off_campus_allowed: false,
+      eligible_college: seededEligibility.eligible_college,
+      eligible_departments: seededEligibility.eligible_departments,
+      eligible_levels: seededEligibility.eligible_levels,
       results_public: false,
       created_by: tenantAdminId,
       status: "active",
@@ -1085,6 +1069,9 @@ async function seedTenantSessions(tenant, tenantAdminId) {
         radius_meters: 1500,
       },
       is_off_campus_allowed: false,
+      eligible_college: seededEligibility.eligible_college,
+      eligible_departments: seededEligibility.eligible_departments,
+      eligible_levels: seededEligibility.eligible_levels,
       results_public: true,
       created_by: tenantAdminId,
       status: "upcoming",
@@ -1102,6 +1089,9 @@ async function seedTenantSessions(tenant, tenantAdminId) {
         radius_meters: 1500,
       },
       is_off_campus_allowed: true,
+      eligible_college: seededEligibility.eligible_college,
+      eligible_departments: seededEligibility.eligible_departments,
+      eligible_levels: seededEligibility.eligible_levels,
       results_public: true,
       created_by: tenantAdminId,
       status: "ended",
@@ -1175,7 +1165,10 @@ async function seedTenantSessions(tenant, tenantAdminId) {
     endedSession.save(),
   ]);
 
-  console.log("✅ Created 3 sessions with 4 candidates");
+  const eligibilitySummary = seededEligibility.eligible_college
+    ? `${seededEligibility.eligible_college} • ${seededEligibility.eligible_levels?.join(", ") || "all levels"}`
+    : "tenant-wide eligibility";
+  console.log(`✅ Created 3 sessions with 4 candidates (${eligibilitySummary})`);
   return {
     activeSession,
     upcomingSession,
@@ -1227,7 +1220,7 @@ async function seedVotingBaseline(
     },
     face_match_score: 94.2,
     face_verification_passed: true,
-    face_token: seededStudent.face_token,
+    aws_matched_face_id: seededStudent.aws_face_id,
     status: "valid",
     device_id: "seeded-ios-device",
     ip_address: "127.0.0.1",
@@ -1249,14 +1242,14 @@ async function seedVotingBaseline(
       user_id: seededStudent._id,
       session_id: sessionsSeed.endedSession._id,
       confidence_score: 94.2,
-      threshold_used: SEEDED_FACEPP_THRESHOLD,
+      threshold_used: SEEDED_AWS_THRESHOLD,
       result: "accepted",
       failure_reason: null,
       is_genuine_attempt: true,
       reviewed_by: tenantAdminId,
       reviewed_at: new Date(),
       review_note: "Seeded accepted genuine attempt for dashboard baseline.",
-      provider: "facepp",
+      provider: "aws_rekognition",
       device_id: "seeded-ios-device",
       ip_address: "127.0.0.1",
       geo_location: { lat: 7.4208, lng: 4.9078 },
@@ -1272,14 +1265,14 @@ async function seedVotingBaseline(
       user_id: seededStudent._id,
       session_id: sessionsSeed.activeSession._id,
       confidence_score: 71.4,
-      threshold_used: SEEDED_FACEPP_THRESHOLD,
+      threshold_used: SEEDED_AWS_THRESHOLD,
       result: "rejected",
       failure_reason: "LOW_CONFIDENCE",
       is_genuine_attempt: true,
       reviewed_by: tenantAdminId,
       reviewed_at: new Date(),
       review_note: "Seeded false reject attempt for FRR visibility.",
-      provider: "facepp",
+      provider: "aws_rekognition",
       device_id: "seeded-android-device",
       ip_address: "127.0.0.2",
       geo_location: { lat: 7.4209, lng: 4.9079 },
@@ -1294,14 +1287,14 @@ async function seedVotingBaseline(
       user_id: seededStudent._id,
       session_id: sessionsSeed.activeSession._id,
       confidence_score: 91.3,
-      threshold_used: SEEDED_FACEPP_THRESHOLD,
+      threshold_used: SEEDED_AWS_THRESHOLD,
       result: "accepted",
       failure_reason: "FALSE_ACCEPT",
       is_genuine_attempt: false,
       reviewed_by: tenantAdminId,
       reviewed_at: new Date(),
       review_note: "Seeded impostor acceptance for FAR visibility.",
-      provider: "facepp",
+      provider: "aws_rekognition",
       device_id: "seeded-web-device",
       ip_address: "127.0.0.3",
       geo_location: { lat: 7.421, lng: 4.908 },
@@ -1317,14 +1310,14 @@ async function seedVotingBaseline(
       user_id: seededStudent._id,
       session_id: sessionsSeed.activeSession._id,
       confidence_score: 38.5,
-      threshold_used: SEEDED_FACEPP_THRESHOLD,
+      threshold_used: SEEDED_AWS_THRESHOLD,
       result: "rejected",
       failure_reason: "NO_FACE_DETECTED",
       is_genuine_attempt: false,
       reviewed_by: tenantAdminId,
       reviewed_at: new Date(),
       review_note: "Seeded impostor rejection for accuracy baseline.",
-      provider: "facepp",
+      provider: "aws_rekognition",
       device_id: "seeded-web-device",
       ip_address: "127.0.0.4",
       geo_location: { lat: 7.4207, lng: 4.9077 },
@@ -1576,7 +1569,11 @@ async function seed() {
       primaryColleges,
     );
     await enrollSeedStudentFaces(primaryStudents);
-    const primarySessions = await seedTenantSessions(primaryTenant, tenantAdmin._id);
+    const primarySessions = await seedTenantSessions(
+      primaryTenant,
+      tenantAdmin._id,
+      primaryColleges,
+    );
     await seedVotingBaseline(
       primaryTenant,
       tenantAdmin._id,
@@ -1601,7 +1598,11 @@ async function seed() {
       secondaryColleges,
     );
     await enrollSeedStudentFaces(secondaryStudents);
-    await seedTenantSessions(secondaryTenant, secondaryTenantAdmin._id);
+    await seedTenantSessions(
+      secondaryTenant,
+      secondaryTenantAdmin._id,
+      secondaryColleges,
+    );
     await seedNotifications(
       secondaryTenant,
       superAdmin,

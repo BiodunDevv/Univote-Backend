@@ -13,6 +13,7 @@ const {
   verifyToken,
 } = require("../utils/jwt");
 const emailService = require("../services/emailService");
+const faceProviderService = require("../services/faceProviderService");
 const cacheService = require("../services/cacheService");
 const {
   buildParticipantLookupFilter,
@@ -60,20 +61,12 @@ function serializeTenant(tenant) {
 }
 
 function serializeStudent(student) {
-  const displayIdentifier =
-    student.member_id ||
-    student.employee_id ||
-    student.username ||
-    student.matric_no ||
-    student.email;
+  const displayIdentifier = student.matric_no || student.email || null;
 
   return {
     id: student._id,
     tenant_id: student.tenant_id || null,
     matric_no: student.matric_no,
-    member_id: student.member_id || null,
-    employee_id: student.employee_id || null,
-    username: student.username || null,
     display_identifier: displayIdentifier || null,
     full_name: student.full_name,
     email: student.email,
@@ -83,6 +76,7 @@ function serializeStudent(student) {
     level: student.level,
     photo_url: student.photo_url,
     last_profile_photo_updated_at: student.last_profile_photo_updated_at || null,
+    profile_photo_reset_granted_at: student.profile_photo_reset_granted_at || null,
     next_profile_photo_update_at: student.last_profile_photo_updated_at
       ? new Date(
           new Date(student.last_profile_photo_updated_at).setMonth(
@@ -90,8 +84,18 @@ function serializeStudent(student) {
           ),
         )
       : null,
-    has_facial_data: !!student.face_token,
-    photo_review_status: student.photo_review_status || "pending",
+    has_facial_data: Boolean(
+      student.aws_face_id ||
+        (student.last_face_enrolled_at && !student.last_face_enrollment_error),
+    ),
+    face_enrollment_status:
+      student.aws_face_id ||
+      (student.last_face_enrolled_at && !student.last_face_enrollment_error)
+      ? "enrolled"
+      : student.last_face_enrollment_error
+        ? "failed"
+        : "pending",
+    last_face_enrollment_error: student.last_face_enrollment_error || null,
     created_at: student.createdAt || student.created_at,
     last_login_at: student.last_login_at,
   };
@@ -305,7 +309,7 @@ class AuthController {
           college: student.college,
           level: student.level,
           has_voted_sessions: student.has_voted_sessions,
-          face_token: student.face_token,
+          aws_face_id: student.aws_face_id,
           is_active: student.is_active,
           active_token: student.active_token,
         },
@@ -586,7 +590,7 @@ class AuthController {
   async getProfile(req, res) {
     try {
       const student = await Student.findById(req.studentId).select(
-        "-password_hash -active_token -face_token -embedding_vector",
+        "-password_hash -active_token",
       );
 
       if (!student) {
@@ -595,7 +599,7 @@ class AuthController {
 
       // Add computed field for facial data status
       const studentProfile = student.toObject();
-      studentProfile.has_facial_data = !!student.face_token;
+      studentProfile.has_facial_data = Boolean(student.aws_face_id);
 
       res.json({
         student: studentProfile,
@@ -603,9 +607,6 @@ class AuthController {
           id: student._id,
           tenant_id: student.tenant_id || null,
           matric_no: student.matric_no,
-          member_id: student.member_id || null,
-          employee_id: student.employee_id || null,
-          username: student.username || null,
           full_name: student.full_name,
           email: student.email,
           department: student.department,
@@ -615,11 +616,18 @@ class AuthController {
           photo_url: student.photo_url,
           last_profile_photo_updated_at:
             student.last_profile_photo_updated_at || null,
+          profile_photo_reset_granted_at:
+            student.profile_photo_reset_granted_at || null,
           next_profile_photo_update_at: calculateNextPhotoUpdateAt(
             student.last_profile_photo_updated_at,
           ),
-          has_facial_data: !!student.face_token,
-          photo_review_status: student.photo_review_status || "pending",
+          has_facial_data: Boolean(student.aws_face_id),
+          face_enrollment_status: student.aws_face_id
+            ? "enrolled"
+            : student.last_face_enrollment_error
+              ? "failed"
+              : "pending",
+          last_face_enrollment_error: student.last_face_enrollment_error || null,
           is_logged_in: student.is_logged_in,
           first_login: student.first_login,
           last_login_at: student.last_login_at,
@@ -689,13 +697,20 @@ class AuthController {
       if (photo_url !== undefined) {
         const normalizedPhotoUrl = photo_url ? photo_url.trim() : null;
         const isChangingPhoto = normalizedPhotoUrl !== student.photo_url;
+        const hasOneTimePhotoReset = Boolean(
+          student.profile_photo_reset_granted_at,
+        );
 
         if (isChangingPhoto && normalizedPhotoUrl) {
           const nextAllowedUpdateAt = calculateNextPhotoUpdateAt(
             student.last_profile_photo_updated_at,
           );
 
-          if (nextAllowedUpdateAt && nextAllowedUpdateAt.getTime() > Date.now()) {
+          if (
+            nextAllowedUpdateAt &&
+            nextAllowedUpdateAt.getTime() > Date.now() &&
+            !hasOneTimePhotoReset
+          ) {
             return res.status(409).json({
               error:
                 "Your profile photo was updated recently. Submit a support request if you need an early reset.",
@@ -708,13 +723,61 @@ class AuthController {
         }
 
         if (isChangingPhoto) {
-          student.photo_url = normalizedPhotoUrl;
-          student.last_profile_photo_updated_at = normalizedPhotoUrl
-            ? new Date()
-            : null;
-          student.photo_review_status = normalizedPhotoUrl ? "pending" : "approved";
-          student.photo_reviewed_at = null;
-          student.photo_reviewed_by_admin_id = null;
+          if (!normalizedPhotoUrl) {
+            if (
+              student.photo_url &&
+              student.aws_face_id &&
+              student.aws_face_collection_id
+            ) {
+              await faceProviderService.deleteStudentFace(student);
+            }
+            student.photo_url = null;
+            student.last_profile_photo_updated_at = null;
+            student.profile_photo_reset_granted_at = null;
+            student.aws_face_id = null;
+            student.aws_face_image_id = null;
+            student.aws_face_collection_id = null;
+            student.last_face_enrolled_at = null;
+            student.last_face_enrollment_error = null;
+          } else {
+            const enrollmentTarget = {
+              ...student.toObject(),
+              photo_url: normalizedPhotoUrl,
+            };
+            const faceEnrollment = await faceProviderService.indexStudentFace(
+              normalizedPhotoUrl,
+              req.tenant,
+              enrollmentTarget,
+            );
+
+            if (!faceEnrollment.success) {
+              return res.status(422).json({
+                error:
+                  faceEnrollment.error ||
+                  "Please upload a clear photo that shows only your face.",
+                code: faceEnrollment.code || "INVALID_FACE_IMAGE",
+              });
+            }
+
+            if (
+              student.photo_url &&
+              student.aws_face_id &&
+              student.aws_face_collection_id
+            ) {
+              await faceProviderService.deleteStudentFace(student);
+            }
+
+            student.photo_url = normalizedPhotoUrl;
+            student.last_profile_photo_updated_at = new Date();
+            student.profile_photo_reset_granted_at = null;
+            student.aws_face_id = faceEnrollment.aws_face_id;
+            student.aws_face_image_id = faceEnrollment.aws_face_image_id;
+            student.aws_face_collection_id =
+              faceEnrollment.aws_face_collection_id;
+            student.last_face_enrolled_at =
+              faceEnrollment.enrolled_at || new Date();
+            student.last_face_enrollment_error = null;
+          }
         }
       }
 
@@ -728,9 +791,6 @@ class AuthController {
           id: student._id,
           tenant_id: student.tenant_id || null,
           matric_no: student.matric_no,
-          member_id: student.member_id || null,
-          employee_id: student.employee_id || null,
-          username: student.username || null,
           full_name: student.full_name,
           email: student.email,
           department: student.department,
@@ -740,11 +800,18 @@ class AuthController {
           photo_url: student.photo_url,
           last_profile_photo_updated_at:
             student.last_profile_photo_updated_at || null,
+          profile_photo_reset_granted_at:
+            student.profile_photo_reset_granted_at || null,
           next_profile_photo_update_at: calculateNextPhotoUpdateAt(
             student.last_profile_photo_updated_at,
           ),
-          has_facial_data: !!student.face_token,
-          photo_review_status: student.photo_review_status || "pending",
+          has_facial_data: Boolean(student.aws_face_id),
+          face_enrollment_status: student.aws_face_id
+            ? "enrolled"
+            : student.last_face_enrollment_error
+              ? "failed"
+              : "pending",
+          last_face_enrollment_error: student.last_face_enrollment_error || null,
           is_logged_in: student.is_logged_in,
           first_login: student.first_login,
           last_login_at: student.last_login_at,

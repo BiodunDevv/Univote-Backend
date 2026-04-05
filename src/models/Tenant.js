@@ -30,7 +30,7 @@ const tenantSettingsSchema = new mongoose.Schema(
     identity: {
       primary_identifier: {
         type: String,
-        enum: ["matric_no", "email", "member_id", "employee_id", "username"],
+        enum: ["matric_no", "email"],
         default: "matric_no",
       },
       allowed_identifiers: {
@@ -43,7 +43,7 @@ const tenantSettingsSchema = new mongoose.Schema(
       },
       display_identifier: {
         type: String,
-        enum: ["matric_no", "email", "member_id", "employee_id", "username"],
+        enum: ["matric_no", "email"],
         default: "matric_no",
       },
     },

@@ -450,7 +450,7 @@ class DashboardController {
         () =>
           Student.findOne(getTenantScopedFilter(req, { _id: studentId }))
             .select(
-              "matric_no member_id employee_id username full_name email department college level has_voted_sessions face_token photo_url createdAt last_login_at first_login",
+              "matric_no full_name email department college level has_voted_sessions aws_face_id last_face_enrollment_error photo_url createdAt last_login_at first_login",
             )
             .lean(),
         120,
@@ -613,10 +613,10 @@ class DashboardController {
         });
       }
 
-      if (!student.face_token) {
+      if (!student.aws_face_id) {
         notifications.push({
           type: "no_face_data",
-          message: "Please register your facial data to enable voting",
+          message: "Please upload a clear profile photo so facial verification can be enrolled.",
           priority: "high",
         });
       }
@@ -643,22 +643,20 @@ class DashboardController {
           : null,
         student_info: {
           matric_no: student.matric_no,
-          member_id: student.member_id || null,
-          employee_id: student.employee_id || null,
-          username: student.username || null,
-          display_identifier:
-            student.member_id ||
-            student.employee_id ||
-            student.username ||
-            student.matric_no ||
-            student.email,
+          display_identifier: student.matric_no || student.email,
           full_name: student.full_name,
           email: student.email,
           department: student.department,
           college: student.college,
           level: student.level,
           photo_url: student.photo_url,
-          has_facial_data: !!student.face_token,
+          has_facial_data: Boolean(student.aws_face_id),
+          face_enrollment_status: student.aws_face_id
+            ? "enrolled"
+            : student.last_face_enrollment_error
+              ? "failed"
+              : "pending",
+          last_face_enrollment_error: student.last_face_enrollment_error || null,
           first_login: Boolean(student.first_login),
           member_since: student.createdAt,
           last_login: student.last_login_at,

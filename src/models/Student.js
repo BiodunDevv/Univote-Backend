@@ -15,27 +15,6 @@ const studentSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
-    member_id: {
-      type: String,
-      required: false,
-      uppercase: true,
-      trim: true,
-      default: null,
-    },
-    employee_id: {
-      type: String,
-      required: false,
-      uppercase: true,
-      trim: true,
-      default: null,
-    },
-    username: {
-      type: String,
-      required: false,
-      lowercase: true,
-      trim: true,
-      default: null,
-    },
     full_name: {
       type: String,
       required: true,
@@ -93,25 +72,28 @@ const studentSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    photo_review_status: {
-      type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "pending",
-    },
-    photo_reviewed_at: {
+    profile_photo_reset_granted_at: {
       type: Date,
       default: null,
     },
-    photo_reviewed_by_admin_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
+    aws_face_id: {
+      type: String,
       default: null,
+      index: true,
     },
-    face_token: {
+    aws_face_image_id: {
       type: String,
       default: null,
     },
-    embedding_vector: {
+    aws_face_collection_id: {
+      type: String,
+      default: null,
+    },
+    last_face_enrolled_at: {
+      type: Date,
+      default: null,
+    },
+    last_face_enrollment_error: {
       type: String,
       default: null,
     },
@@ -154,36 +136,6 @@ studentSchema.index(
   { tenant_id: 1, matric_no: 1 },
   { unique: true, partialFilterExpression: { tenant_id: { $type: "objectId" } } },
 );
-studentSchema.index(
-  { tenant_id: 1, member_id: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      tenant_id: { $type: "objectId" },
-      member_id: { $type: "string" },
-    },
-  },
-);
-studentSchema.index(
-  { tenant_id: 1, employee_id: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      tenant_id: { $type: "objectId" },
-      employee_id: { $type: "string" },
-    },
-  },
-);
-studentSchema.index(
-  { tenant_id: 1, username: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      tenant_id: { $type: "objectId" },
-      username: { $type: "string" },
-    },
-  },
-);
 studentSchema.index({ tenant_id: 1, email: 1 });
 studentSchema.index({ department: 1, college: 1, level: 1 });
 studentSchema.index({ college: 1, is_active: 1 });
@@ -198,9 +150,6 @@ studentSchema.index({
   full_name: "text",
   email: "text",
   matric_no: "text",
-  member_id: "text",
-  employee_id: "text",
-  username: "text",
 }); // For text search
 
 module.exports = mongoose.model("Student", studentSchema);

@@ -16,13 +16,7 @@ const platformSettingSchema = new mongoose.Schema(
     identity_catalog: {
       allowed_identifiers: {
         type: [String],
-        default: () => [
-          "matric_no",
-          "email",
-          "member_id",
-          "employee_id",
-          "username",
-        ],
+        default: () => ["matric_no", "email"],
       },
       allowed_eligibility_dimensions: {
         type: [String],
@@ -32,36 +26,14 @@ const platformSettingSchema = new mongoose.Schema(
     biometrics: {
       active_provider: {
         type: String,
-        enum: ["facepp", "aws_rekognition", "azure_face", "google_vision"],
-        default: "facepp",
+        enum: ["aws_rekognition"],
+        default: "aws_rekognition",
       },
       providers: {
-        facepp: {
-          enabled: {
-            type: Boolean,
-            default: true,
-          },
-          api_key: {
-            type: String,
-            default: null,
-          },
-          api_secret: {
-            type: String,
-            default: null,
-          },
-          base_url: {
-            type: String,
-            default: "https://api-us.faceplusplus.com/facepp/v3",
-          },
-          confidence_threshold: {
-            type: Number,
-            default: 80,
-          },
-        },
         aws_rekognition: {
           enabled: {
             type: Boolean,
-            default: false,
+            default: true,
           },
           region: {
             type: String,
@@ -79,41 +51,17 @@ const platformSettingSchema = new mongoose.Schema(
             type: Number,
             default: 90,
           },
-        },
-        azure_face: {
-          enabled: {
+          collection_prefix: {
+            type: String,
+            default: "univote-students",
+          },
+          liveness_required: {
             type: Boolean,
-            default: false,
+            default: true,
           },
-          endpoint: {
-            type: String,
-            default: null,
-          },
-          api_key: {
-            type: String,
-            default: null,
-          },
-          confidence_threshold: {
+          liveness_threshold: {
             type: Number,
-            default: 80,
-          },
-        },
-        google_vision: {
-          enabled: {
-            type: Boolean,
-            default: false,
-          },
-          project_id: {
-            type: String,
-            default: null,
-          },
-          api_key: {
-            type: String,
-            default: null,
-          },
-          confidence_threshold: {
-            type: Number,
-            default: 80,
+            default: 90,
           },
         },
       },

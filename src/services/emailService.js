@@ -80,12 +80,7 @@ class EmailService {
   }
 
   async sendWelcomeEmail(student, tenant = null) {
-    const identifier =
-      student.member_id ||
-      student.matric_no ||
-      student.employee_id ||
-      student.username ||
-      student.email;
+    const identifier = student.matric_no || student.email;
     const html = this.renderMessageCard({
       eyebrow: "Account activated",
       title: "Welcome to your portal",

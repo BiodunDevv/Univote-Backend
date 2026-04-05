@@ -50,30 +50,6 @@ function normalizeBiometricProviderPayload(
   current = {},
 ) {
   switch (providerKey) {
-    case "facepp":
-      return {
-        ...current,
-        enabled:
-          payload.enabled !== undefined
-            ? Boolean(payload.enabled)
-            : current.enabled !== false,
-        api_key:
-          payload.api_key !== undefined && payload.api_key !== ""
-            ? String(payload.api_key).trim()
-            : current.api_key || null,
-        api_secret:
-          payload.api_secret !== undefined && payload.api_secret !== ""
-            ? String(payload.api_secret).trim()
-            : current.api_secret || null,
-        base_url:
-          payload.base_url !== undefined && payload.base_url !== ""
-            ? String(payload.base_url).trim()
-            : current.base_url || "https://api-us.faceplusplus.com/facepp/v3",
-        confidence_threshold:
-          payload.confidence_threshold !== undefined
-            ? Number(payload.confidence_threshold)
-            : current.confidence_threshold || 80,
-      };
     case "aws_rekognition":
       return {
         ...current,
@@ -98,46 +74,18 @@ function normalizeBiometricProviderPayload(
           payload.similarity_threshold !== undefined
             ? Number(payload.similarity_threshold)
             : current.similarity_threshold || 90,
-      };
-    case "azure_face":
-      return {
-        ...current,
-        enabled:
-          payload.enabled !== undefined
-            ? Boolean(payload.enabled)
-            : Boolean(current.enabled),
-        endpoint:
-          payload.endpoint !== undefined && payload.endpoint !== ""
-            ? String(payload.endpoint).trim()
-            : current.endpoint || null,
-        api_key:
-          payload.api_key !== undefined && payload.api_key !== ""
-            ? String(payload.api_key).trim()
-            : current.api_key || null,
-        confidence_threshold:
-          payload.confidence_threshold !== undefined
-            ? Number(payload.confidence_threshold)
-            : current.confidence_threshold || 80,
-      };
-    case "google_vision":
-      return {
-        ...current,
-        enabled:
-          payload.enabled !== undefined
-            ? Boolean(payload.enabled)
-            : Boolean(current.enabled),
-        project_id:
-          payload.project_id !== undefined && payload.project_id !== ""
-            ? String(payload.project_id).trim()
-            : current.project_id || null,
-        api_key:
-          payload.api_key !== undefined && payload.api_key !== ""
-            ? String(payload.api_key).trim()
-            : current.api_key || null,
-        confidence_threshold:
-          payload.confidence_threshold !== undefined
-            ? Number(payload.confidence_threshold)
-            : current.confidence_threshold || 80,
+        collection_prefix:
+          payload.collection_prefix !== undefined && payload.collection_prefix !== ""
+            ? String(payload.collection_prefix).trim()
+            : current.collection_prefix || "univote-students",
+        liveness_required:
+          payload.liveness_required !== undefined
+            ? Boolean(payload.liveness_required)
+            : current.liveness_required !== false,
+        liveness_threshold:
+          payload.liveness_threshold !== undefined
+            ? Number(payload.liveness_threshold)
+            : current.liveness_threshold || 90,
       };
     default:
       return current;
@@ -146,36 +94,12 @@ function normalizeBiometricProviderPayload(
 
 function validateBiometricProviderConfig(providerKey, payload = {}) {
   switch (providerKey) {
-    case "facepp":
-      if (!String(payload.api_key || "").trim()) {
-        return "Face++ API key is required";
-      }
-      if (!String(payload.api_secret || "").trim()) {
-        return "Face++ API secret is required";
-      }
-      return null;
     case "aws_rekognition":
       if (!String(payload.access_key_id || "").trim()) {
         return "AWS access key ID is required";
       }
       if (!String(payload.secret_access_key || "").trim()) {
         return "AWS secret access key is required";
-      }
-      return null;
-    case "azure_face":
-      if (!String(payload.endpoint || "").trim()) {
-        return "Azure endpoint is required";
-      }
-      if (!String(payload.api_key || "").trim()) {
-        return "Azure API key is required";
-      }
-      return null;
-    case "google_vision":
-      if (!String(payload.project_id || "").trim()) {
-        return "Google project ID is required";
-      }
-      if (!String(payload.api_key || "").trim()) {
-        return "Google API key is required";
       }
       return null;
     default:
@@ -873,7 +797,7 @@ class PlatformController {
           active_provider:
             nextBiometrics.active_provider ||
             platformSetting.biometrics?.active_provider ||
-            "facepp",
+            "aws_rekognition",
           providers: nextProviders,
         };
       }
@@ -944,7 +868,7 @@ class PlatformController {
         active_provider:
           set_active || !platformSetting.biometrics?.active_provider
             ? provider_key
-            : platformSetting.biometrics?.active_provider || "facepp",
+            : platformSetting.biometrics?.active_provider || "aws_rekognition",
         providers: nextProviders,
       };
 
@@ -998,8 +922,8 @@ class PlatformController {
       platformSetting.biometrics = {
         active_provider:
           platformSetting.biometrics?.active_provider === providerKey
-            ? "facepp"
-            : platformSetting.biometrics?.active_provider || "facepp",
+            ? "aws_rekognition"
+            : platformSetting.biometrics?.active_provider || "aws_rekognition",
         providers: nextProviders,
       };
 
@@ -1019,7 +943,8 @@ class PlatformController {
 
   async testBiometricProvider(req, res) {
     try {
-      const { image_url, provider_key } = req.body;
+      const { image_url } = req.body;
+      const provider_key = "aws_rekognition";
       if (!image_url) {
         return res.status(400).json({ error: "Image URL is required" });
       }
@@ -1030,7 +955,7 @@ class PlatformController {
       }
 
       const result = await faceProviderService.testConnectionForProvider(
-        provider_key || null,
+        provider_key,
         image_url,
       );
       if (!result.success) {
@@ -1053,9 +978,9 @@ class PlatformController {
         return res.status(400).json({
           error: result.error || "Biometric provider test failed",
           code: result.code || "BIOMETRIC_PROVIDER_TEST_FAILED",
-          provider: result.provider || "facepp",
+          provider: result.provider || "aws_rekognition",
           provider_status: await faceProviderService.getStatus(
-            provider_key || null,
+            provider_key,
           ),
           requirements:
             provider_key && providerCatalog[provider_key]
@@ -1066,26 +991,21 @@ class PlatformController {
 
       return res.json({
         message: "Biometric provider test completed successfully",
-        provider: result.provider || "facepp",
+        provider: result.provider || "aws_rekognition",
         provider_status: await faceProviderService.getStatus(
-          provider_key || null,
+          provider_key,
         ),
         summary: {
-          detection: result.face_token
-            ? "Face detected"
-            : "No face token returned",
+          detection: result.success ? "Face detected" : "No face detected",
           image_checked: image_url,
         },
         result: {
-          face_token: result.face_token
-            ? `${result.face_token.slice(0, 20)}...`
-            : null,
-          face_rectangle: result.face_rectangle || null,
-          image_id: result.image_id || null,
+          face_count: result.face_count || 0,
+          quality: result.quality || null,
         },
         provider_response: {
           success: Boolean(result.success),
-          provider: result.provider || "facepp",
+          provider: result.provider || "aws_rekognition",
           readiness: result.readiness || null,
         },
       });

@@ -70,10 +70,12 @@ EMAIL_USER=your-email@gmail.com
 EMAIL_PASS=your-app-password
 EMAIL_FROM=Univote <noreply@univote.com>
 
-# Face++ API Configuration
-FACEPP_API_KEY=your_facepp_api_key
-FACEPP_API_SECRET=your_facepp_api_secret
-FACE_CONFIDENCE_THRESHOLD=80
+# AWS Rekognition Configuration
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+AWS_REGION=us-east-1
+AWS_REKOGNITION_COLLECTION_PREFIX=univote-students
+AWS_REKOGNITION_SIMILARITY_THRESHOLD=80
 
 # Geofence Configuration (Bowen University)
 DEFAULT_CAMPUS_LAT=7.8525
@@ -451,8 +453,9 @@ Authorization: Bearer {admin-token}
   level: String ('100'-'600'),
   has_voted_sessions: [ObjectId],
   photo_url: String,
-  face_token: String,
-  embedding_vector: String,
+  aws_face_id: String,
+  aws_face_image_id: String,
+  aws_face_collection_id: String,
   is_logged_in: Boolean,
   last_login_device: String,
   active_token: String
@@ -520,7 +523,7 @@ Authorization: Bearer {admin-token}
   geo_location: { lat: Number, lng: Number },
   face_match_score: Number,
   face_verification_passed: Boolean,
-  face_token: String,
+  aws_matched_face_id: String,
   timestamp: Date,
   status: String ('valid' | 'duplicate' | 'rejected'),
   device_id: String

@@ -83,16 +83,21 @@ function buildAuthorSnapshot(req) {
   };
 }
 
-function serializeTicket(ticket, tenant = null) {
+function serializeTicket(ticket, tenant = null, options = {}) {
+  const auditOnly = options.auditOnly === true;
   return {
     id: ticket._id,
     tenant_id: ticket.tenant_id,
     ticket_number: ticket.ticket_number,
     subject: ticket.subject,
-    description: ticket.description,
+    description: auditOnly
+      ? "Content hidden in platform oversight view."
+      : ticket.description,
     category: ticket.category,
     priority: ticket.priority,
     status: ticket.status,
+    photo_reset_decision_status: ticket.photo_reset_decision_status || null,
+    photo_reset_decided_at: ticket.photo_reset_decided_at || null,
     requester_type: ticket.requester_type,
     requester: ticket.requester_snapshot,
     assigned_admin: ticket.assigned_admin_snapshot
@@ -104,7 +109,9 @@ function serializeTicket(ticket, tenant = null) {
     unread_by_requester_count: ticket.unread_by_requester_count || 0,
     unread_by_admin_count: ticket.unread_by_admin_count || 0,
     last_message_at: ticket.last_message_at,
-    last_message_preview: ticket.last_message_preview,
+    last_message_preview: auditOnly
+      ? "Support activity logged"
+      : ticket.last_message_preview,
     tenant: tenant
       ? {
           id: tenant._id,
@@ -117,17 +124,47 @@ function serializeTicket(ticket, tenant = null) {
   };
 }
 
-function serializeMessage(message) {
+function serializeMessage(message, options = {}) {
+  const auditOnly = options.auditOnly === true;
   return {
     id: message._id,
     ticket_id: message.ticket_id,
     author_type: message.author_type,
     author: message.author_snapshot,
-    body: message.body,
+    body: auditOnly
+      ? "Message content hidden in platform oversight view."
+      : message.body,
     attachments: message.attachments || [],
+    is_redacted: auditOnly,
     createdAt: message.createdAt,
     updatedAt: message.updatedAt,
   };
+}
+
+async function appendAdminTicketMessage(ticket, req, body) {
+  const author = buildAuthorSnapshot(req);
+  const message = await SupportMessage.create({
+    tenant_id: ticket.tenant_id,
+    ticket_id: ticket._id,
+    ...author,
+    body,
+    attachments: [],
+  });
+
+  ticket.last_message_at = message.createdAt;
+  ticket.last_message_preview = body.slice(0, 140);
+  ticket.unread_by_requester_count += 1;
+
+  if (!ticket.assigned_admin_id && req.adminId && req.admin) {
+    ticket.assigned_admin_id = req.adminId;
+    ticket.assigned_admin_snapshot = {
+      name: req.admin.full_name,
+      email: req.admin.email,
+      role: req.adminMembership?.role || req.admin.role,
+    };
+  }
+
+  return message;
 }
 
 function getActorContext(req) {
@@ -729,6 +766,8 @@ class SupportController {
       }
 
       const { subject, description, category = "general", priority = "medium" } = req.body;
+      const isPhotoResetRequest =
+        category === "account" && /photo reset/i.test(String(subject).trim());
 
       const ticket = await SupportTicket.create({
         tenant_id: tenantId,
@@ -745,6 +784,7 @@ class SupportController {
         last_message_preview: String(description).trim().slice(0, 140),
         unread_by_requester_count: 0,
         unread_by_admin_count: requester.type === "student" ? 1 : 0,
+        photo_reset_decision_status: isPhotoResetRequest ? "pending" : null,
       });
 
       const author = buildAuthorSnapshot(req);
@@ -779,9 +819,10 @@ class SupportController {
         req.admin?.role === "super_admin" && result.ticket.tenant_id
           ? await Tenant.findById(result.ticket.tenant_id).select("name slug").lean()
           : null;
+      const auditOnly = req.admin?.role === "super_admin";
 
       return res.json({
-        ticket: serializeTicket(result.ticket.toObject(), tenant),
+        ticket: serializeTicket(result.ticket.toObject(), tenant, { auditOnly }),
       });
     } catch (error) {
       console.error("Get support ticket error:", error);
@@ -803,6 +844,8 @@ class SupportController {
         category,
         assigned_admin_id,
         profile_photo_reset,
+        photo_reset_decision,
+        decision_note,
       } = req.body;
       const previousState = {
         status: ticket.status,
@@ -825,9 +868,17 @@ class SupportController {
         return res.status(403).json({ error: "Students can only close their own tickets" });
       }
 
-      if (req.admin.role !== "super_admin" && !hasManagePermission(req)) {
+      if (req.admin.role === "super_admin") {
+        return res.status(403).json({
+          error: "Super admin support is read-only in oversight mode",
+        });
+      }
+
+      if (!hasManagePermission(req)) {
         return res.status(403).json({ error: "Support management permission required" });
       }
+
+      let decisionMessage = null;
 
       if (status !== undefined) ticket.status = status;
       if (priority !== undefined) ticket.priority = priority;
@@ -877,9 +928,62 @@ class SupportController {
         });
       }
 
+      if (photo_reset_decision !== undefined) {
+        if (ticket.requester_type !== "student" || ticket.category !== "account") {
+          return res.status(400).json({
+            error: "Photo reset decisions are only available for student account requests",
+          });
+        }
+
+        const normalizedDecision = String(photo_reset_decision).trim().toLowerCase();
+
+        if (!["accepted", "declined"].includes(normalizedDecision)) {
+          return res.status(400).json({
+            error: "Photo reset decision must be accepted or declined",
+          });
+        }
+
+        const cleanDecisionNote =
+          typeof decision_note === "string" ? decision_note.trim() : "";
+
+        if (normalizedDecision === "accepted") {
+          await Student.findByIdAndUpdate(ticket.requester_id, {
+            $set: { profile_photo_reset_granted_at: new Date() },
+          });
+          ticket.photo_reset_decision_status = "approved";
+          ticket.photo_reset_decided_at = new Date();
+          ticket.status = "resolved";
+          decisionMessage = cleanDecisionNote
+            ? `Your profile photo reset request has been approved. You can now make one profile photo update from the profile edit page.\n\nAdmin note: ${cleanDecisionNote}`
+            : "Your profile photo reset request has been approved. You can now make one profile photo update from the profile edit page.";
+        } else {
+          await Student.findByIdAndUpdate(ticket.requester_id, {
+            $set: { profile_photo_reset_granted_at: null },
+          });
+          ticket.photo_reset_decision_status = "declined";
+          ticket.photo_reset_decided_at = new Date();
+          ticket.status = "resolved";
+          decisionMessage = cleanDecisionNote
+            ? `Your profile photo reset request was declined for now.\n\nAdmin note: ${cleanDecisionNote}`
+            : "Your profile photo reset request was declined for now. Reply in this thread if you need to share more context.";
+        }
+      }
+
       await ticket.save();
       await notifyOnTicketUpdated(ticket, previousState, req);
+      let supportMessage = null;
+
+      if (decisionMessage) {
+        supportMessage = await appendAdminTicketMessage(ticket, req, decisionMessage);
+        await ticket.save();
+      }
+
       emitSupportEvent("support:ticket-updated", ticket);
+      if (supportMessage) {
+        emitSupportEvent("support:message-created", ticket, {
+          message_id: supportMessage._id.toString(),
+        });
+      }
 
       return res.json({
         message: "Support ticket updated successfully",
@@ -907,14 +1011,15 @@ class SupportController {
           ? Tenant.findById(ticket.tenant_id).select("name slug").lean()
           : Promise.resolve(null),
       ]);
+      const auditOnly = req.admin?.role === "super_admin";
 
       if (readStateChanged) {
         emitSupportEvent("support:ticket-updated", ticket);
       }
 
       return res.json({
-        ticket: serializeTicket(ticket.toObject(), tenant),
-        messages: messages.map(serializeMessage),
+        ticket: serializeTicket(ticket.toObject(), tenant, { auditOnly }),
+        messages: messages.map((message) => serializeMessage(message, { auditOnly })),
       });
     } catch (error) {
       console.error("Get support messages error:", error);
@@ -930,6 +1035,11 @@ class SupportController {
       }
 
       const ticket = result.ticket;
+      if (req.admin?.role === "super_admin") {
+        return res.status(403).json({
+          error: "Super admin support is read-only in oversight mode",
+        });
+      }
       const author = buildAuthorSnapshot(req);
       const body = String(req.body.body).trim();
       const isRequesterReply =

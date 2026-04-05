@@ -325,9 +325,9 @@ router.get("/system", ...tenantSettingsAccess, settingsController.getSystemConfi
  *                       type: string
  *                     email:
  *                       type: string
- *                     facepp:
+ *                     aws_rekognition:
  *                       type: string
- */
+*/
 router.get("/health", ...tenantSettingsAccess, settingsController.getSystemHealth);
 
 /**
@@ -369,16 +369,16 @@ router.post("/test-email", ...tenantSettingsAccess, settingsController.testEmail
 
 /**
  * @swagger
- * /admin/settings/test-facepp:
+ * /admin/settings/test-biometric:
  *   post:
- *     summary: Test Face++ configuration
- *     description: Verify Face++ API credentials and connectivity.
+ *     summary: Test AWS biometric configuration
+ *     description: Verify AWS Rekognition credentials and connectivity.
  *     tags: [Settings]
  *     security:
  *       - BearerAuth: []
  *     responses:
  *       200:
- *         description: Face++ connection successful
+ *         description: AWS biometric connection successful
  *         content:
  *           application/json:
  *             schema:
@@ -393,18 +393,16 @@ router.post("/test-email", ...tenantSettingsAccess, settingsController.testEmail
  *                       type: boolean
  *                     face_detected:
  *                       type: boolean
- *                     face_token:
- *                       type: string
- *                     face_rectangle:
+ *                     face_count:
+ *                       type: number
+ *                     quality:
  *                       type: object
- *                     image_id:
- *                       type: string
  *                 configuration:
  *                   type: string
  *       500:
- *         description: Face++ configuration error
+ *         description: AWS biometric configuration error
 */
-router.post("/test-facepp", ...tenantSettingsAccess, settingsController.testFacepp);
+router.post("/test-biometric", ...tenantSettingsAccess, settingsController.testBiometric);
 
 /**
  * @swagger

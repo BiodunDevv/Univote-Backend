@@ -138,7 +138,7 @@ const options = {
         BiometricProviderConfig: {
           type: "object",
           properties: {
-            active_provider: { type: "string", example: "facepp" },
+            active_provider: { type: "string", example: "aws_rekognition" },
             providers: {
               type: "object",
               additionalProperties: {
@@ -146,10 +146,10 @@ const options = {
                 properties: {
                   enabled: { type: "boolean" },
                   configured: { type: "boolean" },
-                  base_url: { type: "string", nullable: true },
-                  confidence_threshold: { type: "number", nullable: true },
-                  api_key_masked: { type: "string", nullable: true },
-                  api_secret_masked: { type: "string", nullable: true },
+                  region: { type: "string", nullable: true },
+                  similarity_threshold: { type: "number", nullable: true },
+                  access_key_id_masked: { type: "string", nullable: true },
+                  secret_access_key_masked: { type: "string", nullable: true },
                 },
               },
             },
@@ -160,9 +160,6 @@ const options = {
           properties: {
             id: { type: "string" },
             matric_no: { type: "string", example: "BU22CSC1005", nullable: true },
-            member_id: { type: "string", example: "MEM-1005", nullable: true },
-            employee_id: { type: "string", example: "EMP-1005", nullable: true },
-            username: { type: "string", example: "john.doe", nullable: true },
             display_identifier: { type: "string", nullable: true },
             full_name: { type: "string", example: "John Doe" },
             email: { type: "string", format: "email", nullable: true },

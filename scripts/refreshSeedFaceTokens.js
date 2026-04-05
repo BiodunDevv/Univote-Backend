@@ -1,7 +1,7 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 const Student = require("../src/models/Student");
-const faceppService = require("../src/services/faceppService");
+const faceProviderService = require("../src/services/faceProviderService");
 
 const MONGO_URI =
   process.env.MONGODB_URI ||
@@ -9,50 +9,67 @@ const MONGO_URI =
   "mongodb://127.0.0.1:27017/univote";
 
 async function main() {
-  if (!process.env.FACEPP_API_KEY || !process.env.FACEPP_API_SECRET) {
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
     throw new Error(
-      "FACEPP_API_KEY and FACEPP_API_SECRET are required to refresh student face tokens.",
+      "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required to refresh seeded student face enrollment.",
     );
   }
 
   await mongoose.connect(MONGO_URI);
 
-  faceppService.configure({
-    api_key: process.env.FACEPP_API_KEY,
-    api_secret: process.env.FACEPP_API_SECRET,
-    base_url: process.env.FACEPP_BASE_URL,
-    confidence_threshold: Number(process.env.FACE_CONFIDENCE_THRESHOLD || 80),
-  });
-
   const students = await Student.find({
     photo_url: { $exists: true, $ne: null },
-  }).select("_id full_name matric_no photo_url");
+  }).select("_id tenant_id full_name matric_no photo_url");
 
   let updated = 0;
   let failed = 0;
 
   for (const student of students) {
-    const detection = await faceppService.detectFace(student.photo_url);
-    if (!detection.success || !detection.face_token) {
+    const enrollment = await faceProviderService.indexStudentFace(
+      student.photo_url,
+      { _id: student.tenant_id, slug: student.tenant_id.toString() },
+      student,
+    );
+    if (!enrollment.success || !enrollment.aws_face_id) {
+      await Student.updateOne(
+        { _id: student._id },
+        {
+          $set: {
+            aws_face_id: null,
+            aws_face_image_id: null,
+            aws_face_collection_id: null,
+            last_face_enrolled_at: null,
+            last_face_enrollment_error: enrollment.error || "Enrollment failed",
+          },
+        },
+      );
       failed += 1;
       continue;
     }
 
     await Student.updateOne(
       { _id: student._id },
-      { $set: { face_token: detection.face_token } },
+      {
+        $set: {
+          aws_face_id: enrollment.aws_face_id,
+          aws_face_image_id: enrollment.aws_face_image_id,
+          aws_face_collection_id: enrollment.aws_face_collection_id,
+          last_face_enrolled_at: enrollment.enrolled_at || new Date(),
+          last_face_enrollment_error: null,
+        },
+      },
     );
     updated += 1;
   }
 
   console.log(
-    `Face token refresh complete: ${updated} updated, ${failed} failed.`,
+    `AWS face enrollment refresh complete: ${updated} updated, ${failed} failed.`,
   );
   await mongoose.disconnect();
 }
 
 main().catch(async (error) => {
-  console.error("Failed to refresh seed face tokens:", error);
+  console.error("Failed to refresh seeded AWS face enrollment:", error);
   try {
     await mongoose.disconnect();
   } catch {}

@@ -60,7 +60,7 @@ const verificationLogSchema = new mongoose.Schema(
     },
     provider: {
       type: String,
-      default: "facepp",
+      default: "aws_rekognition",
       trim: true,
     },
     device_id: {

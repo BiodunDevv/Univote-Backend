@@ -344,7 +344,7 @@ class SettingsController {
           : Admin.countDocuments(),
         Student.countDocuments(
           getTenantScopedFilter(req, {
-            face_token: { $exists: true, $ne: null },
+            aws_face_id: { $exists: true, $ne: null },
           }),
         ),
         AuditLog.find(buildAuditLogFilter(req))
@@ -466,8 +466,7 @@ class SettingsController {
    */
   async getSystemConfig(req, res) {
     try {
-      // Get Face++ configuration status
-      const faceppStatus = await faceProviderService.getStatus();
+      const awsBiometricStatus = await faceProviderService.getStatus();
 
       // Get email service configuration (Brevo)
       const emailConfig = {
@@ -502,7 +501,7 @@ class SettingsController {
 
       res.json({
         system_config: {
-          facepp: faceppStatus,
+          biometrics: awsBiometricStatus,
           email: emailConfig,
           database: dbConfig,
           jwt: jwtConfig,
@@ -730,42 +729,38 @@ class SettingsController {
   }
 
   /**
-   * Test Face++ configuration
-   * POST /api/admin/settings/test-facepp
+   * Test AWS biometric configuration
+   * POST /api/admin/settings/test-biometric
    */
-  async testFacepp(req, res) {
+  async testBiometric(req, res) {
     try {
       const { image_url } = req.body;
 
       if (!image_url) {
         return res.status(400).json({
-          error: "Image URL is required for Face++ test",
+          error: "Image URL is required for AWS biometric test",
         });
       }
 
-      // Get Face++ status
       const status = await faceProviderService.getStatus();
 
       if (!status.configured) {
         return res.status(400).json({
-          error: "Face++ is not configured",
-          details:
-            "Please configure FACEPP_API_KEY and FACEPP_API_SECRET in .env file",
+          error: "AWS Rekognition is not configured",
+          details: "Please configure AWS biometric credentials in the environment.",
         });
       }
 
-      // Test face detection
       const result = await faceProviderService.testConnection(image_url);
 
       if (result.success) {
         res.json({
-          message: "Face++ configuration is working correctly",
+          message: "AWS biometric configuration is working correctly",
           test_result: {
             success: true,
             face_detected: true,
-            face_token: result.face_token.substring(0, 20) + "...",
-            face_rectangle: result.face_rectangle,
-            image_id: result.image_id,
+            quality: result.quality || null,
+            face_count: result.face_count || 1,
           },
           configuration: status,
         });
@@ -777,9 +772,9 @@ class SettingsController {
         });
       }
     } catch (error) {
-      console.error("Test Face++ error:", error);
+      console.error("Test biometric provider error:", error);
       res.status(500).json({
-        error: "Failed to test Face++ configuration",
+        error: "Failed to test AWS biometric configuration",
         details: error.message,
       });
     }
@@ -933,10 +928,10 @@ class SettingsController {
               $group: {
                 _id: null,
                 total: { $sum: 1 },
-                with_face_token: {
+                with_face_enrollment: {
                   $sum: {
                     $cond: [
-                      { $and: [{ $ifNull: ["$face_token", false] }] },
+                      { $and: [{ $ifNull: ["$aws_face_id", false] }] },
                       1,
                       0,
                     ],
@@ -1004,7 +999,7 @@ class SettingsController {
         database_statistics: {
           students: studentStats[0] || {
             total: 0,
-            with_face_token: 0,
+            with_face_enrollment: 0,
             with_photo: 0,
             active: 0,
           },
@@ -1051,9 +1046,7 @@ class SettingsController {
       switch (data_type) {
         case "students":
           data = await Student.find(buildStudentExportFilter(req, normalizedFilters))
-            .select(
-              "-password_hash -active_token -face_token -embedding_vector",
-            )
+            .select("-password_hash -active_token")
             .lean();
           filename = `students_export_${Date.now()}.${format}`;
           break;
@@ -1214,14 +1207,13 @@ class SettingsController {
         health.status = "unhealthy";
       }
 
-      // Face++ check
-      const faceppStatus = await faceProviderService.getStatus();
-      health.checks.facepp = {
-        status: faceppStatus.configured ? "healthy" : "not_configured",
-        message: faceppStatus.configured
+      const awsStatus = await faceProviderService.getStatus();
+      health.checks.aws_rekognition = {
+        status: awsStatus.configured ? "healthy" : "not_configured",
+        message: awsStatus.configured
           ? "Configured"
-          : "API keys not configured",
-        base_url: faceppStatus.base_url,
+          : "AWS credentials not configured",
+        region: awsStatus.region,
       };
 
       // Email check (Brevo)

@@ -179,6 +179,14 @@ router.patch(
       .optional({ nullable: true })
       .isString()
       .withMessage("assigned_admin_id must be a string"),
+    body("photo_reset_decision")
+      .optional()
+      .isIn(["accepted", "declined"])
+      .withMessage("photo_reset_decision must be accepted or declined"),
+    body("decision_note")
+      .optional()
+      .isString()
+      .withMessage("decision_note must be a string"),
     validate,
   ],
   auditLogger("update_support_ticket", "support"),

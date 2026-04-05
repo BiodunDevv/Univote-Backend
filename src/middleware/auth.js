@@ -159,7 +159,7 @@ const authenticateStudent = async (req, res, next) => {
           college: student.college,
           level: student.level,
           has_voted_sessions: student.has_voted_sessions,
-          face_token: student.face_token,
+          aws_face_id: student.aws_face_id,
           is_active: student.is_active,
           active_token: student.active_token,
         },

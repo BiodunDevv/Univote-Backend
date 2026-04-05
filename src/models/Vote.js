@@ -45,7 +45,7 @@ const voteSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    face_token: {
+    aws_matched_face_id: {
       type: String,
       default: null,
     },

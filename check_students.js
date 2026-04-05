@@ -8,7 +8,7 @@ async function checkStudents() {
 
     const total = await Student.countDocuments();
     const withFace = await Student.countDocuments({
-      face_token: { $ne: null },
+      aws_face_id: { $ne: null },
     });
     const withPhoto = await Student.countDocuments({
       photo_url: { $ne: null },
@@ -17,7 +17,7 @@ async function checkStudents() {
     console.log("\n📊 Student Statistics:");
     console.log(`   Total students: ${total}`);
     console.log(`   With photo_url: ${withPhoto}`);
-    console.log(`   With face_token: ${withFace}`);
+    console.log(`   With aws_face_id: ${withFace}`);
     console.log(
       `   Success rate: ${
         total > 0 ? ((withFace / total) * 100).toFixed(1) : 0
@@ -25,8 +25,8 @@ async function checkStudents() {
     );
 
     if (withFace > 0) {
-      const sampleStudent = await Student.findOne({ face_token: { $ne: null } })
-        .select("matric_no full_name photo_url face_token")
+      const sampleStudent = await Student.findOne({ aws_face_id: { $ne: null } })
+        .select("matric_no full_name photo_url aws_face_id")
         .lean();
 
       console.log("✅ Sample student with facial data:");
@@ -34,11 +34,11 @@ async function checkStudents() {
       console.log(`   Name: ${sampleStudent.full_name}`);
       console.log(`   Photo URL: ${sampleStudent.photo_url ? "Yes" : "No"}`);
       console.log(
-        `   Face Token: ${sampleStudent.face_token.substring(0, 20)}...`
+        `   AWS Face ID: ${sampleStudent.aws_face_id.substring(0, 20)}...`
       );
     } else {
-      console.log("⚠️  No students have face tokens yet.");
-      console.log("   This means Face++ API failed during seeding.");
+      console.log("⚠️  No students have AWS face enrollment yet.");
+      console.log("   This means AWS Rekognition enrollment failed during seeding.");
       console.log(
         "   Students were created but without facial verification data."
       );

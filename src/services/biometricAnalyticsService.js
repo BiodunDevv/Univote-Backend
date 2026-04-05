@@ -49,7 +49,7 @@ async function createVerificationLog(req, payload = {}) {
       typeof payload.is_genuine_attempt === "boolean"
         ? payload.is_genuine_attempt
         : null,
-    provider: payload.provider || "facepp",
+    provider: payload.provider || "aws_rekognition",
     device_id: payload.device_id || null,
     ip_address: payload.ip_address || null,
     geo_location:
