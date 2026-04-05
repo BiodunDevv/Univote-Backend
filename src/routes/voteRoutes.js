@@ -19,7 +19,7 @@ const auditLogger = require("../middleware/auditLogger");
  *       1. Redis-based atomic lock to prevent double voting
  *       2. Session status and eligibility verification
  *       3. Geofence check (if session requires on-campus voting)
- *       4. Face++ facial verification against student photo
+ *       4. AWS liveness verification and Rekognition face comparison
  *       5. Atomic vote recording in MongoDB transaction
  *     tags: [Voting]
  *     security:
@@ -60,6 +60,9 @@ const auditLogger = require("../middleware/auditLogger");
  *                 minimum: -180
  *                 maximum: 180
  *                 description: User longitude
+ *               liveness_session_id:
+ *                 type: string
+ *                 description: AWS liveness session identifier when liveness is required
  *     responses:
  *       200:
  *         description: Vote submitted successfully
@@ -82,6 +85,23 @@ const auditLogger = require("../middleware/auditLogger");
  *         description: Rate limit exceeded
  */
 router.post(
+  "/liveness/session",
+  authenticateStudent,
+  requireTenantAccess,
+  faceLimiter,
+  auditLogger("create_vote_liveness_session", "votes"),
+  voteController.createLivenessSession,
+);
+
+router.get(
+  "/liveness/session/:id",
+  authenticateStudent,
+  requireTenantAccess,
+  faceLimiter,
+  voteController.getLivenessSessionResult,
+);
+
+router.post(
   "/",
   authenticateStudent,
   requireTenantAccess,
@@ -99,6 +119,10 @@ router.post(
     body("lng")
       .isFloat({ min: -180, max: 180 })
       .withMessage("Valid longitude is required"),
+    body("liveness_session_id")
+      .optional()
+      .isString()
+      .withMessage("Liveness session must be a string"),
     validate,
   ],
   auditLogger("submit_vote", "votes"),

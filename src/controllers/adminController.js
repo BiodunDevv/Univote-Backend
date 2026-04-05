@@ -428,6 +428,10 @@ function getSessionEditPolicy(session) {
       allowedSessionFields: [
         "title",
         "description",
+        "end_time",
+        "eligible_college",
+        "eligible_departments",
+        "eligible_levels",
         "location",
         "is_off_campus_allowed",
         "results_public",
@@ -442,6 +446,27 @@ function getSessionEditPolicy(session) {
     canDeleteCandidate: false,
     allowedSessionFields: [],
   };
+}
+
+function normalizeIdArray(values = []) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .filter(Boolean)
+        .map((value) => String(value)),
+    ),
+  ).sort();
+}
+
+function isSupersetArray(nextValues = [], currentValues = []) {
+  const current = new Set(normalizeIdArray(currentValues));
+  const next = new Set(normalizeIdArray(nextValues));
+
+  for (const value of current) {
+    if (!next.has(value)) return false;
+  }
+
+  return true;
 }
 
 class AdminController {
@@ -864,10 +889,84 @@ class AdminController {
           error: "Restricted live session changes",
           message:
             session.status === "active"
-              ? "This session is live. Only title, description, location, off-campus access, and results visibility can be updated while voting is in progress."
+              ? "This session is live. You can update presentation fields, extend the closing time, widen eligibility, and adjust operational settings while votes are being recorded."
               : "This session cannot be modified.",
           restricted_fields: attemptedRestrictedFields,
         });
+      }
+
+      if (session.status === "active") {
+        if (updates.end_time !== undefined) {
+          const currentEndTime = new Date(session.end_time);
+          const requestedEndTime = new Date(updates.end_time);
+
+          if (Number.isNaN(requestedEndTime.getTime())) {
+            return res.status(400).json({
+              error: "Invalid end time",
+              message:
+                "Provide a valid closing time before saving this live session.",
+            });
+          }
+
+          if (requestedEndTime.getTime() < currentEndTime.getTime()) {
+            return res.status(403).json({
+              error: "Cannot shorten a live session",
+              message:
+                "This session is already live. You can extend the closing time, but you cannot move it earlier once voting has started.",
+            });
+          }
+        }
+
+        if (updates.eligible_college !== undefined) {
+          const currentCollege = session.eligible_college || null;
+          const nextCollege = sanitizedEligibility.eligible_college || null;
+
+          if (currentCollege && nextCollege && nextCollege !== currentCollege) {
+            return res.status(403).json({
+              error: "Cannot switch live session college scope",
+              message:
+                "While a session is live, its college scope cannot be switched to a different college. You may keep the current scope or widen eligibility within the same academic scope.",
+            });
+          }
+
+          if (currentCollege && !nextCollege) {
+            return res.status(403).json({
+              error: "Cannot remove live session college scope",
+              message:
+                "This session is already live. The current college restriction must remain in place while votes are being recorded.",
+            });
+          }
+        }
+
+        if (updates.eligible_departments !== undefined) {
+          if (
+            !isSupersetArray(
+              sanitizedEligibility.eligible_departments,
+              session.eligible_departments || [],
+            )
+          ) {
+            return res.status(403).json({
+              error: "Cannot narrow live session department scope",
+              message:
+                "Department eligibility can only be widened while a session is live. Existing departments cannot be removed once voting has started.",
+            });
+          }
+        }
+
+        if (updates.eligible_levels !== undefined) {
+          if (
+            !isSupersetArray(
+              sanitizedEligibility.eligible_levels,
+              session.eligible_levels || [],
+            )
+          ) {
+            return res.status(403).json({
+              error: "Cannot narrow live session level scope",
+              message:
+                "Level eligibility can only be widened while a session is live. Existing levels cannot be removed once voting has started.",
+            });
+          }
+        }
       }
 
       editPolicy.allowedSessionFields.forEach((field) => {

@@ -508,6 +508,99 @@ class FaceProviderService {
     return this.verifyFace(student, imageUrl, options);
   }
 
+  async verifyFaceBytes(student, imageBytes, options = {}) {
+    const config = await this.validateConfig();
+    if (!config.success) {
+      return {
+        success: false,
+        provider: config.provider,
+        error: config.error,
+        code: "BIOMETRIC_PROVIDER_NOT_CONFIGURED",
+      };
+    }
+
+    if (!student?.aws_face_id || !student?.aws_face_collection_id) {
+      return {
+        success: false,
+        provider: "aws_rekognition",
+        error:
+          "No enrolled face was found for this student. Please contact your administrator.",
+        code: "NO_REGISTERED_FACE",
+      };
+    }
+
+    const normalizedImageBytes =
+      imageBytes instanceof Uint8Array ? Buffer.from(imageBytes) : imageBytes;
+
+    if (
+      !normalizedImageBytes ||
+      !Buffer.isBuffer(normalizedImageBytes) ||
+      normalizedImageBytes.length === 0
+    ) {
+      return {
+        success: false,
+        provider: "aws_rekognition",
+        error: "No facial reference image was captured for verification.",
+        code: "INVALID_IMAGE",
+      };
+    }
+
+    const threshold =
+      typeof options.threshold_override === "number"
+        ? Number(options.threshold_override)
+        : DEFAULT_SIMILARITY_THRESHOLD;
+
+    try {
+      const { client } = await this.buildClient();
+      const detectResponse = await client.send(
+        new DetectFacesCommand({
+          Image: { Bytes: normalizedImageBytes },
+          Attributes: ["ALL"],
+        }),
+      );
+      const detection = this.mapDetectResponse(detectResponse.FaceDetails || []);
+      if (!detection.success) {
+        return {
+          provider: "aws_rekognition",
+          ...detection,
+        };
+      }
+
+      const response = await client.send(
+        new SearchFacesByImageCommand({
+          CollectionId: student.aws_face_collection_id,
+          Image: { Bytes: normalizedImageBytes },
+          FaceMatchThreshold: threshold,
+          MaxFaces: 3,
+        }),
+      );
+
+      const topMatch = (response.FaceMatches || [])[0] || null;
+      const similarity = Number(topMatch?.Similarity || 0);
+      const matchedFaceId = topMatch?.Face?.FaceId || null;
+      const isMatch =
+        matchedFaceId === student.aws_face_id && similarity >= threshold;
+
+      return {
+        success: true,
+        provider: "aws_rekognition",
+        confidence: similarity,
+        is_match: isMatch,
+        threshold,
+        matched_face_id: matchedFaceId,
+        face_image_id: topMatch?.Face?.ImageId || null,
+        message: isMatch
+          ? "Face verified successfully."
+          : `Face match confidence was below the required threshold (${similarity.toFixed(2)}%).`,
+      };
+    } catch (error) {
+      return {
+        provider: "aws_rekognition",
+        ...normalizeAwsError(error),
+      };
+    }
+  }
+
   async verifyFace(student, imageUrl, options = {}) {
     const config = await this.validateConfig();
     if (!config.success) {
