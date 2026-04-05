@@ -396,6 +396,54 @@ async function ensureUpcomingSession(session) {
   return { allowed: true };
 }
 
+function getSessionEditPolicy(session) {
+  if (session.status === "upcoming") {
+    return {
+      canEditSession: true,
+      canCreateCandidate: true,
+      canEditCandidate: true,
+      canDeleteCandidate: true,
+      allowedSessionFields: [
+        "title",
+        "description",
+        "start_time",
+        "end_time",
+        "eligible_college",
+        "eligible_departments",
+        "eligible_levels",
+        "categories",
+        "location",
+        "is_off_campus_allowed",
+        "results_public",
+      ],
+    };
+  }
+
+  if (session.status === "active") {
+    return {
+      canEditSession: true,
+      canCreateCandidate: false,
+      canEditCandidate: true,
+      canDeleteCandidate: false,
+      allowedSessionFields: [
+        "title",
+        "description",
+        "location",
+        "is_off_campus_allowed",
+        "results_public",
+      ],
+    };
+  }
+
+  return {
+    canEditSession: false,
+    canCreateCandidate: false,
+    canEditCandidate: false,
+    canDeleteCandidate: false,
+    allowedSessionFields: [],
+  };
+}
+
 class AdminController {
   /**
    * Upload students from CSV
@@ -790,16 +838,9 @@ class AdminController {
       // Update session status based on current time
       await session.updateStatus();
 
-      // Prevent editing active or ended sessions
-      if (session.status === "active") {
-        return res.status(403).json({
-          error: "Cannot edit active session",
-          message:
-            "Session is currently active and cannot be modified. Wait until it ends or delete it.",
-        });
-      }
+      const editPolicy = getSessionEditPolicy(session);
 
-      if (session.status === "ended") {
+      if (!editPolicy.canEditSession) {
         return res.status(403).json({
           error: "Cannot edit ended session",
           message: "Session has already ended and cannot be modified.",
@@ -812,20 +853,24 @@ class AdminController {
         return res.status(400).json(sanitizedEligibility);
       }
 
-      const allowedUpdates = [
-        "title",
-        "description",
-        "start_time",
-        "end_time",
-        "eligible_college",
-        "eligible_departments",
-        "eligible_levels",
-        "categories",
-        "location",
-        "is_off_campus_allowed",
-      ];
+      const attemptedRestrictedFields = Object.keys(updates).filter(
+        (field) =>
+          updates[field] !== undefined &&
+          !editPolicy.allowedSessionFields.includes(field),
+      );
 
-      allowedUpdates.forEach((field) => {
+      if (attemptedRestrictedFields.length > 0) {
+        return res.status(403).json({
+          error: "Restricted live session changes",
+          message:
+            session.status === "active"
+              ? "This session is live. Only title, description, location, off-campus access, and results visibility can be updated while voting is in progress."
+              : "This session cannot be modified.",
+          restricted_fields: attemptedRestrictedFields,
+        });
+      }
+
+      editPolicy.allowedSessionFields.forEach((field) => {
         if (updates[field] !== undefined) {
           if (field === "eligible_college") {
             session[field] = sanitizedEligibility.eligible_college;
@@ -848,7 +893,10 @@ class AdminController {
       await invalidateSessionCaches(req, id);
 
       res.json({
-        message: "Session updated successfully",
+        message:
+          session.status === "active"
+            ? "Live session updated successfully"
+            : "Session updated successfully",
         session,
       });
     } catch (error) {
@@ -939,9 +987,17 @@ class AdminController {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      const editability = await ensureUpcomingSession(session);
-      if (!editability.allowed) {
-        return res.status(editability.status).json(editability.payload);
+      await session.updateStatus();
+      const editPolicy = getSessionEditPolicy(session);
+      if (!editPolicy.canCreateCandidate) {
+        return res.status(403).json({
+          error:
+            session.status === "active"
+              ? "Cannot add candidates to live session"
+              : "Cannot add candidates to ended session",
+          message:
+            "Ballot structure is locked after voting starts to protect recorded votes.",
+        });
       }
 
       if (!session.categories.includes(position)) {
@@ -1082,9 +1138,29 @@ class AdminController {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      const editability = await ensureUpcomingSession(session);
-      if (!editability.allowed) {
-        return res.status(editability.status).json(editability.payload);
+      await session.updateStatus();
+      const editPolicy = getSessionEditPolicy(session);
+      if (!editPolicy.canEditCandidate) {
+        return res.status(403).json({
+          error:
+            session.status === "ended"
+              ? "Cannot modify candidates in ended session"
+              : "Cannot modify candidates",
+          message:
+            "Candidate updates are no longer available for this session.",
+        });
+      }
+
+      if (
+        session.status === "active" &&
+        position !== undefined &&
+        position !== candidate.position
+      ) {
+        return res.status(403).json({
+          error: "Cannot move candidate in live session",
+          message:
+            "Candidate position is locked once voting starts. You can still correct profile details such as name, photo, bio, and manifesto.",
+        });
       }
 
       if (position !== undefined && !session.categories.includes(position)) {
@@ -1150,9 +1226,17 @@ class AdminController {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      const editability = await ensureUpcomingSession(session);
-      if (!editability.allowed) {
-        return res.status(editability.status).json(editability.payload);
+      await session.updateStatus();
+      const editPolicy = getSessionEditPolicy(session);
+      if (!editPolicy.canDeleteCandidate) {
+        return res.status(403).json({
+          error:
+            session.status === "active"
+              ? "Cannot delete candidate from live session"
+              : "Cannot delete candidate from ended session",
+          message:
+            "Candidate deletion is locked after voting starts to keep existing votes safe and auditable.",
+        });
       }
 
       // Delete the candidate
