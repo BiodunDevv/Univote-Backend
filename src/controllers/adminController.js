@@ -469,6 +469,48 @@ function isSupersetArray(nextValues = [], currentValues = []) {
   return true;
 }
 
+function normalizeComparableSessionField(field, value) {
+  if (value === undefined) return undefined;
+
+  if (field === "start_time" || field === "end_time") {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+  }
+
+  if (field === "categories") {
+    return Array.isArray(value)
+      ? value.map((item) => String(item).trim()).filter(Boolean)
+      : [];
+  }
+
+  if (field === "eligible_departments" || field === "eligible_levels") {
+    return normalizeIdArray(value);
+  }
+
+  if (field === "eligible_college") {
+    return value ? String(value) : null;
+  }
+
+  if (field === "location") {
+    if (!value || typeof value !== "object") return null;
+    return {
+      lat: Number(value.lat),
+      lng: Number(value.lng),
+      radius_meters: Number(value.radius_meters),
+    };
+  }
+
+  return value;
+}
+
+function sessionFieldHasMeaningfulChange(session, field, nextValue) {
+  const currentValue = normalizeComparableSessionField(field, session?.[field]);
+  const normalizedNextValue = normalizeComparableSessionField(field, nextValue);
+
+  return JSON.stringify(currentValue) !== JSON.stringify(normalizedNextValue);
+}
+
 class AdminController {
   /**
    * Upload students from CSV
@@ -878,11 +920,11 @@ class AdminController {
         return res.status(400).json(sanitizedEligibility);
       }
 
-      const attemptedRestrictedFields = Object.keys(updates).filter(
-        (field) =>
-          updates[field] !== undefined &&
-          !editPolicy.allowedSessionFields.includes(field),
-      );
+      const attemptedRestrictedFields = Object.keys(updates).filter((field) => {
+        if (updates[field] === undefined) return false;
+        if (editPolicy.allowedSessionFields.includes(field)) return false;
+        return sessionFieldHasMeaningfulChange(session, field, updates[field]);
+      });
 
       if (attemptedRestrictedFields.length > 0) {
         return res.status(403).json({
