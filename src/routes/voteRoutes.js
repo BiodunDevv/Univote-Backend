@@ -30,7 +30,7 @@ const auditLogger = require("../middleware/auditLogger");
  *         application/json:
  *           schema:
  *             type: object
- *             required: [session_id, choices, image_url, lat, lng]
+ *             required: [session_id, choices, lat, lng]
  *             properties:
  *               session_id:
  *                 type: string
@@ -112,7 +112,10 @@ router.post(
     body("choices")
       .isArray({ min: 1 })
       .withMessage("At least one choice is required"),
-    body("image_url").isURL().withMessage("Valid image URL is required"),
+    body("image_url")
+      .optional({ nullable: true, checkFalsy: true })
+      .isURL()
+      .withMessage("Valid image URL is required"),
     body("lat")
       .isFloat({ min: -90, max: 90 })
       .withMessage("Valid latitude is required"),
@@ -120,7 +123,7 @@ router.post(
       .isFloat({ min: -180, max: 180 })
       .withMessage("Valid longitude is required"),
     body("liveness_session_id")
-      .optional()
+      .optional({ nullable: true, checkFalsy: true })
       .isString()
       .withMessage("Liveness session must be a string"),
     validate,

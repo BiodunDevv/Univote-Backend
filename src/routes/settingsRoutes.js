@@ -404,6 +404,24 @@ router.post("/test-email", ...tenantSettingsAccess, settingsController.testEmail
 */
 router.post("/test-biometric", ...tenantSettingsAccess, settingsController.testBiometric);
 
+// Tenant testing endpoints are mounted under /api/admin/settings/testing/*
+// through app.use("/api/admin/settings", settingsRoutes) in src/app.js.
+router.post(
+  "/testing/liveness/session",
+  ...tenantSettingsAccess,
+  settingsController.createTestingLivenessSession,
+);
+router.get(
+  "/testing/liveness/session/:id",
+  ...tenantSettingsAccess,
+  settingsController.getTestingLivenessSessionResult,
+);
+router.post(
+  "/testing/compare",
+  ...tenantSettingsAccess,
+  settingsController.compareStudentBiometric,
+);
+
 /**
  * @swagger
  * /admin/settings/biometric-metrics:

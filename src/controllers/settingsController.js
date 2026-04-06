@@ -68,6 +68,17 @@ function serializeVerificationLog(log) {
       : null,
     confidence_score: log.confidence_score,
     threshold_used: log.threshold_used,
+    liveness_session_id: log.liveness_session_id || null,
+    liveness_status: log.liveness_status || null,
+    liveness_confidence: log.liveness_confidence ?? null,
+    liveness_threshold: log.liveness_threshold ?? null,
+    compare_confidence: log.compare_confidence ?? log.confidence_score ?? null,
+    compare_threshold: log.compare_threshold ?? log.threshold_used ?? null,
+    matched_face_id: log.matched_face_id || null,
+    decision_source: log.decision_source || null,
+    fail_streak: log.fail_streak || 0,
+    lockout_triggered: log.lockout_triggered === true,
+    lockout_expires_at: log.lockout_expires_at || null,
     result: log.result,
     failure_reason: log.failure_reason,
     is_genuine_attempt: log.is_genuine_attempt,
@@ -133,6 +144,25 @@ function buildAuditLogFilter(req, overrides = {}) {
     user_type: "admin",
     ...overrides,
   });
+}
+
+function isLikelyHttpUrl(value) {
+  try {
+    const parsed = new URL(String(value || "").trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function mapTestingLivenessCode(result = {}) {
+  if (result.code) return result.code;
+  if (result.status === "EXPIRED") return "LIVENESS_SESSION_EXPIRED";
+  if (result.status === "IN_PROGRESS" || result.status === "CREATED") {
+    return "LIVENESS_INCOMPLETE";
+  }
+  if (result.status === "FAILED") return "LIVENESS_FAILED";
+  return "LIVENESS_FAILED";
 }
 
 async function buildTenantAdminExportRows(req, filters = {}) {
@@ -777,6 +807,238 @@ class SettingsController {
         error: "Failed to test AWS biometric configuration",
         details: error.message,
       });
+    }
+  }
+
+  async createTestingLivenessSession(req, res) {
+    try {
+      const status = await faceProviderService.getStatus();
+      if (!status.configured) {
+        return res.status(503).json({
+          error: "AWS biometric verification is not configured.",
+          code: "BIOMETRIC_PROVIDER_NOT_CONFIGURED",
+          provider: "aws_rekognition",
+          configured: false,
+        });
+      }
+
+      const result = await faceProviderService.createLivenessSession();
+      if (!result.success) {
+        return res.status(503).json({
+          error: result.error || "Failed to start liveness testing.",
+          code: result.code || "LIVENESS_FAILED",
+        });
+      }
+
+      console.info(
+        JSON.stringify({
+          event: "tenant_testing_liveness_session_created",
+          tenant_id: req.tenantId || null,
+          admin_id: req.adminId || null,
+          session_id: result.session_id,
+          provider: result.provider || "aws_rekognition",
+          region: status.region || null,
+          timestamp: new Date().toISOString(),
+        }),
+      );
+
+      return res.status(201).json({
+        session_id: result.session_id,
+        provider: result.provider || "aws_rekognition",
+        region: status.region,
+        configured: true,
+        required: status.liveness_required !== false,
+        liveness_threshold: status.liveness_threshold ?? null,
+      });
+    } catch (error) {
+      console.error("Create testing liveness session error:", error);
+      return res.status(500).json({
+        error: "Failed to start liveness testing.",
+        code: "LIVENESS_FAILED",
+        provider: "aws_rekognition",
+      });
+    }
+  }
+
+  async getTestingLivenessSessionResult(req, res) {
+    try {
+      const { id } = req.params;
+      const result = await faceProviderService.getLivenessResult(id);
+
+      console.info(
+        JSON.stringify({
+          event: "tenant_testing_liveness_result_resolved",
+          tenant_id: req.tenantId || null,
+          admin_id: req.adminId || null,
+          session_id: id,
+          provider: result.provider || "aws_rekognition",
+          status: result.status || null,
+          passed: result.passed === true,
+          confidence: result.confidence ?? null,
+          threshold: result.threshold ?? null,
+          timestamp: new Date().toISOString(),
+        }),
+      );
+
+      if (!result.success) {
+        return res.status(400).json({
+          error: result.error || "Failed to fetch liveness result.",
+          code: mapTestingLivenessCode(result),
+          status: result.status || null,
+          provider: result.provider || "aws_rekognition",
+        });
+      }
+
+      return res.json({
+        session_id: id,
+        provider: result.provider || "aws_rekognition",
+        passed: result.passed === true,
+        confidence: result.confidence ?? null,
+        threshold: result.threshold ?? null,
+        status: result.status || null,
+      });
+    } catch (error) {
+      console.error("Get testing liveness result error:", error);
+      return res.status(500).json({
+        error: "Failed to fetch liveness result.",
+        code: "LIVENESS_FAILED",
+        provider: "aws_rekognition",
+      });
+    }
+  }
+
+  async compareStudentBiometric(req, res) {
+    try {
+      const { student_id, image_url, imageUrl } = req.body;
+      const compareImageUrl = image_url || imageUrl;
+      const providerCatalog = faceProviderService.getProviderCatalog();
+
+      if (!student_id || !compareImageUrl) {
+        return res.status(400).json({
+          error: "student_id and image_url are required",
+          code: "INVALID_COMPARE_REQUEST",
+        });
+      }
+
+      if (!isLikelyHttpUrl(compareImageUrl)) {
+        return res.status(400).json({
+          error: "image_url must be a valid public http or https URL",
+          code: "INVALID_COMPARE_IMAGE_URL",
+        });
+      }
+
+      const student = await Student.findOne(
+        getTenantScopedFilter(req, { _id: student_id }),
+      ).select("full_name matric_no email aws_face_id aws_face_collection_id");
+
+      if (!student) {
+        console.info(
+          JSON.stringify({
+            event: "tenant_testing_compare_failed",
+            tenant_id: req.tenantId || null,
+            admin_id: req.adminId || null,
+            student_id,
+            reason: "STUDENT_NOT_FOUND",
+            timestamp: new Date().toISOString(),
+          }),
+        );
+        return res.status(404).json({
+          error: "Student not found",
+          code: "STUDENT_NOT_FOUND",
+        });
+      }
+
+      if (!student.aws_face_id || !student.aws_face_collection_id) {
+        console.info(
+          JSON.stringify({
+            event: "tenant_testing_compare_failed",
+            tenant_id: req.tenantId || null,
+            admin_id: req.adminId || null,
+            student_id,
+            reason: "NO_REGISTERED_FACE",
+            timestamp: new Date().toISOString(),
+          }),
+        );
+        return res.status(400).json({
+          error:
+            "The selected student does not have an enrolled face profile yet.",
+          code: "NO_REGISTERED_FACE",
+        });
+      }
+
+      const result = await faceProviderService.verifyFace(student, compareImageUrl, {
+        threshold_override: Number(
+          getTenantSettings(req.tenant).voting?.face_match_threshold || 70,
+        ),
+      });
+      const providerKey = result.provider || "aws_rekognition";
+      const providerMeta = providerCatalog[providerKey] || null;
+      const providerCode =
+        result.code || (result.success && result.is_match ? "FACE_MATCH_ACCEPTED" : "LOW_CONFIDENCE");
+      const decision = result.success && result.is_match ? "accepted" : "rejected";
+
+      console.info(
+        JSON.stringify({
+          event: "tenant_testing_compare_executed",
+          tenant_id: req.tenantId || null,
+          admin_id: req.adminId || null,
+          student_id,
+          matched_face_id: result.matched_face_id || null,
+          compare_confidence: result.confidence ?? null,
+          compare_threshold: result.threshold ?? null,
+          decision,
+          provider: providerKey,
+          provider_code: providerCode,
+          provider_label: providerMeta?.label || providerKey,
+          timestamp: new Date().toISOString(),
+        }),
+      );
+
+      if (!result.success) {
+        console.info(
+          JSON.stringify({
+            event: "tenant_testing_compare_failed",
+            tenant_id: req.tenantId || null,
+            admin_id: req.adminId || null,
+            student_id,
+            reason: result.code || "FACE_VERIFICATION_FAILED",
+            compare_image_url: compareImageUrl,
+            timestamp: new Date().toISOString(),
+          }),
+        );
+        return res.status(400).json({
+          error: result.error || "Face comparison failed.",
+          code: result.code || "FACE_VERIFICATION_FAILED",
+          provider: providerKey,
+          provider_code: providerCode,
+          provider_label: providerMeta?.label || providerKey,
+        });
+      }
+
+      return res.json({
+        student: {
+          id: student._id,
+          full_name: student.full_name,
+          matric_no: student.matric_no || null,
+          email: student.email || null,
+        },
+        decision,
+        compare_confidence: result.confidence ?? null,
+        compare_threshold: result.threshold ?? null,
+        matched_face_id: result.matched_face_id || null,
+        provider: providerKey,
+        provider_code: providerCode,
+        provider_label: providerMeta?.label || providerKey,
+        message:
+          result.message ||
+          (decision === "accepted"
+            ? "The comparison image matched the enrolled student profile."
+            : "The comparison image did not meet the configured match threshold."),
+        decision_source: "tenant_testing_compare",
+      });
+    } catch (error) {
+      console.error("Compare student biometric error:", error);
+      return res.status(500).json({ error: "Failed to compare student biometric." });
     }
   }
 

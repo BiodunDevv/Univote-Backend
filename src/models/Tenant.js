@@ -118,7 +118,7 @@ const tenantSettingsSchema = new mongoose.Schema(
       },
       face_match_threshold: {
         type: Number,
-        default: 80,
+        default: 70,
         min: 0,
         max: 100,
       },

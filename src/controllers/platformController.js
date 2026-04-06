@@ -17,6 +17,65 @@ const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
 const { getVerificationMetrics } = require("../services/biometricAnalyticsService");
 
+function serializePlatformVerificationLog(log) {
+  return {
+    id: log._id,
+    tenant: log.tenant_id
+      ? {
+          id: log.tenant_id._id,
+          name: log.tenant_id.name,
+          slug: log.tenant_id.slug,
+        }
+      : null,
+    student: log.user_id
+      ? {
+          id: log.user_id._id,
+          full_name: log.user_id.full_name,
+          matric_no: log.user_id.matric_no,
+          email: log.user_id.email,
+        }
+      : null,
+    session: log.session_id
+      ? {
+          id: log.session_id._id,
+          title: log.session_id.title,
+          status: log.session_id.status,
+        }
+      : null,
+    confidence_score: log.confidence_score,
+    threshold_used: log.threshold_used,
+    liveness_session_id: log.liveness_session_id || null,
+    liveness_status: log.liveness_status || null,
+    liveness_confidence: log.liveness_confidence ?? null,
+    liveness_threshold: log.liveness_threshold ?? null,
+    compare_confidence: log.compare_confidence ?? log.confidence_score ?? null,
+    compare_threshold: log.compare_threshold ?? log.threshold_used ?? null,
+    matched_face_id: log.matched_face_id || null,
+    decision_source: log.decision_source || null,
+    fail_streak: log.fail_streak || 0,
+    lockout_triggered: log.lockout_triggered === true,
+    lockout_expires_at: log.lockout_expires_at || null,
+    result: log.result,
+    failure_reason: log.failure_reason,
+    is_genuine_attempt: log.is_genuine_attempt,
+    provider: log.provider,
+    reviewed_by: log.reviewed_by
+      ? {
+          id: log.reviewed_by._id,
+          full_name: log.reviewed_by.full_name,
+          email: log.reviewed_by.email,
+        }
+      : null,
+    reviewed_at: log.reviewed_at,
+    review_note: log.review_note,
+    device_id: log.device_id || null,
+    ip_address: log.ip_address || null,
+    geo_location: log.geo_location || null,
+    image_url: log.image_url || null,
+    timestamp: log.timestamp,
+  };
+}
+
 function serializeTenant(tenant) {
   return {
     id: tenant._id,
@@ -73,7 +132,7 @@ function normalizeBiometricProviderPayload(
         similarity_threshold:
           payload.similarity_threshold !== undefined
             ? Number(payload.similarity_threshold)
-            : current.similarity_threshold || 90,
+            : current.similarity_threshold || 70,
         collection_prefix:
           payload.collection_prefix !== undefined && payload.collection_prefix !== ""
             ? String(payload.collection_prefix).trim()
@@ -85,7 +144,7 @@ function normalizeBiometricProviderPayload(
         liveness_threshold:
           payload.liveness_threshold !== undefined
             ? Number(payload.liveness_threshold)
-            : current.liveness_threshold || 90,
+            : current.liveness_threshold || 70,
       };
     default:
       return current;
@@ -273,11 +332,6 @@ class PlatformController {
       if (req.query.failure_reason) {
         filter.failure_reason = req.query.failure_reason;
       }
-      if (req.query.review_state === "reviewed") {
-        filter.is_genuine_attempt = { $in: [true, false] };
-      } else if (req.query.review_state === "pending") {
-        filter.is_genuine_attempt = null;
-      }
       if (req.query.start_date || req.query.end_date) {
         filter.timestamp = {};
         if (req.query.start_date) {
@@ -302,47 +356,7 @@ class PlatformController {
       ]);
 
       res.json({
-        logs: logs.map((log) => ({
-          id: log._id,
-          tenant: log.tenant_id
-            ? {
-                id: log.tenant_id._id,
-                name: log.tenant_id.name,
-                slug: log.tenant_id.slug,
-              }
-            : null,
-          student: log.user_id
-            ? {
-                id: log.user_id._id,
-                full_name: log.user_id.full_name,
-                matric_no: log.user_id.matric_no,
-                email: log.user_id.email,
-              }
-            : null,
-          session: log.session_id
-            ? {
-                id: log.session_id._id,
-                title: log.session_id.title,
-                status: log.session_id.status,
-              }
-            : null,
-          confidence_score: log.confidence_score,
-          threshold_used: log.threshold_used,
-          result: log.result,
-          failure_reason: log.failure_reason,
-          is_genuine_attempt: log.is_genuine_attempt,
-          provider: log.provider,
-          reviewed_by: log.reviewed_by
-            ? {
-                id: log.reviewed_by._id,
-                full_name: log.reviewed_by.full_name,
-                email: log.reviewed_by.email,
-              }
-            : null,
-          reviewed_at: log.reviewed_at,
-          review_note: log.review_note,
-          timestamp: log.timestamp,
-        })),
+        logs: logs.map(serializePlatformVerificationLog),
         pagination: {
           total,
           page,

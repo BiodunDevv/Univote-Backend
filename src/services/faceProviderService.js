@@ -14,8 +14,8 @@ const PlatformSetting = require("../models/PlatformSetting");
 
 const DEFAULT_AWS_REGION = "us-east-1";
 const DEFAULT_COLLECTION_PREFIX = "univote-students";
-const DEFAULT_SIMILARITY_THRESHOLD = 90;
-const DEFAULT_LIVENESS_THRESHOLD = 90;
+const DEFAULT_SIMILARITY_THRESHOLD = 70;
+const DEFAULT_LIVENESS_THRESHOLD = 70;
 
 const PROVIDER_CATALOG = {
   aws_rekognition: {

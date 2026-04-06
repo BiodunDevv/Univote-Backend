@@ -174,6 +174,7 @@ app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin", collegeRoutes);
+// Settings routes include tenant testing endpoints under /api/admin/settings/testing/*
 app.use("/api/admin/settings", settingsRoutes);
 app.use("/api/platform", platformRoutes);
 app.use("/api/public", publicRoutes);
@@ -184,6 +185,15 @@ app.use("/api/sessions", sessionRoutes);
 app.use("/api/vote", voteRoutes);
 app.use("/api/results", resultRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+
+console.info(
+  JSON.stringify({
+    event: "route_group_registered",
+    mount_path: "/api/admin/settings/testing/*",
+    source: "settingsRoutes",
+    timestamp: new Date().toISOString(),
+  }),
+);
 
 // ── Error Handling ───────────────────────────────────────
 app.use((req, res) => {

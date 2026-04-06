@@ -7,6 +7,7 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "seed": "node scripts/seed.js",
+    "smoke:testing-routes": "node scripts/smokeTestingRoutes.js",
     "test": "jest --coverage"
   },
   "keywords": [

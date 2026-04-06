@@ -1,13 +1,21 @@
 const SibApiV3Sdk = require("@sendinblue/client");
 const {
-  escapeHtml,
-  formatDate,
-  formatDateTime,
-  renderKeyValueRows,
-  renderList,
-  renderMessageCard,
-  renderSection,
-  renderSummaryStrip,
+  buildAdminInvitationEmail,
+  buildAdminWelcomeEmail,
+  buildAnnouncementEmail,
+  buildNewDeviceAlertEmail,
+  buildOperationalTestEmail,
+  buildPasswordResetEmail,
+  buildProviderAlertEmail,
+  buildResultAnnouncementEmail,
+  buildSupportTicketEmail,
+  buildTenantApplicationApprovedEmail,
+  buildTenantApplicationRejectedEmail,
+  buildTenantApplicationSubmittedEmail,
+  buildTenantStatusUpdateEmail,
+  buildVoteConfirmationEmail,
+  buildWelcomeEmail,
+  getBranding,
   stripHtml,
 } = require("../emails");
 
@@ -23,9 +31,6 @@ class EmailService {
       process.env.FRONTEND_URL ||
       process.env.PUBLIC_APP_URL ||
       "http://localhost:3000";
-    this.defaultLogoUrl =
-      process.env.EMAIL_LOGO_URL ||
-      `${this.publicAppUrl.replace(/\/$/, "")}/Whitelogo.png`;
     this.defaultSupportEmail =
       process.env.EMAIL_SUPPORT_EMAIL ||
       this.fromEmail ||
@@ -35,16 +40,11 @@ class EmailService {
   }
 
   getBranding(tenant = null) {
-    const appName = tenant?.name || this.fromName;
-    const logoUrl = this.defaultLogoUrl;
-    const supportEmail =
-      tenant?.branding?.support_email || this.defaultSupportEmail;
-
-    return {
-      appName,
-      logoUrl,
-      supportEmail,
-    };
+    return getBranding(tenant, {
+      fromName: this.fromName,
+      fromEmail: this.fromEmail,
+      supportEmail: this.defaultSupportEmail,
+    });
   }
 
   canSendForTenant(tenant = null, { critical = false } = {}) {
@@ -80,80 +80,30 @@ class EmailService {
   }
 
   async sendWelcomeEmail(student, tenant = null) {
-    const identifier = student.matric_no || student.email;
-    const html = this.renderMessageCard({
-      eyebrow: "Account activated",
-      title: "Welcome to your portal",
-      intro: `Your account is ready. You can now sign in and manage your participation securely.`,
-      tenant,
-      sections: [
-        `<p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#334155;">Hello ${escapeHtml(
-          student.full_name,
-        )}, your account has been activated successfully.</p>`,
-        this.renderKeyValueRows([
-          {
-            label: "Identifier",
-            value: identifier || "Available on sign in page",
-          },
-          { label: "Email", value: student.email || "Not provided" },
-          { label: "Activated", value: formatDateTime(Date.now()) },
-        ]),
-      ],
+    const { html, subject } = buildWelcomeEmail({
+      branding: this.getBranding(tenant),
+      student,
     });
 
     return this.dispatch({
       to: student.email,
-      subject: "Welcome to Univote",
+      subject,
       html,
       tenant,
       critical: false,
     });
   }
 
-  renderList(items = []) {
-    return renderList(items);
-  }
-
-  renderKeyValueRows(rows = []) {
-    return renderKeyValueRows(rows);
-  }
-
-  renderSection(title, body) {
-    return renderSection(title, body);
-  }
-
-  renderSummaryStrip(items = []) {
-    return renderSummaryStrip(items);
-  }
-
-  renderMessageCard({ tenant = null, ...rest }) {
-    return renderMessageCard({
-      branding: this.getBranding(tenant),
-      ...rest,
-    });
-  }
-
   async sendNewDeviceAlert(student, deviceInfo, tenant = null) {
-    const html = this.renderMessageCard({
-      eyebrow: "Security alert",
-      title: "New device sign-in detected",
-      intro:
-        "We noticed a sign-in from a device that does not match your recent activity.",
-      tenant,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Account", value: student.full_name },
-          { label: "Device", value: deviceInfo || "Unknown device" },
-          { label: "Time", value: formatDateTime(Date.now()) },
-        ]),
-      ],
-      footnote:
-        "If this was not you, reset your password immediately and contact support.",
+    const { html, subject } = buildNewDeviceAlertEmail({
+      branding: this.getBranding(tenant),
+      student,
+      deviceInfo,
     });
 
     return this.dispatch({
       to: student.email,
-      subject: "New device sign-in detected",
+      subject,
       html,
       tenant,
       critical: true,
@@ -161,27 +111,16 @@ class EmailService {
   }
 
   async sendVoteConfirmation(student, session, votes, tenant = null) {
-    const html = this.renderMessageCard({
-      eyebrow: "Vote recorded",
-      title: `Vote confirmed for ${session.title}`,
-      intro:
-        "This is your transaction receipt for the ballot that was just accepted.",
-      tenant,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Participant", value: student.full_name },
-          { label: "Session", value: session.title },
-          { label: "Recorded", value: formatDateTime(Date.now()) },
-        ]),
-        this.renderList(
-          votes.map((vote) => `${vote.position}: ${vote.candidate_name}`),
-        ),
-      ],
+    const { html, subject } = buildVoteConfirmationEmail({
+      branding: this.getBranding(tenant),
+      student,
+      session,
+      votes,
     });
 
     return this.dispatch({
       to: student.email,
-      subject: `Vote confirmed - ${session.title}`,
+      subject,
       html,
       tenant,
       critical: true,
@@ -196,33 +135,18 @@ class EmailService {
     totalVotes = 0,
     tenant = null,
   ) {
-    const html = this.renderMessageCard({
-      eyebrow: "Results published",
-      title: `Results are live for ${session.title}`,
-      intro:
-        "The session has been completed and the official outcome is now available.",
-      tenant,
-      ctaLabel: resultsUrl ? "View results" : null,
-      ctaLink: resultsUrl || null,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Session", value: session.title },
-          { label: "Published", value: formatDateTime(Date.now()) },
-          { label: "Accepted votes", value: String(totalVotes) },
-        ]),
-        ...(winners.length
-          ? [
-              this.renderList(
-                winners.map((winner) => `${winner.position}: ${winner.name}`),
-              ),
-            ]
-          : []),
-      ],
+    const { html, subject } = buildResultAnnouncementEmail({
+      branding: this.getBranding(tenant),
+      student,
+      session,
+      resultsUrl,
+      winners,
+      totalVotes,
     });
 
     return this.dispatch({
       to: student.email,
-      subject: `Results available - ${session.title}`,
+      subject,
       html,
       tenant,
       critical: false,
@@ -230,23 +154,17 @@ class EmailService {
   }
 
   async sendPasswordReset(student, resetCode, tenant = null) {
-    const html = this.renderMessageCard({
-      eyebrow: "Password reset",
-      title: "Use this code to reset your password",
-      intro:
-        "We received a password reset request for your participant account.",
-      tenant,
-      sections: [
-        `<div style="border-radius:18px;background:#eff6ff;color:#1d4ed8;padding:18px;text-align:center;font-size:28px;font-weight:700;letter-spacing:0.18em;">${escapeHtml(
-          resetCode,
-        )}</div>`,
-        `<p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#475569;">This code expires in one hour. If you did not request a password reset, you can ignore this message.</p>`,
-      ],
+    const { html, subject } = buildPasswordResetEmail({
+      branding: this.getBranding(tenant),
+      audience: "student",
+      email: student.email,
+      recipientName: student.full_name,
+      resetCode,
     });
 
     return this.dispatch({
       to: student.email,
-      subject: "Participant password reset code",
+      subject,
       html,
       tenant,
       critical: true,
@@ -254,23 +172,17 @@ class EmailService {
   }
 
   async sendAdminPasswordReset(admin, resetCode, tenant = null) {
-    const html = this.renderMessageCard({
-      eyebrow: "Admin security",
-      title: "Use this code to reset your admin password",
-      intro:
-        "We received a password reset request for an administrator account.",
-      tenant,
-      sections: [
-        `<div style="border-radius:18px;background:#fff7ed;color:#c2410c;padding:18px;text-align:center;font-size:28px;font-weight:700;letter-spacing:0.18em;">${escapeHtml(
-          resetCode,
-        )}</div>`,
-        `<p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#475569;">This code expires in one hour. If you did not request this reset, review your sign-in history and contact support.</p>`,
-      ],
+    const { html, subject } = buildPasswordResetEmail({
+      branding: this.getBranding(tenant),
+      audience: "admin",
+      email: admin.email,
+      recipientName: admin.full_name,
+      resetCode,
     });
 
     return this.dispatch({
       to: admin.email,
-      subject: "Admin password reset code",
+      subject,
       html,
       tenant,
       critical: true,
@@ -287,25 +199,19 @@ class EmailService {
     roleLabel,
     tenant = null,
   }) {
-    const html = this.renderMessageCard({
-      eyebrow: `${roleLabel || "System"} announcement`,
+    const { html, subject } = buildAnnouncementEmail({
+      branding: this.getBranding(tenant),
+      recipientName,
       title,
-      intro: recipientName
-        ? `Hello ${recipientName}, there is a new announcement for you.`
-        : null,
-      tenant,
+      body,
       ctaLabel,
       ctaLink,
-      sections: [
-        `<p style="margin:0;font-size:14px;line-height:1.8;color:#334155;">${escapeHtml(
-          body,
-        )}</p>`,
-      ],
+      roleLabel,
     });
 
     return this.dispatch({
       to,
-      subject: title,
+      subject,
       html,
       tenant,
       critical: false,
@@ -321,34 +227,19 @@ class EmailService {
     signInUrl = null,
     platformScope = false,
   }) {
-    const html = this.renderMessageCard({
-      eyebrow: platformScope ? "Platform access" : "Workspace invitation",
-      title: platformScope
-        ? "You were added as a platform admin"
-        : "You were invited as a tenant admin",
-      intro: `An administrator account has been created for ${escapeHtml(fullName)}.`,
-      tenant,
-      ctaLabel: signInUrl ? "Open sign in" : null,
-      ctaLink: signInUrl || null,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Role", value: roleLabel || "Admin" },
-          { label: "Email", value: to },
-          {
-            label: "Temporary password",
-            value: password || "Provided separately",
-          },
-        ]),
-      ],
-      footnote:
-        "For security, sign in and rotate this password as soon as possible.",
+    const { html, subject } = buildAdminInvitationEmail({
+      branding: this.getBranding(tenant),
+      to,
+      fullName,
+      roleLabel,
+      password,
+      signInUrl,
+      platformScope,
     });
 
     return this.dispatch({
       to,
-      subject: platformScope
-        ? "Platform admin invitation"
-        : "Tenant admin invitation",
+      subject,
       html,
       tenant,
       critical: true,
@@ -362,40 +253,18 @@ class EmailService {
     applicationReference = null,
     recipientType = "contact",
   }) {
-    const isPlatformRecipient = recipientType === "platform_admin";
-    const html = this.renderMessageCard({
-      eyebrow: isPlatformRecipient
-        ? "Onboarding queue"
-        : "Application received",
-      title: isPlatformRecipient
-        ? "A new organisation application is ready for review"
-        : "Your organisation setup has started",
-      intro: isPlatformRecipient
-        ? `Hello ${escapeHtml(contactName || "team")}, ${tenantName} has entered the onboarding pipeline.`
-        : `${tenantName} has been captured and entered into the onboarding pipeline.`,
-      ctaLabel: null,
-      ctaLink: null,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Organisation", value: tenantName },
-          ...(applicationReference
-            ? [{ label: "Reference", value: applicationReference }]
-            : []),
-          { label: "Submitted", value: formatDateTime(Date.now()) },
-        ]),
-        isPlatformRecipient
-          ? `<p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#475569;">The platform team should validate onboarding details and continue provisioning after review.</p>`
-          : `<p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#475569;">Hello ${escapeHtml(
-              contactName || "there",
-            )}, review updates will be sent here as your workspace moves through approval.</p>`,
-      ],
+    const { html, subject } = buildTenantApplicationSubmittedEmail({
+      branding: this.getBranding(),
+      contactName,
+      tenantName,
+      applicationReference,
+      recipientType,
     });
+    const isPlatformRecipient = recipientType === "platform_admin";
 
     return this.dispatch({
       to,
-      subject: isPlatformRecipient
-        ? `New organisation application - ${tenantName}`
-        : "Organisation application submitted",
+      subject,
       html,
       critical: isPlatformRecipient,
     });
@@ -408,28 +277,17 @@ class EmailService {
     applicationReference = null,
     workspaceUrl = null,
   }) {
-    const html = this.renderMessageCard({
-      eyebrow: "Application approved",
-      title: "Your workspace is now approved",
-      intro: `Hello ${escapeHtml(
-        contactName || "there",
-      )}, ${escapeHtml(tenantName)} has passed platform review and is ready to use.`,
-      ctaLabel: workspaceUrl ? "Open workspace" : null,
-      ctaLink: workspaceUrl || null,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Organisation", value: tenantName },
-          ...(applicationReference
-            ? [{ label: "Reference", value: applicationReference }]
-            : []),
-          { label: "Approved", value: formatDateTime(Date.now()) },
-        ]),
-      ],
+    const { html, subject } = buildTenantApplicationApprovedEmail({
+      branding: this.getBranding(),
+      contactName,
+      tenantName,
+      applicationReference,
+      workspaceUrl,
     });
 
     return this.dispatch({
       to,
-      subject: "Your organisation workspace has been approved",
+      subject,
       html,
       critical: false,
     });
@@ -443,34 +301,18 @@ class EmailService {
     reason = null,
     statusUrl = null,
   }) {
-    const html = this.renderMessageCard({
-      eyebrow: "Application update",
-      title: "Your application needs changes",
-      intro: `Hello ${escapeHtml(
-        contactName || "there",
-      )}, the platform team returned ${escapeHtml(
-        tenantName,
-      )} to draft so the submitted details can be updated.`,
-      ctaLabel: statusUrl ? "Review application status" : null,
-      ctaLink: statusUrl || null,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Organisation", value: tenantName },
-          ...(applicationReference
-            ? [{ label: "Reference", value: applicationReference }]
-            : []),
-        ]),
-        reason
-          ? `<p style="margin:16px 0 0;font-size:14px;line-height:1.8;color:#334155;"><strong>Review note:</strong> ${escapeHtml(
-              reason,
-            )}</p>`
-          : "",
-      ].filter(Boolean),
+    const { html, subject } = buildTenantApplicationRejectedEmail({
+      branding: this.getBranding(),
+      contactName,
+      tenantName,
+      applicationReference,
+      reason,
+      statusUrl,
     });
 
     return this.dispatch({
       to,
-      subject: "Your application needs changes",
+      subject,
       html,
       critical: false,
     });
@@ -485,22 +327,19 @@ class EmailService {
     ctaLabel,
     ctaLink,
   }) {
-    const html = this.renderMessageCard({
-      eyebrow: "Tenant lifecycle",
-      title: `${tenantName} is now ${status.replace(/_/g, " ")}`,
-      intro: `Hello ${contactName || "there"}, this is an update about your organisation workspace.`,
+    const { html, subject } = buildTenantStatusUpdateEmail({
+      branding: this.getBranding(),
+      contactName,
+      tenantName,
+      status,
+      message,
       ctaLabel,
       ctaLink,
-      sections: [
-        `<p style="margin:0;font-size:14px;line-height:1.8;color:#334155;">${escapeHtml(
-          message,
-        )}</p>`,
-      ],
     });
 
     return this.dispatch({
       to,
-      subject: `Tenant update - ${tenantName}`,
+      subject,
       html,
       critical: false,
     });
@@ -517,25 +356,19 @@ class EmailService {
     ctaLink,
     critical = false,
   }) {
-    const html = this.renderMessageCard({
-      eyebrow: "Support update",
-      title: headline,
-      intro: recipientName
-        ? `Hello ${recipientName}, there is a new support activity update.`
-        : null,
-      tenant,
+    const { html, subject: resolvedSubject } = buildSupportTicketEmail({
+      branding: this.getBranding(tenant),
+      recipientName,
+      subject,
+      headline,
+      message,
       ctaLabel,
       ctaLink,
-      sections: [
-        `<p style="margin:0;font-size:14px;line-height:1.8;color:#334155;">${escapeHtml(
-          message,
-        )}</p>`,
-      ],
     });
 
     return this.dispatch({
       to,
-      subject,
+      subject: resolvedSubject,
       html,
       tenant,
       critical,
@@ -549,24 +382,17 @@ class EmailService {
     message,
     ctaLink,
   }) {
-    const html = this.renderMessageCard({
-      eyebrow: "Biometric provider alert",
-      title: `${providerName} needs attention`,
-      intro: recipientName
-        ? `Hello ${recipientName}, a platform biometric provider requires review.`
-        : null,
-      ctaLabel: ctaLink ? "Open platform settings" : null,
-      ctaLink: ctaLink || null,
-      sections: [
-        `<p style="margin:0;font-size:14px;line-height:1.8;color:#334155;">${escapeHtml(
-          message,
-        )}</p>`,
-      ],
+    const { html, subject } = buildProviderAlertEmail({
+      branding: this.getBranding(),
+      recipientName,
+      providerName,
+      message,
+      ctaLink,
     });
 
     return this.dispatch({
       to,
-      subject: `${providerName} provider alert`,
+      subject,
       html,
       critical: true,
     });
@@ -578,22 +404,15 @@ class EmailService {
     senderEmail,
     tenant = null,
   }) {
-    const html = this.renderMessageCard({
-      eyebrow: "Configuration test",
-      title: "Transactional email test",
-      intro: "This confirms that the email transport is configured correctly.",
-      tenant,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Sent by", value: `${senderName} (${senderEmail})` },
-          { label: "Timestamp", value: formatDateTime(Date.now()) },
-        ]),
-      ],
+    const { html, subject } = buildOperationalTestEmail({
+      branding: this.getBranding(tenant),
+      senderName,
+      senderEmail,
     });
 
     return this.dispatch({
       to,
-      subject: "Transactional email test",
+      subject,
       html,
       tenant,
       critical: true,
@@ -609,36 +428,19 @@ class EmailService {
     roleLabel = "Admin",
     platformScope = false,
   }) {
-    const html = this.renderMessageCard({
-      eyebrow: platformScope ? "Platform access" : "Account created",
-      title: platformScope
-        ? "Welcome to the Univote platform"
-        : "Your admin account is ready",
-      intro: `Hello ${escapeHtml(
-        fullName,
-      )}, your administrator account has been created. You can sign in immediately using your temporary credentials below.`,
-      tenant,
-      ctaLabel: loginUrl ? "Sign in now" : null,
-      ctaLink: loginUrl || null,
-      sections: [
-        this.renderKeyValueRows([
-          { label: "Email", value: to },
-          { label: "Temporary password", value: temporaryPassword },
-          { label: "Role", value: roleLabel },
-        ]),
-        `<div style="border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;color:#92400e;padding:12px;font-size:13px;line-height:1.6;">
-          <strong>⚠️ Important:</strong> For security, you must change this temporary password immediately after signing in. You will be prompted to set a new password on your first login.
-        </div>`,
-      ],
-      footnote:
-        "If you did not expect this account, or have questions, contact your organization administrator.",
+    const { html, subject } = buildAdminWelcomeEmail({
+      branding: this.getBranding(tenant),
+      to,
+      fullName,
+      temporaryPassword,
+      loginUrl,
+      roleLabel,
+      platformScope,
     });
 
     return this.dispatch({
       to,
-      subject: platformScope
-        ? "Welcome to Univote platform"
-        : "Your Univote admin account is ready",
+      subject,
       html,
       tenant,
       critical: true,

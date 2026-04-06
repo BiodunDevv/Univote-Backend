@@ -28,6 +28,59 @@ const verificationLogSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    liveness_session_id: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+    liveness_status: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+    liveness_confidence: {
+      type: Number,
+      default: null,
+    },
+    liveness_threshold: {
+      type: Number,
+      default: null,
+    },
+    compare_confidence: {
+      type: Number,
+      default: null,
+    },
+    compare_threshold: {
+      type: Number,
+      default: null,
+    },
+    matched_face_id: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    decision_source: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+    fail_streak: {
+      type: Number,
+      default: 0,
+    },
+    lockout_triggered: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    lockout_expires_at: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     result: {
       type: String,
       enum: ["accepted", "rejected"],

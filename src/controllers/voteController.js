@@ -17,6 +17,9 @@ const {
 } = require("../utils/tenantScope");
 const { getTenantEligibilityPolicy, getTenantSettings } = require("../utils/tenantSettings");
 
+const BIOMETRIC_LOCKOUT_THRESHOLD = 3;
+const BIOMETRIC_LOCKOUT_TTL_SECONDS = 5 * 60;
+
 function mapVerificationFailureReason(result = {}) {
   const code = String(result.code || "").trim().toUpperCase();
   const message = String(result.error || result.message || "")
@@ -83,6 +86,84 @@ function getLivenessFailureReason(result = {}) {
   return "LIVENESS_FAILED";
 }
 
+function buildBiometricFailureKey(tenantNamespace, sessionId, studentId) {
+  return `biometric_failures:${tenantNamespace}:${sessionId}:${studentId}`;
+}
+
+function buildBiometricLockoutKey(tenantNamespace, sessionId, studentId) {
+  return `biometric_lockout:${tenantNamespace}:${sessionId}:${studentId}`;
+}
+
+function buildLockoutPayload(ttlSeconds) {
+  return {
+    locked_until: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+    retry_after_seconds: ttlSeconds,
+  };
+}
+
+function logBiometricEvent(event, payload = {}) {
+  console.info(
+    JSON.stringify({
+      event,
+      timestamp: new Date().toISOString(),
+      ...payload,
+    }),
+  );
+}
+
+async function getBiometricLockoutState(tenantNamespace, sessionId, studentId) {
+  const lockoutKey = buildBiometricLockoutKey(tenantNamespace, sessionId, studentId);
+  const streakKey = buildBiometricFailureKey(tenantNamespace, sessionId, studentId);
+
+  const [lockoutPayload, ttl, failStreak] = await Promise.all([
+    cacheService.get(lockoutKey),
+    cacheService.ttl(lockoutKey),
+    cacheService.get(streakKey),
+  ]);
+
+  return {
+    locked: ttl > 0,
+    retry_after_seconds: ttl > 0 ? ttl : 0,
+    locked_until:
+      ttl > 0
+        ? lockoutPayload?.locked_until || new Date(Date.now() + ttl * 1000).toISOString()
+        : null,
+    fail_streak: Number(failStreak || 0),
+  };
+}
+
+async function incrementBiometricFailure(tenantNamespace, sessionId, studentId) {
+  const streakKey = buildBiometricFailureKey(tenantNamespace, sessionId, studentId);
+  const lockoutKey = buildBiometricLockoutKey(tenantNamespace, sessionId, studentId);
+  const failStreak = await cacheService.incr(
+    streakKey,
+    BIOMETRIC_LOCKOUT_TTL_SECONDS,
+  );
+
+  if (failStreak >= BIOMETRIC_LOCKOUT_THRESHOLD) {
+    const lockoutPayload = buildLockoutPayload(BIOMETRIC_LOCKOUT_TTL_SECONDS);
+    await cacheService.set(lockoutKey, lockoutPayload, BIOMETRIC_LOCKOUT_TTL_SECONDS);
+    return {
+      fail_streak: failStreak,
+      lockout_triggered: true,
+      ...lockoutPayload,
+    };
+  }
+
+  return {
+    fail_streak: failStreak,
+    lockout_triggered: false,
+    locked_until: null,
+    retry_after_seconds: 0,
+  };
+}
+
+async function clearBiometricFailureState(tenantNamespace, sessionId, studentId) {
+  const streakKey = buildBiometricFailureKey(tenantNamespace, sessionId, studentId);
+  const lockoutKey = buildBiometricLockoutKey(tenantNamespace, sessionId, studentId);
+  await Promise.all([cacheService.del(streakKey), cacheService.del(lockoutKey)]);
+}
+
 async function logVerificationAttempt(req, payload = {}) {
   if (!req.tenantId && !req.tenant?._id) {
     return null;
@@ -115,6 +196,14 @@ class VoteController {
         });
       }
 
+      logBiometricEvent("vote_liveness_session_created", {
+        tenant_id: req.tenantId || req.tenant?._id || null,
+        student_id: req.studentId || null,
+        session_id: result.session_id,
+        provider: result.provider || "aws_rekognition",
+        region: status.region || null,
+      });
+
       return res.status(201).json({
         session_id: result.session_id,
         provider: result.provider || "aws_rekognition",
@@ -134,13 +223,81 @@ class VoteController {
   async getLivenessSessionResult(req, res) {
     try {
       const { id } = req.params;
+      const studentId = req.studentId || null;
       const result = await faceProviderService.getLivenessResult(id);
+      logBiometricEvent("vote_liveness_result_resolved", {
+        tenant_id: req.tenantId || req.tenant?._id || null,
+        student_id: studentId,
+        session_id: id,
+        provider: result.provider || "aws_rekognition",
+        status: result.status || null,
+        passed: result.passed === true,
+        confidence: result.confidence ?? null,
+        threshold: result.threshold ?? null,
+      });
       if (!result.success) {
         return res.status(400).json({
           error: result.error || "Failed to fetch liveness result.",
           code: result.code || "LIVENESS_FAILED",
           status: result.status || null,
         });
+      }
+
+      let ownership_verified = null;
+      let compare_confidence = null;
+      let compare_threshold = null;
+      let matched_face_id = null;
+      let code = null;
+      let message = null;
+
+      if (result.passed === true && studentId) {
+        const biometricThreshold = Number(
+          getTenantSettings(req.tenant).voting?.face_match_threshold || 70,
+        );
+        const student = await Student.findOne(
+          getTenantScopedFilter(req, { _id: studentId }),
+        ).select("aws_face_id aws_face_collection_id");
+
+        if (!student?.aws_face_id || !student?.aws_face_collection_id) {
+          ownership_verified = false;
+          code = "NO_REGISTERED_FACE";
+          message =
+            "Your account does not have an enrolled biometric profile yet. Please contact your university administrator.";
+        } else {
+          const ownershipResult = await faceProviderService.verifyFaceBytes(
+            student,
+            result.reference_image,
+            {
+              threshold_override: biometricThreshold,
+            },
+          );
+
+          compare_confidence =
+            typeof ownershipResult.confidence === "number"
+              ? ownershipResult.confidence
+              : null;
+          compare_threshold = ownershipResult.threshold ?? biometricThreshold;
+          matched_face_id = ownershipResult.matched_face_id || null;
+          ownership_verified =
+            ownershipResult.success === true && ownershipResult.is_match === true;
+          code = ownership_verified
+            ? "ACCOUNT_OWNER_CONFIRMED"
+            : ownershipResult.code || "ACCOUNT_OWNER_MISMATCH";
+          message = ownership_verified
+            ? "Live presence confirmed and the captured face matches the enrolled owner of this account."
+            : "The person who completed this live check is not the owner of this account.";
+
+          logBiometricEvent("vote_liveness_identity_check_resolved", {
+            tenant_id: req.tenantId || req.tenant?._id || null,
+            student_id: studentId,
+            session_id: id,
+            ownership_verified,
+            compare_confidence,
+            compare_threshold,
+            matched_face_id,
+            code,
+          });
+        }
       }
 
       return res.json({
@@ -150,6 +307,12 @@ class VoteController {
         confidence: result.confidence ?? null,
         threshold: result.threshold ?? null,
         status: result.status || null,
+        ownership_verified,
+        compare_confidence,
+        compare_threshold,
+        matched_face_id,
+        code,
+        message,
       });
     } catch (error) {
       console.error("Get liveness result error:", error);
@@ -184,21 +347,97 @@ class VoteController {
       const tenantNamespace = getTenantCacheNamespace(req);
       const tenantSettings = getTenantSettings(req.tenant);
       const biometricThreshold = Number(
-        tenantSettings.voting?.face_match_threshold || 80,
+        tenantSettings.voting?.face_match_threshold || 70,
       );
       const biometricStatus = await faceProviderService.getStatus();
       const livenessRequired = biometricStatus.liveness_required !== false;
       const deviceFingerprint =
         device_id || req.headers["user-agent"] || "unknown-device";
+      const fallbackImageRequired = !livenessRequired;
+
+      const rejectBiometricAttempt = async ({
+        statusCode,
+        error,
+        code,
+        failure_reason,
+        confidence_score = null,
+        compare_confidence = null,
+        compare_threshold = biometricThreshold,
+        liveness_status = null,
+        liveness_confidence = null,
+        liveness_threshold = null,
+        matched_face_id = null,
+        meta = {},
+      }) => {
+        const lockoutState = await incrementBiometricFailure(
+          tenantNamespace,
+          session_id,
+          studentId,
+        );
+
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          confidence_score,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason,
+          device_id: deviceFingerprint,
+          ip_address: req.ip,
+          image_url: image_url || null,
+          geo_location: { lat, lng },
+          liveness_session_id: liveness_session_id || null,
+          liveness_status,
+          liveness_confidence,
+          liveness_threshold,
+          compare_confidence,
+          compare_threshold,
+          matched_face_id,
+          decision_source: livenessRequired ? "liveness_reference_image" : "uploaded_image",
+          fail_streak: lockoutState.fail_streak,
+          lockout_triggered: lockoutState.lockout_triggered,
+          lockout_expires_at: lockoutState.locked_until
+            ? new Date(lockoutState.locked_until)
+            : null,
+          meta,
+        });
+
+        logBiometricEvent(
+          lockoutState.lockout_triggered
+            ? "vote_biometric_lockout_triggered"
+            : "vote_biometric_rejected",
+          {
+            tenant_id: req.tenantId || req.tenant?._id || null,
+            student_id: studentId,
+            voting_session_id: session_id,
+            liveness_session_id: liveness_session_id || null,
+            failure_reason,
+            code,
+            compare_confidence,
+            compare_threshold,
+            liveness_confidence,
+            liveness_threshold,
+            fail_streak: lockoutState.fail_streak,
+            lockout_expires_at: lockoutState.locked_until,
+          },
+        );
+
+        return res.status(
+          lockoutState.lockout_triggered ? 429 : statusCode,
+        ).json({
+          error:
+            lockoutState.lockout_triggered
+              ? "Biometric verification has been locked after repeated failed attempts. Try again in 5 minutes."
+              : error,
+          code: lockoutState.lockout_triggered ? "BIOMETRIC_LOCKED" : code,
+          retry_after_seconds: lockoutState.retry_after_seconds || undefined,
+          locked_until: lockoutState.locked_until || undefined,
+          fail_streak: lockoutState.fail_streak,
+        });
+      };
 
       // Validate required fields
-      if (
-        !session_id ||
-        !choices ||
-        !image_url ||
-        lat === undefined ||
-        lng === undefined
-      ) {
+      if (!session_id || !choices || lat === undefined || lng === undefined) {
         await mongoSession.abortTransaction();
         await logVerificationAttempt(req, {
           user_id: studentId,
@@ -211,6 +450,23 @@ class VoteController {
           image_url: image_url || null,
         });
         return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      if (fallbackImageRequired && !image_url) {
+        await mongoSession.abortTransaction();
+        await logVerificationAttempt(req, {
+          user_id: studentId,
+          session_id,
+          threshold_used: biometricThreshold,
+          result: "rejected",
+          failure_reason: "MISSING_REQUIRED_FIELDS",
+          device_id: deviceFingerprint,
+          ip_address: req.ip,
+          image_url: image_url || null,
+        });
+        return res.status(400).json({
+          error: "Image URL is required when liveness verification is disabled.",
+        });
       }
 
       // Validate coordinates
@@ -493,7 +749,13 @@ class VoteController {
         });
       }
 
-      if (!student.aws_face_id || !student.aws_face_collection_id) {
+      const biometricLockoutState = await getBiometricLockoutState(
+        tenantNamespace,
+        session_id,
+        studentId,
+      );
+
+      if (biometricLockoutState.locked) {
         await mongoSession.abortTransaction();
         await cacheService.del(voteLockKey);
         await logVerificationAttempt(req, {
@@ -501,16 +763,40 @@ class VoteController {
           session_id,
           threshold_used: biometricThreshold,
           result: "rejected",
-          failure_reason: "NO_REGISTERED_FACE",
+          failure_reason: "BIOMETRIC_LOCKED",
           device_id: deviceFingerprint,
           ip_address: req.ip,
-          image_url,
+          image_url: image_url || null,
           geo_location: { lat, lng },
+          liveness_session_id: liveness_session_id || null,
+          decision_source: livenessRequired
+            ? "liveness_reference_image"
+            : "uploaded_image",
+          fail_streak: biometricLockoutState.fail_streak,
+          lockout_triggered: true,
+          lockout_expires_at: biometricLockoutState.locked_until
+            ? new Date(biometricLockoutState.locked_until)
+            : null,
         });
-        return res.status(400).json({
+        return res.status(429).json({
+          error:
+            "Biometric verification is temporarily locked. Please try again after the cooldown expires.",
+          code: "BIOMETRIC_LOCKED",
+          retry_after_seconds: biometricLockoutState.retry_after_seconds,
+          locked_until: biometricLockoutState.locked_until,
+          fail_streak: biometricLockoutState.fail_streak,
+        });
+      }
+
+      if (!student.aws_face_id || !student.aws_face_collection_id) {
+        await mongoSession.abortTransaction();
+        await cacheService.del(voteLockKey);
+        return rejectBiometricAttempt({
+          statusCode: 400,
           error:
             "No enrolled face was found for this student. Please contact your administrator.",
           code: "NO_REGISTERED_FACE",
+          failure_reason: "NO_REGISTERED_FACE",
         });
       }
 
@@ -521,17 +807,6 @@ class VoteController {
         if (!liveness_session_id) {
           await mongoSession.abortTransaction();
           await cacheService.del(voteLockKey);
-          await logVerificationAttempt(req, {
-            user_id: studentId,
-            session_id,
-            threshold_used: biometricThreshold,
-            result: "rejected",
-            failure_reason: "LIVENESS_REQUIRED",
-            device_id: deviceFingerprint,
-            ip_address: req.ip,
-            image_url,
-            geo_location: { lat, lng },
-          });
           return res.status(400).json({
             error:
               "Complete AWS liveness verification before submitting your vote.",
@@ -542,62 +817,52 @@ class VoteController {
         livenessResult = await faceProviderService.getLivenessResult(
           liveness_session_id,
         );
+        logBiometricEvent("vote_liveness_result_resolved", {
+          tenant_id: req.tenantId || req.tenant?._id || null,
+          student_id: studentId,
+          voting_session_id: session_id,
+          liveness_session_id,
+          status: livenessResult.status || null,
+          passed: livenessResult.passed === true,
+          confidence: livenessResult.confidence ?? null,
+          threshold: livenessResult.threshold ?? null,
+        });
 
         if (!livenessResult.success) {
           await mongoSession.abortTransaction();
           await cacheService.del(voteLockKey);
-          await logVerificationAttempt(req, {
-            user_id: studentId,
-            session_id,
-            threshold_used: biometricThreshold,
-            result: "rejected",
-            failure_reason: getLivenessFailureReason(livenessResult),
-            device_id: deviceFingerprint,
-            ip_address: req.ip,
-            image_url,
-            geo_location: { lat, lng },
-            meta: {
-              liveness_session_id,
-              provider_code: livenessResult.code || null,
-              provider_error: livenessResult.error || null,
-              liveness_status: livenessResult.status || null,
-            },
-          });
-          return res.status(400).json({
+          return rejectBiometricAttempt({
+            statusCode: 400,
             error:
               livenessResult.error ||
               "AWS liveness verification did not complete successfully.",
-            code: livenessResult.code || "LIVENESS_FAILED",
+            code: getLivenessFailureReason(livenessResult),
+            failure_reason: getLivenessFailureReason(livenessResult),
+            liveness_status: livenessResult.status || null,
+            liveness_confidence: livenessResult.confidence ?? null,
+            liveness_threshold: livenessResult.threshold ?? null,
+            meta: {
+              provider_code: livenessResult.code || null,
+              provider_error: livenessResult.error || null,
+            },
           });
         }
 
         if (!livenessResult.passed) {
           await mongoSession.abortTransaction();
           await cacheService.del(voteLockKey);
-          await logVerificationAttempt(req, {
-            user_id: studentId,
-            session_id,
-            threshold_used: biometricThreshold,
-            result: "rejected",
-            failure_reason: getLivenessFailureReason(livenessResult),
-            device_id: deviceFingerprint,
-            ip_address: req.ip,
-            image_url,
-            geo_location: { lat, lng },
-            meta: {
-              liveness_session_id,
-              liveness_status: livenessResult.status || null,
-              liveness_confidence: livenessResult.confidence ?? null,
-              liveness_threshold: livenessResult.threshold ?? null,
-            },
-          });
-          return res.status(403).json({
+          return rejectBiometricAttempt({
+            statusCode: 403,
             error:
               "Live presence verification failed. Retry the liveness check and submit again.",
             code:
               livenessResult.status === "EXPIRED"
                 ? "LIVENESS_SESSION_EXPIRED"
-                : "LIVENESS_FAILED",
+                : getLivenessFailureReason(livenessResult),
+            failure_reason: getLivenessFailureReason(livenessResult),
+            liveness_status: livenessResult.status || null,
+            liveness_confidence: livenessResult.confidence ?? null,
+            liveness_threshold: livenessResult.threshold ?? null,
           });
         }
 
@@ -617,34 +882,29 @@ class VoteController {
       if (!faceVerification.success) {
         await mongoSession.abortTransaction();
         await cacheService.del(voteLockKey);
-        await logVerificationAttempt(req, {
-          user_id: studentId,
-          session_id,
-          confidence_score:
-            typeof faceVerification.confidence === "number"
-              ? faceVerification.confidence
-              : null,
-          threshold_used: biometricThreshold,
-          result: "rejected",
-          failure_reason: mapVerificationFailureReason(faceVerification),
-          device_id: deviceFingerprint,
-          ip_address: req.ip,
-          image_url,
-          geo_location: { lat, lng },
-          meta: {
-            liveness_session_id: liveness_session_id || null,
-            liveness_status: livenessResult?.status || null,
-            liveness_confidence: livenessResult?.confidence ?? null,
-            provider_code: faceVerification.code || null,
-            provider_error: faceVerification.error || null,
-          },
-        });
-        return res.status(400).json({
+        return rejectBiometricAttempt({
+          statusCode: 400,
           error: faceVerification.error,
           code:
             faceVerification.code === "NO_REGISTERED_FACE"
               ? "NO_REGISTERED_FACE"
               : faceVerification.code || "FACE_VERIFICATION_FAILED",
+          failure_reason: mapVerificationFailureReason(faceVerification),
+          confidence_score:
+            typeof faceVerification.confidence === "number"
+              ? faceVerification.confidence
+              : null,
+          compare_confidence:
+            typeof faceVerification.confidence === "number"
+              ? faceVerification.confidence
+              : null,
+          liveness_status: livenessResult?.status || null,
+          liveness_confidence: livenessResult?.confidence ?? null,
+          liveness_threshold: livenessResult?.threshold ?? null,
+          meta: {
+            provider_code: faceVerification.code || null,
+            provider_error: faceVerification.error || null,
+          },
         });
       }
 
@@ -652,28 +912,36 @@ class VoteController {
       if (!faceVerification.is_match) {
         await mongoSession.abortTransaction();
         await cacheService.del(voteLockKey);
-        await logVerificationAttempt(req, {
-          user_id: studentId,
-          session_id,
-          confidence_score: faceVerification.confidence,
-          threshold_used: biometricThreshold,
-          result: "rejected",
-          failure_reason: "LOW_CONFIDENCE",
-          device_id: deviceFingerprint,
-          ip_address: req.ip,
-          image_url,
-          geo_location: { lat, lng },
-        });
-
-        return res.status(403).json({
+        return rejectBiometricAttempt({
+          statusCode: 403,
           error: faceVerification.message,
-          code: "FACE_VERIFICATION_FAILED",
-          confidence: faceVerification.confidence,
+          code: "LOW_CONFIDENCE",
+          failure_reason: "LOW_CONFIDENCE",
+          confidence_score: faceVerification.confidence,
+          compare_confidence: faceVerification.confidence,
+          compare_threshold: faceVerification.threshold ?? biometricThreshold,
+          matched_face_id: faceVerification.matched_face_id || null,
+          liveness_status: livenessResult?.status || null,
+          liveness_confidence: livenessResult?.confidence ?? null,
+          liveness_threshold: livenessResult?.threshold ?? null,
         });
       }
 
       const verifiedFaceId = faceVerification.matched_face_id;
       const faceConfidence = faceVerification.confidence;
+      const compareThreshold = faceVerification.threshold ?? biometricThreshold;
+      await clearBiometricFailureState(tenantNamespace, session_id, studentId);
+
+      logBiometricEvent("vote_face_compare_executed", {
+        tenant_id: req.tenantId || req.tenant?._id || null,
+        student_id: studentId,
+        voting_session_id: session_id,
+        liveness_session_id: liveness_session_id || null,
+        matched_face_id: verifiedFaceId || null,
+        compare_confidence: faceConfidence ?? null,
+        compare_threshold: compareThreshold,
+        decision: "accepted",
+      });
 
       // Validate choices
       if (!Array.isArray(choices) || choices.length === 0) {
@@ -801,6 +1069,19 @@ class VoteController {
         session_id,
         confidence_score: faceConfidence,
         threshold_used: biometricThreshold,
+        liveness_session_id: liveness_session_id || null,
+        liveness_status: livenessResult?.status || null,
+        liveness_confidence: livenessResult?.confidence ?? null,
+        liveness_threshold: livenessResult?.threshold ?? null,
+        compare_confidence: faceConfidence,
+        compare_threshold: compareThreshold,
+        matched_face_id: verifiedFaceId,
+        decision_source: livenessRequired
+          ? "liveness_reference_image"
+          : "uploaded_image",
+        fail_streak: 0,
+        lockout_triggered: false,
+        lockout_expires_at: null,
         result: "accepted",
         failure_reason: null,
         device_id: deviceFingerprint,
@@ -808,13 +1089,21 @@ class VoteController {
         image_url,
         geo_location: { lat, lng },
         meta: {
-          verified_face_id: verifiedFaceId,
           choice_count: choices.length,
-          liveness_session_id: liveness_session_id || null,
-          liveness_status: livenessResult?.status || null,
-          liveness_confidence: livenessResult?.confidence ?? null,
-          liveness_threshold: livenessResult?.threshold ?? null,
         },
+      });
+
+      logBiometricEvent("vote_accepted", {
+        tenant_id: req.tenantId || req.tenant?._id || null,
+        student_id: studentId,
+        voting_session_id: session_id,
+        liveness_session_id: liveness_session_id || null,
+        matched_face_id: verifiedFaceId || null,
+        compare_confidence: faceConfidence ?? null,
+        compare_threshold: compareThreshold,
+        liveness_confidence: livenessResult?.confidence ?? null,
+        liveness_threshold: livenessResult?.threshold ?? null,
+        vote_count: choices.length,
       });
 
       emailService
@@ -841,7 +1130,7 @@ class VoteController {
         user_id: req.studentId || null,
         session_id: req.body?.session_id || null,
         threshold_used: Number(
-          getTenantSettings(req.tenant).voting?.face_match_threshold || 80,
+          getTenantSettings(req.tenant).voting?.face_match_threshold || 70,
         ),
         result: "rejected",
         failure_reason: "DB_WRITE_FAIL",

@@ -49,7 +49,7 @@ const platformSettingSchema = new mongoose.Schema(
           },
           similarity_threshold: {
             type: Number,
-            default: 90,
+            default: 70,
           },
           collection_prefix: {
             type: String,
@@ -61,7 +61,7 @@ const platformSettingSchema = new mongoose.Schema(
           },
           liveness_threshold: {
             type: Number,
-            default: 90,
+            default: 70,
           },
         },
       },
