@@ -33,8 +33,8 @@ const TENANT_ADMIN_EMAIL = "tenant@gmail.com";
 const SECONDARY_TENANT_ADMIN_EMAIL = "tenant2@gmail.com";
 const PRIMARY_TENANT_OPS_ADMIN_EMAIL = "ops.bowen@gmail.com";
 const SECONDARY_TENANT_SUPPORT_ADMIN_EMAIL = "support.summit@gmail.com";
-const TENANT_SLUG = "bowen-demo";
-const SECONDARY_TENANT_SLUG = "summit-demo";
+const TENANT_SLUG = "bowen";
+const SECONDARY_TENANT_SLUG = "summit";
 const SEEDED_AWS_REGION = process.env.AWS_REGION || "us-east-1";
 const SEEDED_AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || null;
 const SEEDED_AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || null;
@@ -561,7 +561,7 @@ async function createActiveDemoTenants(
 
   const [primaryTenant, secondaryTenant] = await Tenant.create([
     {
-      name: "Bowen University Demo",
+      name: "Bowen University",
       slug: TENANT_SLUG,
       application_reference: buildApplicationReference("20260315-BOWE01"),
       primary_domain: buildSeedTenantDomain(TENANT_SLUG),
