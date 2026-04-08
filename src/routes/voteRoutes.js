@@ -101,6 +101,13 @@ router.get(
   voteController.getLivenessSessionResult,
 );
 
+router.get(
+  "/session/:sessionId/submitted",
+  authenticateStudent,
+  requireTenantAccess,
+  voteController.getSubmittedBallotBySession,
+);
+
 router.post(
   "/",
   authenticateStudent,

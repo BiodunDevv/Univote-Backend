@@ -1277,6 +1277,92 @@ class VoteController {
       res.status(500).json({ error: "Failed to get vote details" });
     }
   }
+
+  /**
+   * Get authenticated student's submitted ballot for a session
+   * GET /api/vote/session/:sessionId/submitted
+   */
+  async getSubmittedBallotBySession(req, res) {
+    try {
+      const { sessionId } = req.params;
+      const studentId = req.studentId;
+
+      if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+        return res.status(400).json({ error: "Invalid session ID" });
+      }
+
+      const session = await VotingSession.findOne(
+        getTenantScopedFilter(req, { _id: sessionId }),
+      )
+        .select("title description start_time end_time status")
+        .lean();
+
+      if (!session) {
+        return res.status(404).json({ error: "Voting session not found" });
+      }
+
+      const submittedVotes = await Vote.find(
+        getTenantScopedFilter(req, {
+          student_id: studentId,
+          session_id: sessionId,
+          status: "valid",
+        }),
+      )
+        .populate("candidate_id", "name position photo_url bio")
+        .sort({ position: 1, timestamp: 1 })
+        .lean();
+
+      if (!submittedVotes.length) {
+        return res
+          .status(404)
+          .json({ error: "No submitted ballot found for this session" });
+      }
+
+      const submittedAt =
+        submittedVotes
+          .map((vote) => vote.timestamp || vote.createdAt)
+          .filter(Boolean)
+          .sort((left, right) => new Date(left) - new Date(right))[0] || null;
+
+      const choices = submittedVotes.reduce((acc, vote) => {
+        if (!vote.candidate_id) return acc;
+
+        acc.push({
+          position: vote.position,
+          candidate: {
+            id: vote.candidate_id._id,
+            name: vote.candidate_id.name,
+            position: vote.candidate_id.position,
+            photo_url: vote.candidate_id.photo_url,
+            bio: vote.candidate_id.bio,
+          },
+        });
+
+        return acc;
+      }, []);
+
+      return res.json({
+        ballot: {
+          session: {
+            id: session._id,
+            title: session.title,
+            description: session.description,
+            start_time: session.start_time,
+            end_time: session.end_time,
+            status: session.status,
+          },
+          submitted_at: submittedAt,
+          status: "submitted",
+          choices,
+        },
+      });
+    } catch (error) {
+      console.error("Get submitted ballot by session error:", error);
+      return res
+        .status(500)
+        .json({ error: "Failed to get submitted ballot details" });
+    }
+  }
 }
 
 module.exports = new VoteController();
