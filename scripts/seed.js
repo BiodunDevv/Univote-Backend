@@ -53,7 +53,7 @@ function addDays(date, days) {
 
 // Cloudinary image URL for student photos
 const STUDENT_PHOTO_URL =
-  "https://res.cloudinary.com/df4f0usnh/image/upload/v1761725926/univote/candidates/isxi22irk87hyzglhl0s.jpg";
+  "https://res.cloudinary.com/df4f0usnh/image/upload/v1775460844/univote/tenant-testing/cchu1ckmm575aovpq1qs.jpg";
 
 function buildSeedTenantDomain(slug) {
   return `${slug}.${DEPLOY_ROOT_DOMAIN}`;
