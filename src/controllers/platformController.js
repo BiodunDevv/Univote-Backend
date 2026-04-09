@@ -703,13 +703,6 @@ class PlatformController {
         tenant.onboarding?.contact_email &&
         previousStatus !== tenant.status
       ) {
-        const workspaceUrl = tenant.primary_domain
-          ? `https://${tenant.primary_domain}`
-          : `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}`;
-        const statusUrl = `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}/application-status?reference=${encodeURIComponent(
-          tenant.application_reference || "",
-        )}&email=${encodeURIComponent(tenant.onboarding.contact_email)}`;
-
         let notificationPromise = null;
 
         if (tenant.status === "active" && previousStatus !== "active") {
@@ -718,7 +711,7 @@ class PlatformController {
             contactName: tenant.onboarding.contact_name,
             tenantName: tenant.name,
             applicationReference: tenant.application_reference || null,
-            workspaceUrl,
+            tenantDomain: tenant.primary_domain || null,
           });
         } else if (tenant.status === "draft" && previousStatus !== "draft") {
           notificationPromise = emailService.sendTenantApplicationRejected({
@@ -727,7 +720,6 @@ class PlatformController {
             tenantName: tenant.name,
             applicationReference: tenant.application_reference || null,
             reason: tenant.onboarding.rejection_reason || null,
-            statusUrl,
           });
         } else {
           notificationPromise = emailService.sendTenantStatusUpdate({
@@ -736,8 +728,7 @@ class PlatformController {
             tenantName: tenant.name,
             status: tenant.status,
             message: `Your workspace is currently ${tenant.status.replace(/_/g, " ")} and is being provisioned.`,
-            ctaLabel: tenant.status === "active" ? "Open workspace" : null,
-            ctaLink: workspaceUrl,
+            tenantDomain: tenant.primary_domain || null,
           });
         }
 
@@ -980,7 +971,6 @@ class PlatformController {
               recipientName: req.admin.full_name,
               providerName: result.provider || "Biometric provider",
               message: result.error || "The biometric provider test failed.",
-              ctaLink: `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}/super-admin/settings`,
             })
             .catch((err) => {
               console.error(

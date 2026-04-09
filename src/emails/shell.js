@@ -83,15 +83,21 @@ function getBranding(tenant = null, defaults = {}) {
 
 function buildButtonHtml(cta) {
   return `
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-top: 24px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 24px; width: 100%;">
       <tr>
-        <td align="center" style="border-radius: 999px; background: ${COLORS.green};">
+        <td align="center">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+            <tr>
+              <td align="center" style="border-radius: 999px; background: ${COLORS.green};">
           <a
             href="${escapeHtml(cta.url)}"
             style="display: inline-block; padding: 13px 22px; border-radius: 999px; color: ${COLORS.white}; text-decoration: none; font-family: ${FONT_SANS}; font-size: 14px; font-weight: 700;"
           >
             ${escapeHtml(cta.label)}
           </a>
+              </td>
+            </tr>
+          </table>
         </td>
       </tr>
     </table>
@@ -130,7 +136,7 @@ function buildLogoHtml(branding) {
 
   return `
     <div style="text-align:center;">
-      <div style="font-family: ${FONT_SERIF}; font-size: 28px; font-weight: 700; letter-spacing: 0.05em; color: ${COLORS.greenDark};">
+      <div style="font-family: ${FONT_SERIF}; font-size: 24px; line-height: 1.15; font-weight: 700; letter-spacing: 0.04em; color: ${COLORS.greenDark};">
         ${escapeHtml(branding.appName)}
       </div>
     </div>
@@ -167,6 +173,27 @@ function buildEmailShell({ branding, variant = "security", preheader, badge, hea
             .univote-logo-light { display: none !important; }
             .univote-logo-dark { display: block !important; }
           }
+          @media only screen and (max-width: 640px) {
+            .univote-shell-card {
+              padding: 22px 18px !important;
+            }
+            .univote-shell-headline {
+              font-size: 26px !important;
+              line-height: 1.2 !important;
+            }
+            .univote-shell-intro {
+              font-size: 14px !important;
+              line-height: 1.65 !important;
+            }
+            .univote-summary-item {
+              display: block !important;
+              width: 100% !important;
+              padding: 0 0 10px !important;
+            }
+            .univote-summary-item:last-child {
+              padding-bottom: 0 !important;
+            }
+          }
         </style>
       </head>
       <body style="margin: 0; padding: 0; background: ${COLORS.cream};">
@@ -178,23 +205,23 @@ function buildEmailShell({ branding, variant = "security", preheader, badge, hea
             <td align="center" style="padding: 8px;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 680px; width: 100%;">
                 <tr>
-                  <td style="padding: 26px 28px; border: 1px solid ${COLORS.border}; border-radius: 22px; background: ${COLORS.white};">
+                  <td class="univote-shell-card" style="padding: 24px 24px; border: 1px solid ${COLORS.border}; border-radius: 22px; background: ${COLORS.white};">
                     <div style="margin-bottom: 18px;">
                       ${buildLogoHtml(branding)}
                     </div>
                     <div style="margin-bottom: 16px; text-align: center;">
                       ${buildBadgeHtml(badge, variant)}
                     </div>
-                    <h1 style="margin: 0; text-align: center; font-family: ${FONT_SERIF}; font-size: 32px; line-height: 1.15; font-weight: 700; color: ${COLORS.greenDark};">
+                    <h1 class="univote-shell-headline" style="margin: 0; text-align: center; font-family: ${FONT_SERIF}; font-size: 28px; line-height: 1.18; font-weight: 700; color: ${COLORS.greenDark}; word-break: break-word;">
                       ${escapeHtml(headline)}
                     </h1>
-                    <p style="margin: 14px 0 0; text-align: center; font-family: ${FONT_SANS}; font-size: 15px; line-height: 1.75; color: ${COLORS.muted};">
+                    <p class="univote-shell-intro" style="margin: 12px 0 0; text-align: center; font-family: ${FONT_SANS}; font-size: 14px; line-height: 1.7; color: ${COLORS.muted}; word-break: break-word;">
                       ${escapeHtml(intro)}
                     </p>
                     <div style="margin-top: 22px;">
                       ${statusStripHtml}
                     </div>
-                    <div style="font-family: ${FONT_SANS}; color: ${COLORS.text}; text-align: center;">
+                    <div style="font-family: ${FONT_SANS}; color: ${COLORS.text}; text-align: left;">
                       ${bodyHtml}
                       ${cta ? buildButtonHtml(cta) : ""}
                       ${footerNoteHtml ? `<div style="margin-top: 18px;">${footerNoteHtml}</div>` : ""}

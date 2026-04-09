@@ -296,17 +296,11 @@ class TenantAdminController {
 
       const payload = await buildMembershipResponse(membership);
 
-      // Send welcome email with temporary password
-      const signInUrl = req.tenant?.primary_domain
-        ? `https://${req.tenant.primary_domain}/auth/signin`
-        : `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}/auth/signin`;
-
       emailService
         .sendAdminWelcome({
           to: admin.email,
           fullName: admin.full_name,
           temporaryPassword: tempPassword,
-          loginUrl: signInUrl,
           tenant: req.tenant || null,
           roleLabel: targetRole,
           platformScope: false,

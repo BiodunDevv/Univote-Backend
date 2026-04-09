@@ -37,7 +37,7 @@ function buildAdminInvitationEmail({
           ]),
         )}
       `,
-      cta: signInUrl ? { label: "Open sign in", url: signInUrl } : null,
+      cta: signInUrl ? { label: "Sign in to portal", url: signInUrl } : null,
       footerNoteHtml:
         "<p style=\"margin:0;font-size:13px;line-height:1.8;color:#687567;\">For security, sign in and rotate this password as soon as possible.</p>",
     }),
@@ -85,7 +85,7 @@ function buildAdminWelcomeEmail({
           ),
         )}
       `,
-      cta: loginUrl ? { label: "Sign in now", url: loginUrl } : null,
+      cta: loginUrl ? { label: "Sign in to portal", url: loginUrl } : null,
       footerNoteHtml:
         "<p style=\"margin:0;font-size:13px;line-height:1.8;color:#687567;\">If you did not expect this account, or have questions, contact your organization administrator.</p>",
     }),

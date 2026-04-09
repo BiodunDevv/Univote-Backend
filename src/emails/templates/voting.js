@@ -7,7 +7,13 @@ const {
 } = require("../fragments");
 const { formatDateTime } = require("../utils");
 
-function buildVoteConfirmationEmail({ branding, student, session, votes }) {
+function buildVoteConfirmationEmail({
+  branding,
+  student,
+  session,
+  votes,
+  ballotUrl = null,
+}) {
   const voteList = (votes || []).map(
     (vote) => `${vote.position}: ${vote.candidate_name}`,
   );
@@ -37,6 +43,9 @@ function buildVoteConfirmationEmail({ branding, student, session, votes }) {
         )}
         ${voteList.length ? renderSection("Selected candidates", renderList(voteList)) : ""}
       `,
+      cta: ballotUrl
+        ? { label: "Open submitted ballot", url: ballotUrl }
+        : null,
     }),
   };
 }

@@ -1548,7 +1548,6 @@ class AdminController {
           roleLabel: admin.role,
           password,
           platformScope: true,
-          signInUrl: `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}/auth/signin`,
         })
         .catch((err) => {
           console.error("Failed to send platform admin invitation email:", err);

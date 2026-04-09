@@ -35,6 +35,9 @@ function buildWelcomeEmail({ branding, student }) {
       intro:
         "Your account is ready. You can now sign in and manage your participation securely.",
       bodyHtml,
+      cta: student?.ctaUrl
+        ? { label: student.ctaLabel || "Sign in to portal", url: student.ctaUrl }
+        : null,
     }),
   };
 }
@@ -82,7 +85,9 @@ function buildPasswordResetEmail({ branding, audience, email, recipientName, res
 
   const bodyHtml = `
     <p style="margin:0 0 16px;font-size:14px;line-height:1.8;color:#233126;">${greeting}</p>
-    ${renderSection("Verification code", renderCodeBlock(resetCode))}
+    ${renderSection("Verification code", renderCodeBlock(resetCode), {
+      titleAlign: "center",
+    })}
     ${renderSection(
       "Security note",
       `<p style="margin:0;font-size:14px;line-height:1.8;color:#233126;">${escapeHtml(
@@ -107,6 +112,18 @@ function buildPasswordResetEmail({ branding, audience, email, recipientName, res
       headline,
       intro,
       bodyHtml,
+      cta:
+        audience !== "admin" && email && branding?.resetPasswordUrl
+          ? {
+              label: "Reset password",
+              url: branding.resetPasswordUrl,
+            }
+          : branding?.signInUrl
+            ? {
+                label: audience === "admin" ? "Sign in to portal" : "Back to sign in",
+                url: branding.signInUrl,
+              }
+            : null,
     }),
   };
 }

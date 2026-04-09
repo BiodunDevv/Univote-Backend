@@ -253,11 +253,6 @@ class SessionScheduler {
       // Calculate total votes
       const totalVotes = voteCounts.reduce((sum, v) => sum + v.count, 0);
 
-      // Send result announcement emails in the background
-      const resultsUrl = `${
-        process.env.FRONTEND_URL || "http://localhost:3000"
-      }/results/${session._id}`;
-
       let emailsSent = 0;
       let emailsFailed = 0;
 
@@ -267,7 +262,7 @@ class SessionScheduler {
           await emailService.sendResultAnnouncement(
             student,
             session,
-            resultsUrl,
+            null,
             winners,
             totalVotes
           );

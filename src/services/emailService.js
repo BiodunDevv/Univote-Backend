@@ -18,6 +18,18 @@ const {
   getBranding,
   stripHtml,
 } = require("../emails");
+const {
+  buildAdminSignInUrl,
+  buildApplicationStatusUrl,
+  buildEmailRoute,
+  buildPlatformSettingsUrl,
+  buildStudentResetPasswordUrl,
+  buildStudentResultsUrl,
+  buildStudentSignInUrl,
+  buildStudentSubmittedBallotUrl,
+  buildStudentSupportUrl,
+  buildTenantWorkspaceUrl,
+} = require("../emails/routes");
 
 class EmailService {
   constructor() {
@@ -40,11 +52,24 @@ class EmailService {
   }
 
   getBranding(tenant = null) {
-    return getBranding(tenant, {
+    const branding = getBranding(tenant, {
       fromName: this.fromName,
       fromEmail: this.fromEmail,
       supportEmail: this.defaultSupportEmail,
     });
+    return {
+      ...branding,
+      signInUrl: buildAdminSignInUrl({
+        tenantDomain: tenant?.primary_domain || null,
+      }),
+      resetPasswordUrl: buildStudentResetPasswordUrl({
+        organization: tenant?.slug || null,
+      }),
+    };
+  }
+
+  resolveAppUrl(path) {
+    return buildEmailRoute(path);
   }
 
   canSendForTenant(tenant = null, { critical = false } = {}) {
@@ -82,7 +107,10 @@ class EmailService {
   async sendWelcomeEmail(student, tenant = null) {
     const { html, subject } = buildWelcomeEmail({
       branding: this.getBranding(tenant),
-      student,
+      student: {
+        ...student,
+        ctaUrl: buildStudentSignInUrl({ organization: tenant?.slug || null }),
+      },
     });
 
     return this.dispatch({
@@ -116,6 +144,9 @@ class EmailService {
       student,
       session,
       votes,
+      ballotUrl:
+        buildStudentSubmittedBallotUrl(session?._id || session?.id || null) ||
+        buildStudentResultsUrl(session?._id || session?.id || null),
     });
 
     return this.dispatch({
@@ -135,11 +166,14 @@ class EmailService {
     totalVotes = 0,
     tenant = null,
   ) {
+    const resolvedResultsUrl =
+      resultsUrl ||
+      buildStudentResultsUrl(session?._id || session?.id || null);
     const { html, subject } = buildResultAnnouncementEmail({
       branding: this.getBranding(tenant),
       student,
       session,
-      resultsUrl,
+      resultsUrl: resolvedResultsUrl,
       winners,
       totalVotes,
     });
@@ -155,7 +189,14 @@ class EmailService {
 
   async sendPasswordReset(student, resetCode, tenant = null) {
     const { html, subject } = buildPasswordResetEmail({
-      branding: this.getBranding(tenant),
+      branding: {
+        ...this.getBranding(tenant),
+        resetPasswordUrl: buildStudentResetPasswordUrl({
+          organization: tenant?.slug || null,
+          email: student.email,
+        }),
+        signInUrl: buildStudentSignInUrl({ organization: tenant?.slug || null }),
+      },
       audience: "student",
       email: student.email,
       recipientName: student.full_name,
@@ -173,7 +214,12 @@ class EmailService {
 
   async sendAdminPasswordReset(admin, resetCode, tenant = null) {
     const { html, subject } = buildPasswordResetEmail({
-      branding: this.getBranding(tenant),
+      branding: {
+        ...this.getBranding(tenant),
+        signInUrl: buildAdminSignInUrl({
+          tenantDomain: tenant?.primary_domain || null,
+        }),
+      },
       audience: "admin",
       email: admin.email,
       recipientName: admin.full_name,
@@ -199,13 +245,16 @@ class EmailService {
     roleLabel,
     tenant = null,
   }) {
+    const resolvedCtaLink = buildEmailRoute(ctaLink) || buildStudentSignInUrl({
+      organization: tenant?.slug || null,
+    });
     const { html, subject } = buildAnnouncementEmail({
       branding: this.getBranding(tenant),
       recipientName,
       title,
       body,
-      ctaLabel,
-      ctaLink,
+      ctaLabel: ctaLabel || "Sign in to portal",
+      ctaLink: resolvedCtaLink,
       roleLabel,
     });
 
@@ -227,13 +276,18 @@ class EmailService {
     signInUrl = null,
     platformScope = false,
   }) {
+    const resolvedSignInUrl =
+      buildEmailRoute(signInUrl) ||
+      buildAdminSignInUrl({
+        tenantDomain: !platformScope ? tenant?.primary_domain || null : null,
+      });
     const { html, subject } = buildAdminInvitationEmail({
       branding: this.getBranding(tenant),
       to,
       fullName,
       roleLabel,
       password,
-      signInUrl,
+      signInUrl: resolvedSignInUrl,
       platformScope,
     });
 
@@ -276,13 +330,17 @@ class EmailService {
     tenantName,
     applicationReference = null,
     workspaceUrl = null,
+    tenantDomain = null,
   }) {
+    const resolvedWorkspaceUrl =
+      buildEmailRoute(workspaceUrl) ||
+      buildTenantWorkspaceUrl({ tenantDomain });
     const { html, subject } = buildTenantApplicationApprovedEmail({
       branding: this.getBranding(),
       contactName,
       tenantName,
       applicationReference,
-      workspaceUrl,
+      workspaceUrl: resolvedWorkspaceUrl,
     });
 
     return this.dispatch({
@@ -301,13 +359,19 @@ class EmailService {
     reason = null,
     statusUrl = null,
   }) {
+    const resolvedStatusUrl =
+      buildEmailRoute(statusUrl) ||
+      buildApplicationStatusUrl({
+        reference: applicationReference,
+        email: to,
+      });
     const { html, subject } = buildTenantApplicationRejectedEmail({
       branding: this.getBranding(),
       contactName,
       tenantName,
       applicationReference,
       reason,
-      statusUrl,
+      statusUrl: resolvedStatusUrl,
     });
 
     return this.dispatch({
@@ -326,15 +390,23 @@ class EmailService {
     message,
     ctaLabel,
     ctaLink,
+    tenantDomain = null,
   }) {
+    const resolvedCtaLink =
+      buildEmailRoute(ctaLink) ||
+      (status === "active"
+        ? buildTenantWorkspaceUrl({ tenantDomain })
+        : buildApplicationStatusUrl({ email: to }));
     const { html, subject } = buildTenantStatusUpdateEmail({
       branding: this.getBranding(),
       contactName,
       tenantName,
       status,
       message,
-      ctaLabel,
-      ctaLink,
+      ctaLabel:
+        ctaLabel ||
+        (status === "active" ? "Open workspace" : "Review application status"),
+      ctaLink: resolvedCtaLink,
     });
 
     return this.dispatch({
@@ -356,14 +428,15 @@ class EmailService {
     ctaLink,
     critical = false,
   }) {
+    const resolvedCtaLink = buildEmailRoute(ctaLink);
     const { html, subject: resolvedSubject } = buildSupportTicketEmail({
       branding: this.getBranding(tenant),
       recipientName,
       subject,
       headline,
       message,
-      ctaLabel,
-      ctaLink,
+      ctaLabel: ctaLabel || (resolvedCtaLink ? "Open support ticket" : null),
+      ctaLink: resolvedCtaLink,
     });
 
     return this.dispatch({
@@ -382,12 +455,13 @@ class EmailService {
     message,
     ctaLink,
   }) {
+    const resolvedCtaLink = buildEmailRoute(ctaLink) || buildPlatformSettingsUrl();
     const { html, subject } = buildProviderAlertEmail({
       branding: this.getBranding(),
       recipientName,
       providerName,
       message,
-      ctaLink,
+      ctaLink: resolvedCtaLink,
     });
 
     return this.dispatch({
@@ -428,12 +502,18 @@ class EmailService {
     roleLabel = "Admin",
     platformScope = false,
   }) {
+    const resolvedLoginUrl =
+      buildEmailRoute(loginUrl) ||
+      buildAdminSignInUrl({
+        tenantDomain: !platformScope ? tenant?.primary_domain || null : null,
+      });
+
     const { html, subject } = buildAdminWelcomeEmail({
       branding: this.getBranding(tenant),
       to,
       fullName,
       temporaryPassword,
-      loginUrl,
+      loginUrl: resolvedLoginUrl,
       roleLabel,
       platformScope,
     });
