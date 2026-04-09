@@ -194,7 +194,7 @@ function buildEmailShell({ branding, variant = "security", preheader, badge, hea
                     <div style="margin-top: 22px;">
                       ${statusStripHtml}
                     </div>
-                    <div style="font-family: ${FONT_SANS}; color: ${COLORS.text};">
+                    <div style="font-family: ${FONT_SANS}; color: ${COLORS.text}; text-align: center;">
                       ${bodyHtml}
                       ${cta ? buildButtonHtml(cta) : ""}
                       ${footerNoteHtml ? `<div style="margin-top: 18px;">${footerNoteHtml}</div>` : ""}
