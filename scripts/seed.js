@@ -1501,11 +1501,13 @@ async function seedTestimonials(tenant) {
   await Testimonial.insertMany([
     {
       tenant_id: tenant._id,
-      author_name: "Dr. Olamide Bakare",
+      author_name: "Dr. Tolu Akinyemi",
       author_role: "Dean of Student Affairs",
       institution_name: tenant.name,
       quote:
-        "Univote gave us a clean operational command center for elections. Setup, oversight, and post-election reporting now happen in one place.",
+        "Our last student union election was the first time we could monitor turnout, incident handling, and result publication from one system without losing confidence in the process.",
+      avatar_url:
+        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&h=400&q=80",
       rating: 5,
       source: "seed",
       status: "published",
@@ -1515,11 +1517,13 @@ async function seedTestimonials(tenant) {
     },
     {
       tenant_id: tenant._id,
-      author_name: "Chioma Adeleke",
-      author_role: "Student Representative",
+      author_name: "Chioma Adewale",
+      author_role: "Student Union President",
       institution_name: tenant.name,
       quote:
-        "Students stopped worrying about queues and transparency. The voting flow felt modern, quick, and trustworthy from login to confirmation.",
+        "Students trusted the process because the sign-in, ballot submission, and receipt flow all felt clear. We spent less time answering complaints and more time managing turnout.",
+      avatar_url:
+        "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=400&h=400&q=80",
       rating: 5,
       source: "seed",
       status: "published",
@@ -1528,29 +1532,49 @@ async function seedTestimonials(tenant) {
       published_at: new Date(),
     },
     {
-      author_name: "Emeka Nwankwo",
-      author_role: "Operations Lead",
-      institution_name: "Northfield College",
+      author_name: "Emeka Nwosu",
+      author_role: "Registry Operations Lead",
+      institution_name: "Covenant Hills University",
       quote:
-        "The tenant controls and reporting structure are strong enough for multi-campus elections. That is what convinced our governance team.",
+        "What convinced our governance team was the audit trail. We could review every stage of the election quickly without exporting data into three different tools.",
+      avatar_url:
+        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&h=400&q=80",
       rating: 5,
       source: "seed",
       status: "published",
-      highlighted: false,
+      highlighted: true,
       sort_order: 3,
       published_at: new Date(),
     },
     {
-      author_name: "Aisha Mohammed",
-      author_role: "Student Success Officer",
-      institution_name: "Lakeside Polytechnic",
+      author_name: "Aisha Bello",
+      author_role: "Director of Student Experience",
+      institution_name: "Lagos Metropolitan Polytechnic",
       quote:
-        "We wanted a system that respected both institutional controls and student convenience. Univote finally gave us that balance.",
-      rating: 4,
+        "We needed something that respected institutional control without frustrating students on voting day. Univote gave us that balance and reduced manual follow-up after the poll.",
+      avatar_url:
+        "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?auto=format&fit=crop&w=400&h=400&q=80",
+      rating: 5,
       source: "seed",
-      status: "pending_review",
+      status: "published",
       highlighted: false,
       sort_order: 4,
+      published_at: new Date(),
+    },
+    {
+      author_name: "Ifeanyi Okonkwo",
+      author_role: "ICT Elections Coordinator",
+      institution_name: "Rivergate University",
+      quote:
+        "Deployment was straightforward for our team, but the bigger win was confidence on election day. Approvals, monitoring, and final publication felt organised from start to finish.",
+      avatar_url:
+        "https://images.unsplash.com/photo-1504593811423-6dd665756598?auto=format&fit=crop&w=400&h=400&q=80",
+      rating: 5,
+      source: "seed",
+      status: "published",
+      highlighted: false,
+      sort_order: 5,
+      published_at: new Date(),
     },
   ]);
 
