@@ -1,730 +1,270 @@
-# Univote - University Voting System Backend
+# Univote Backend
 
-A secure, scalable university voting system with facial recognition, geofencing, and real-time results. Built with Node.js, Express, MongoDB, and Face++ API.
+<p align="center">
+  <img src="../Univote-Web/public/Darklogo.png" alt="Univote logo" width="140" />
+</p>
 
-## 🎯 Features
+<p align="center">
+  <strong>API and service layer for secure, tenant-aware university election operations.</strong>
+</p>
 
-### Core Functionality
+Univote Backend powers the full operational core of the Univote platform. It provides authentication, tenant-aware access control, election lifecycle management, candidate and session administration, voting, result publication, notifications, support workflows, public product endpoints, dashboard data, and platform-level administration.
 
-- **Secure Authentication**: JWT-based auth with forced password change on first login
-- **Single Active Session**: Automatic logout when logging in from a new device
-- **Facial Recognition**: Face++ API integration for identity verification during voting
-- **Geofencing**: Location-based voting with customizable radius
-- **Real-time Results**: Live vote counts and result publication
-- **Email Notifications**: Welcome emails, device alerts, vote confirmations, and result announcements
+The system is designed for digital campus elections where integrity, traceability, and operational clarity matter. It combines secure authentication, Redis-backed rate limiting and caching, MongoDB persistence, tenant resolution, geofencing support, biometric-verification integrations, real-time sockets, and documented REST APIs.
 
-### Security Features
+## What This Backend Does
 
-- ✅ Bcrypt password hashing
-- ✅ Rate limiting on all endpoints
-- ✅ Input validation and sanitization
-- ✅ Audit logging for all actions
-- ✅ Single session enforcement
-- ✅ Geofence validation
-- ✅ Duplicate face detection
-- ✅ CORS protection
+- authenticates students and administrators
+- resolves tenant context for multi-institution operation
+- manages elections, sessions, candidates, and vote windows
+- validates voting rules and session lifecycle constraints
+- supports biometric and liveness-related verification flows
+- publishes results and dashboard statistics
+- handles announcements, notifications, and support flows
+- exposes public onboarding and platform endpoints
+- serves Swagger API documentation
 
-### Admin Features
+## Architecture Summary
 
-- CSV student upload with automatic welcome emails
-- Dynamic voting session creation with custom categories
-- Session management (create, update, delete)
-- Student management (bulk operations)
-- Real-time statistics and analytics
-- Result publication and email notifications
+### Runtime Stack
 
-## 📋 Prerequisites
+- Node.js
+- Express
+- MongoDB with Mongoose
+- Redis for caching and rate limiting
+- Socket.IO for real-time communication
+- Swagger UI for API docs
 
-- Node.js (v14 or higher)
-- MongoDB (v4.4 or higher)
-- Face++ API account (free tier available)
-- Gmail account (for email notifications)
+### Security and Control
 
-## 🚀 Quick Start
+- JWT authentication
+- bcrypt password hashing
+- request rate limiting
+- tenant-context resolution middleware
+- audit logging
+- geofencing support
+- biometric-verification provider integration
+- CORS controls with explicit origin handling
 
-### 1. Clone and Install
+## Major Route Groups
 
-```bash
-git clone <repository-url>
-cd "Univote Backend"
-npm install
+Mounted route groups from `src/app.js` include:
+
+- `/api/health`
+- `/api/auth`
+- `/api/admin`
+- `/api/admin/settings`
+- `/api/platform`
+- `/api/public`
+- `/api/announcements`
+- `/api/support`
+- `/api/notifications`
+- `/api/sessions`
+- `/api/vote`
+- `/api/results`
+- `/api/dashboard`
+- `/api-docs`
+
+## Main Backend Modules
+
+```text
+Univote-Backend/
+├── src/
+│   ├── app.js                  # Express bootstrap and route registration
+│   ├── config/                 # DB, Redis, Swagger, constants, tenant roles
+│   ├── controllers/            # Route handlers for auth, admin, voting, support, etc.
+│   ├── middleware/             # Auth, tenant context, validation, rate limiting, audit logs
+│   ├── models/                 # Mongoose models
+│   ├── routes/                 # Express route modules
+│   ├── services/               # Email, sockets, face verification, tenant access, caching
+│   ├── utils/                  # JWT, geofence, scheduler, keep-alive, tenant helpers
+│   └── emails/                 # Email templates and fragments
+├── scripts/                    # Seed and smoke-testing scripts
+└── test/                       # Generated coverage or testing artifacts
 ```
 
-### 2. Environment Setup
+## Notable Domain Models
 
-Create a `.env` file in the root directory:
+The backend includes models for:
+
+- `Student`
+- `Admin`
+- `Tenant`
+- `TenantAdminMembership`
+- `VotingSession`
+- `Candidate`
+- `Vote`
+- `Result`-oriented flows via result controllers and aggregations
+- `Announcement`
+- `Notification`
+- `SupportTicket`
+- `SupportMessage`
+- `AuditLog`
+- `VerificationLog`
+- `PlatformSetting`
+- `Testimonial`
+- `College`
+
+## Environment Variables
+
+Do not commit real credentials. Create a local `.env` file with environment-specific values.
+
+Example configuration shape:
 
 ```env
-# Server Configuration
-PORT=5000
+PORT=8000
 NODE_ENV=development
-
-# MongoDB Configuration
+SERVER_URL=http://localhost:8000
 MONGO_URI=mongodb://localhost:27017/univote
-
-# JWT Secret (change this!)
-JWT_SECRET=your_super_secret_jwt_key_here
-
-# Email Configuration (Gmail)
-EMAIL_USER=your-email@gmail.com
-EMAIL_PASS=your-app-password
-EMAIL_FROM=Univote <noreply@univote.com>
-
-# AWS Rekognition Configuration
-AWS_ACCESS_KEY_ID=your_aws_access_key_id
-AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
-AWS_REGION=us-east-1
-AWS_REKOGNITION_COLLECTION_PREFIX=univote-students
-AWS_REKOGNITION_SIMILARITY_THRESHOLD=80
-
-# Geofence Configuration (Bowen University)
+JWT_SECRET=replace_me
+JWT_EXPIRY=24h
+BCRYPT_ROUNDS=10
+RATE_LIMIT_WINDOW=15
+RATE_LIMIT_MAX=100
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_TLS=false
+FRONTEND_URL=http://localhost:3000
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+EMAIL_FROM_NAME=Univote
+EMAIL_FROM_EMAIL=noreply@example.com
+BREVO_API_KEY=replace_me
+PAYSTACK_SECRET_KEY=replace_me
 DEFAULT_CAMPUS_LAT=7.8525
 DEFAULT_CAMPUS_LNG=4.2811
 DEFAULT_CAMPUS_RADIUS=5000
-
-# Security
-BCRYPT_ROUNDS=10
-JWT_EXPIRY=24h
-
-# Rate Limiting
-RATE_LIMIT_WINDOW=15
-RATE_LIMIT_MAX=100
+AWS_ACCESS_KEY_ID=replace_me
+AWS_SECRET_ACCESS_KEY=replace_me
+AWS_REGION=us-east-1
+AWS_REKOGNITION_COLLECTION_PREFIX=univote-students
+AWS_REKOGNITION_SIMILARITY_THRESHOLD=70
+AWS_REKOGNITION_LIVENESS_REQUIRED=true
+AWS_REKOGNITION_LIVENESS_THRESHOLD=70
 ```
 
-### 3. Face++ API Setup
+### Configuration Guide
 
-1. Go to [Face++ Console](https://console.faceplusplus.com/)
-2. Sign up for a free account (no credit card required)
-3. Create a new API Key
-4. Copy the API Key and API Secret to your `.env` file
-5. Free tier includes:
-   - 1,000 calls/month for Detect API
-   - 1,000 calls/month for Compare API
-   - Perfect for testing and small deployments
+- `PORT`: HTTP server port
+- `SERVER_URL`: public URL used in logs, docs, and keep-alive checks
+- `MONGO_URI`: MongoDB connection string
+- `JWT_SECRET`: secret used to sign access tokens
+- `JWT_EXPIRY`: token lifetime
+- `BCRYPT_ROUNDS`: password hashing strength
+- `RATE_LIMIT_WINDOW`, `RATE_LIMIT_MAX`: global rate-limit settings
+- `REDIS_*`: cache and rate-limit backing store configuration
+- `FRONTEND_URL`: primary frontend origin
+- `CORS_ALLOWED_ORIGINS`: comma-separated allowed origins for production
+- `BREVO_API_KEY`: transactional email provider key
+- `PAYSTACK_SECRET_KEY`: payment-related platform integration key, if enabled
+- `DEFAULT_CAMPUS_*`: default geofence coordinates and radius
+- `AWS_*`: Rekognition and liveness integration settings
 
-### 4. Gmail App Password Setup
+## Getting Started
 
-1. Enable 2-Factor Authentication on your Gmail account
-2. Go to [App Passwords](https://myaccount.google.com/apppasswords)
-3. Generate a new app password for "Mail"
-4. Copy the password to `EMAIL_PASS` in `.env`
+### Prerequisites
 
-### 5. Seed Database
+- Node.js 18+
+- MongoDB
+- Redis
+- AWS account or biometric-provider credentials required by your verification flow
+- Brevo account for outbound email
+
+### Install
+
+```bash
+npm install
+```
+
+### Run in Development
+
+```bash
+npm run dev
+```
+
+### Run in Production
+
+```bash
+npm start
+```
+
+### Seed Local Data
 
 ```bash
 npm run seed
 ```
 
-This will:
-
-- Clear existing data
-- Create a super admin account
-- Generate sample students with realistic data
-- Send welcome emails to all students
-
-**Default Credentials:**
-
-- **Admin**: `admin@univote.com` / `admin123`
-- **Students**: `{matric_no}` / `1234` (must change on first login)
-
-### 6. Start Server
+### Smoke-Test Routes
 
 ```bash
-# Development mode (with nodemon)
-npm run dev
-
-# Production mode
-npm start
+npm run smoke:testing-routes
 ```
 
-Server will run on `http://localhost:5000`
-
-## 📚 API Documentation
-
-### Authentication Endpoints
-
-#### Student Login
-
-```http
-POST /api/auth/login
-Content-Type: application/json
-
-{
-  "matric_no": "BU22CSC1001",
-  "password": "1234",
-  "device_id": "optional-device-id"
-}
-
-Response:
-{
-  "message": "Login successful",
-  "token": "jwt-token",
-  "student": { ... },
-  "new_device": false
-}
-```
-
-#### Admin Login
-
-```http
-POST /api/auth/admin-login
-Content-Type: application/json
-
-{
-  "email": "admin@univote.com",
-  "password": "admin123"
-}
-```
-
-#### Change Password
-
-```http
-PATCH /api/auth/change-password
-Authorization: Bearer {token}
-Content-Type: application/json
-
-{
-  "old_password": "1234",  // Not required for first login
-  "new_password": "newpassword123"
-}
-```
-
-#### Get Profile
-
-```http
-GET /api/auth/me
-Authorization: Bearer {token}
-```
-
-#### Logout
-
-```http
-POST /api/auth/logout
-Authorization: Bearer {token}
-```
-
-### Admin Endpoints
-
-#### Upload Students (CSV)
-
-```http
-POST /api/admin/upload-students
-Authorization: Bearer {admin-token}
-Content-Type: application/json
-
-{
-  "csv_data": [
-    {
-      "matric_no": "BU22CSC1001",
-      "full_name": "John Doe",
-      "email": "john@example.com",
-      "department": "Computer Science",
-      "college": "College of Computing and Communication Studies",
-      "level": "200"
-    }
-  ]
-}
-```
-
-#### Create Voting Session
-
-```http
-POST /api/admin/create-session
-Authorization: Bearer {admin-token}
-Content-Type: application/json
-
-{
-  "title": "SUG Elections 2024",
-  "description": "Student Union Government Elections",
-  "start_time": "2024-03-01T08:00:00Z",
-  "end_time": "2024-03-01T18:00:00Z",
-  "eligible_college": null,
-  "eligible_departments": null,
-  "eligible_levels": ["200", "300", "400"],
-  "categories": ["President", "Vice President", "Secretary"],
-  "location": {
-    "lat": 7.8525,
-    "lng": 4.2811,
-    "radius_meters": 5000
-  },
-  "is_off_campus_allowed": false,
-  "candidates": [
-    {
-      "name": "Jane Smith",
-      "position": "President",
-      "photo_url": "https://example.com/photo.jpg",
-      "bio": "Bio text",
-      "manifesto": "Manifesto text"
-    }
-  ]
-}
-```
-
-#### Update Session
-
-```http
-PATCH /api/admin/update-session/:id
-Authorization: Bearer {admin-token}
-Content-Type: application/json
-
-{
-  "title": "Updated Title",
-  "results_public": true
-}
-```
-
-#### Delete Session
-
-```http
-DELETE /api/admin/delete-session/:id
-Authorization: Bearer {admin-token}
-```
-
-#### Remove Department
-
-```http
-DELETE /api/admin/remove-department
-Authorization: Bearer {admin-token}
-Content-Type: application/json
-
-{
-  "departments": ["Computer Science"]
-  // or single: "departments": "Computer Science"
-}
-```
-
-#### Create Admin
-
-```http
-POST /api/admin/create-admin
-Authorization: Bearer {super-admin-token}
-Content-Type: application/json
-
-{
-  "email": "newadmin@univote.com",
-  "password": "securepassword",
-  "full_name": "New Admin",
-  "role": "admin"  // or "super_admin"
-}
-```
-
-#### Get Students
-
-```http
-GET /api/admin/students?college=College&department=Dept&level=200&page=1&limit=50
-Authorization: Bearer {admin-token}
-```
-
-#### Get Sessions
-
-```http
-GET /api/admin/sessions
-Authorization: Bearer {admin-token}
-```
-
-#### Get Session Statistics
-
-```http
-GET /api/admin/session-stats/:id
-Authorization: Bearer {admin-token}
-```
-
-### Student Endpoints
-
-#### List Eligible Sessions
-
-```http
-GET /api/sessions?status=active
-Authorization: Bearer {student-token}
-```
-
-#### Get Session Details
-
-```http
-GET /api/sessions/:id
-Authorization: Bearer {student-token}
-```
-
-### Voting Endpoints
-
-#### Submit Vote
-
-```http
-POST /api/vote
-Authorization: Bearer {student-token}
-Content-Type: application/json
-
-{
-  "session_id": "session-id",
-  "choices": [
-    {
-      "candidate_id": "candidate-id",
-      "category": "President"
-    }
-  ],
-  "image_url": "https://example.com/selfie.jpg",
-  "lat": 7.8525,
-  "lng": 4.2811,
-  "device_id": "optional-device-id"
-}
-
-Response on success:
-{
-  "message": "Vote submitted successfully",
-  "votes": [
-    {
-      "position": "President",
-      "candidate_name": "Jane Smith"
-    }
-  ]
-}
-
-Possible errors:
-- 400: Face detection failed / No face / Multiple faces
-- 403: Not eligible / Outside geofence
-- 409: Already voted / Duplicate face detected
-```
-
-#### Get Voting History
-
-```http
-GET /api/vote/history
-Authorization: Bearer {student-token}
-```
-
-### Results Endpoints
-
-#### Get Session Results
-
-```http
-GET /api/results/:session_id
-Authorization: Bearer {student-token}
-
-Response:
-{
-  "session": { ... },
-  "has_voted": true,
-  "total_valid_votes": 150,
-  "results": [
-    {
-      "position": "President",
-      "total_votes": 150,
-      "candidates": [
-        {
-          "id": "...",
-          "name": "Jane Smith",
-          "vote_count": 95,
-          "percentage": 63.33,
-          "is_winner": true
-        }
-      ]
-    }
-  ]
-}
-```
-
-#### Publish Results (Admin)
-
-```http
-POST /api/results/:session_id/publish
-Authorization: Bearer {admin-token}
-```
-
-#### Get Overview Statistics (Admin)
-
-```http
-GET /api/results/stats/overview
-Authorization: Bearer {admin-token}
-```
-
-## 🗄️ Database Models
-
-### Student
-
-```javascript
-{
-  matric_no: String (unique),
-  full_name: String,
-  email: String,
-  password_hash: String,
-  first_login: Boolean,
-  department: String,
-  college: String,
-  level: String ('100'-'600'),
-  has_voted_sessions: [ObjectId],
-  photo_url: String,
-  aws_face_id: String,
-  aws_face_image_id: String,
-  aws_face_collection_id: String,
-  is_logged_in: Boolean,
-  last_login_device: String,
-  active_token: String
-}
-```
-
-### Admin
-
-```javascript
-{
-  email: String (unique),
-  password_hash: String,
-  role: String ('admin' | 'super_admin'),
-  full_name: String,
-  is_active: Boolean
-}
-```
-
-### VotingSession
-
-```javascript
-{
-  title: String,
-  description: String,
-  start_time: Date,
-  end_time: Date,
-  eligible_college: String?,
-  eligible_departments: [String]?,
-  eligible_levels: [String]?,
-  categories: [String],
-  status: String ('upcoming' | 'active' | 'ended'),
-  candidates: [ObjectId],
-  location: {
-    lat: Number,
-    lng: Number,
-    radius_meters: Number
-  },
-  is_off_campus_allowed: Boolean,
-  results_public: Boolean
-}
-```
-
-### Candidate
-
-```javascript
-{
-  session_id: ObjectId,
-  name: String,
-  position: String,
-  photo_url: String,
-  vote_count: Number,
-  bio: String,
-  manifesto: String
-}
-```
-
-### Vote
-
-```javascript
-{
-  student_id: ObjectId,
-  session_id: ObjectId,
-  candidate_id: ObjectId,
-  position: String,
-  geo_location: { lat: Number, lng: Number },
-  face_match_score: Number,
-  face_verification_passed: Boolean,
-  aws_matched_face_id: String,
-  timestamp: Date,
-  status: String ('valid' | 'duplicate' | 'rejected'),
-  device_id: String
-}
-```
-
-## 🔒 Security Best Practices
-
-1. **Password Security**
-
-   - Default password: `1234` (must change on first login)
-   - Minimum 6 characters for new passwords
-   - Bcrypt hashing with salt rounds
-
-2. **Session Management**
-
-   - Single active session per student
-   - Previous sessions invalidated on new login
-   - Email notification on device change
-
-3. **Rate Limiting**
-
-   - Auth endpoints: 5 requests per 15 minutes
-   - Vote endpoint: 10 requests per minute
-   - Face API: 20 requests per minute
-   - General API: 100 requests per 15 minutes
-
-4. **Input Validation**
-
-   - All inputs validated using express-validator
-   - Coordinates validated for geofence
-   - Image URLs validated before Face++ API calls
-
-5. **Audit Logging**
-   - All sensitive operations logged
-   - Includes user info, action, and timestamp
-   - Failed attempts tracked
-
-## 🎨 Email Templates
-
-All email templates use Facebook-style design with:
-
-- Gradient headers
-- Responsive layout
-- Professional styling
-- Mobile-friendly
-
-Templates available:
-
-- `welcome.html` - Sent on student creation
-- `new_device_alert.html` - Sent on new device login
-- `vote_confirmation.html` - Sent after successful vote
-- `result_announcement.html` - Sent when results published
-- `password_reset.html` - Sent for password reset
-
-## 🧪 Testing
-
-### Health Check
+### Test Suite
 
 ```bash
-curl http://localhost:5000/health
+npm test
 ```
 
-### Test Admin Login
+## API Documentation
 
-```bash
-curl -X POST http://localhost:5000/api/auth/admin-login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@univote.com","password":"admin123"}'
-```
+When the server is running locally:
 
-### Test Student Login
+- Swagger UI: `http://localhost:8000/api-docs`
+- Swagger JSON: `http://localhost:8000/api-docs.json`
+- Health check: `http://localhost:8000/health`
 
-```bash
-curl -X POST http://localhost:5000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"matric_no":"BU22CSC1001","password":"1234"}'
-```
+## Key Platform Capabilities
 
-## 📦 Deployment
+### Authentication and Access
 
-### Environment Variables
+- student and admin authentication
+- JWT-secured protected endpoints
+- tenant-aware access resolution
+- role and membership helpers for institution-specific operations
 
-Ensure all production values are set in `.env`:
+### Election Operations
 
-- Use strong `JWT_SECRET`
-- Use production MongoDB URI
-- Configure real Face++ API credentials
-- Use production email credentials
+- election-session lifecycle management
+- candidate and category configuration
+- vote submission and validation
+- result retrieval and publishing flows
+- dashboard summaries for election activity
 
-### MongoDB Atlas Setup
+### Platform Operations
 
-1. Create cluster on [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
-2. Whitelist your server IP
-3. Create database user
-4. Copy connection string to `MONGO_URI`
+- tenant onboarding and public application workflows
+- announcement publishing
+- support desk and ticketing
+- notifications
+- platform-level management and testimonial tooling
 
-### PM2 Deployment
+### Reliability and Observability
 
-```bash
-npm install -g pm2
-pm2 start src/app.js --name univote-api
-pm2 save
-pm2 startup
-```
+- startup checks for MongoDB and Redis
+- keep-alive utility for hosted environments
+- request ID and response-time headers
+- development logging
+- audit and verification records
 
-### Docker Deployment
+## Real-Time Features
 
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --production
-COPY . .
-EXPOSE 5000
-CMD ["npm", "start"]
-```
+Socket.IO is initialized at server startup, enabling real-time experiences such as live election updates, notifications, or dashboard refresh workflows where the frontend subscribes to backend events.
 
-## 📝 Matric Number Format
+## Deployment Notes
 
-Students are generated with the format: `BU{YY}{CODE}{NNNN}`
+Before deploying, make sure to:
 
-Examples:
+- configure production MongoDB and Redis instances
+- set the correct `SERVER_URL`, `FRONTEND_URL`, and `CORS_ALLOWED_ORIGINS`
+- store AWS, Brevo, Paystack, and JWT secrets in secure environment management
+- confirm Swagger exposure is appropriate for the target environment
+- verify TLS and proxy settings for the deployed platform
 
-- `BU22CSC1001` - 2022, Computer Science, Student #1001
-- `BU23ENG2050` - 2023, Engineering, Student #2050
-- `BU21MGT0500` - 2021, Management, Student #0500
+## Frontend Pairing
 
-College codes:
+This README documents the API and service layer. For the user-facing application, onboarding pages, dashboards, and client integrations, see `../Univote-Web/README.md`.
 
-- `CSC` - College of Computing and Communication Studies
-- `ENG` - College of Engineering
-- `SCI` - College of Science
-- `MGT` - College of Management Sciences
-- `SOC` - College of Social Sciences
+## Product Vision
 
-## 🔧 Troubleshooting
-
-### MongoDB Connection Issues
-
-```bash
-# Check if MongoDB is running
-mongod --version
-
-# Start MongoDB service
-# Windows: net start MongoDB
-# Linux: sudo systemctl start mongod
-# Mac: brew services start mongodb-community
-```
-
-### Email Not Sending
-
-- Verify Gmail app password is correct
-- Check 2FA is enabled on Gmail account
-- Ensure less secure apps access is NOT enabled (use app password instead)
-
-### Face++ API Errors
-
-- Verify API key and secret are correct
-- Check you haven't exceeded free tier quota (1,000 calls/month)
-- Ensure image URLs are publicly accessible
-- Test credentials in Face++ Console
-
-### Port Already in Use
-
-```bash
-# Windows
-netstat -ano | findstr :5000
-taskkill /PID <PID> /F
-
-# Linux/Mac
-lsof -i :5000
-kill -9 <PID>
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-## 📄 License
-
-ISC
-
-## 👥 Support
-
-For issues and questions:
-
-- Create an issue on GitHub
-- Email: support@univote.com
-
-## 🎉 Acknowledgments
-
-- Face++ API for facial recognition
-- MongoDB for database
-- Express.js for backend framework
-- Nodemailer for email service
-
----
-
-Built with ❤️ for secure university elections
+Univote Backend exists to give universities a trustworthy election engine that is secure enough for real campus deployment, flexible enough for multi-tenant growth, and practical enough for day-to-day election operations. It is the service backbone that turns the Univote idea into an auditable, scalable digital election platform.
