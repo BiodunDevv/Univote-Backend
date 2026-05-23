@@ -68,6 +68,14 @@ const authenticateStudent = async (req, res, next) => {
         });
       }
 
+      const blacklisted = await cacheService.exists(`blacklist:${token}`);
+      if (blacklisted) {
+        return res.status(401).json({
+          error: "Token has been invalidated",
+          code: "TOKEN_BLACKLISTED",
+        });
+      }
+
       // Check Redis session first (fast path)
       const sessionKey = `session:student:${decoded.id}`;
       const cachedSession = await cacheService.get(sessionKey);
@@ -79,15 +87,6 @@ const authenticateStudent = async (req, res, next) => {
             error:
               "Session expired. You have been logged in from another device.",
             code: "SESSION_INVALIDATED",
-          });
-        }
-
-        // Check if token is blacklisted
-        const blacklisted = await cacheService.exists(`blacklist:${token}`);
-        if (blacklisted) {
-          return res.status(401).json({
-            error: "Token has been invalidated",
-            code: "TOKEN_BLACKLISTED",
           });
         }
 
@@ -105,6 +104,7 @@ const authenticateStudent = async (req, res, next) => {
 
           req.student = cachedProfile;
           req.studentId = decoded.id;
+          req.tenantId = req.tenantId || decoded.tenant_id || null;
           req.token = token;
           return next();
         }

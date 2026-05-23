@@ -74,20 +74,41 @@ async function resolveEligibleDepartmentNames(tenantId, eligibleDepartmentIds = 
     return [];
   }
 
-  const colleges = await College.find(buildScopedFilter(tenantId, {}))
-    .select("departments._id departments.name")
-    .lean();
-
-  const departmentNames = [];
-  colleges.forEach((college) => {
-    (college.departments || []).forEach((department) => {
-      if (eligibleDepartmentIds.includes(department._id.toString())) {
-        departmentNames.push(department.name);
+  const departmentObjectIds = eligibleDepartmentIds
+    .map((id) => {
+      try {
+        return new mongoose.Types.ObjectId(id);
+      } catch {
+        return null;
       }
-    });
-  });
+    })
+    .filter(Boolean);
 
-  return departmentNames;
+  if (departmentObjectIds.length === 0) {
+    return [];
+  }
+
+  const rows = await College.aggregate([
+    {
+      $match: buildScopedFilter(tenantId, {
+        "departments._id": { $in: departmentObjectIds },
+      }),
+    },
+    { $unwind: "$departments" },
+    {
+      $match: {
+        "departments._id": { $in: departmentObjectIds },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        name: "$departments.name",
+      },
+    },
+  ]);
+
+  return rows.map((row) => row.name).filter(Boolean);
 }
 
 async function buildEligibilityContext(tenant, session) {

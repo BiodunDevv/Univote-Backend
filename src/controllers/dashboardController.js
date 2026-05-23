@@ -15,6 +15,7 @@ const {
   getTenantParticipantFieldMetadata,
   getTenantSettings,
 } = require("../utils/tenantSettings");
+const { getDepartmentNameMap } = require("../utils/departmentLookup");
 
 function calculateSessionStatus(session) {
   const now = new Date();
@@ -30,24 +31,23 @@ function calculateSessionStatus(session) {
   return "ended";
 }
 
-function resolveEligibleDepartmentNames(session, colleges) {
+function resolveEligibleDepartmentNames(session, departmentNameMap) {
   if (!session.eligible_departments || session.eligible_departments.length === 0) {
     return [];
   }
 
-  const departmentNames = [];
-  colleges.forEach((college) => {
-    college.departments.forEach((department) => {
-      if (session.eligible_departments.includes(department._id.toString())) {
-        departmentNames.push(department.name);
-      }
-    });
-  });
-
-  return departmentNames;
+  const seen = new Set();
+  return session.eligible_departments.reduce((departmentNames, departmentId) => {
+    const resolved = departmentNameMap[String(departmentId)] || null;
+    if (resolved && !seen.has(resolved)) {
+      seen.add(resolved);
+      departmentNames.push(resolved);
+    }
+    return departmentNames;
+  }, []);
 }
 
-function isStudentEligibleForSession(session, student, colleges) {
+function isStudentEligibleForSession(session, student, departmentNameMap) {
   if (
     session.eligible_college &&
     session.eligible_college !== student.college
@@ -56,7 +56,10 @@ function isStudentEligibleForSession(session, student, colleges) {
   }
 
   if (session.eligible_departments && session.eligible_departments.length > 0) {
-    const departmentNames = resolveEligibleDepartmentNames(session, colleges);
+    const departmentNames = resolveEligibleDepartmentNames(
+      session,
+      departmentNameMap,
+    );
     if (!departmentNames.includes(student.department)) {
       return false;
     }
@@ -460,7 +463,7 @@ class DashboardController {
         return res.status(404).json({ error: "Student not found" });
       }
 
-      const [allSessions, collegesData, votingHistory] = await Promise.all([
+      const [allSessions, departmentNameMap, votingHistory] = await Promise.all([
         this.getCachedStat(
           buildTenantStatKey(req, "all_sessions"),
           () =>
@@ -471,14 +474,8 @@ class DashboardController {
               .lean(),
           60,
         ),
-        this.getCachedStat(
-          buildTenantStatKey(req, "colleges_departments"),
-          () =>
-            College.find(getTenantScopedFilter(req, {}))
-              .select("departments")
-              .lean(),
-          300,
-        ),
+        this.getCachedStat(buildTenantStatKey(req, "department_name_map"), () =>
+          getDepartmentNameMap(req), 300),
         this.getCachedStat(
           buildTenantStatKey(req, `student_voting_history:${studentId}`),
           () =>
@@ -519,7 +516,7 @@ class DashboardController {
           has_voted: hasVoted,
         };
 
-        if (isStudentEligibleForSession(session, student, collegesData)) {
+        if (isStudentEligibleForSession(session, student, departmentNameMap)) {
           eligibleSessions.push(sessionData);
         } else {
           ineligibleSessions.push(sessionData);
@@ -536,59 +533,61 @@ class DashboardController {
         (session) => session.status === "ended",
       ).length;
 
-      const recentResults = [];
-      const sessionIdsToCheck = student.has_voted_sessions.slice(0, 5);
+      const recentResultSessionIds = student.has_voted_sessions.slice(0, 5);
+      const recentResultSessions = recentResultSessionIds.length
+        ? await this.getCachedStat(
+            buildTenantStatKey(
+              req,
+              `student_recent_results:${recentResultSessionIds.join(",")}`,
+            ),
+            async () => {
+              const sessions = await VotingSession.find(
+                getTenantScopedFilter(req, {
+                  _id: { $in: recentResultSessionIds },
+                }),
+              )
+                .select("title start_time end_time")
+                .populate("candidates", "name position vote_count")
+                .lean();
 
-      for (const sessionId of sessionIdsToCheck) {
-        const sessionResult = await this.getCachedStat(
-          buildTenantStatKey(req, `session_result:${sessionId}`),
-          async () => {
-            const session = await VotingSession.findOne(
-              getTenantScopedFilter(req, { _id: sessionId }),
-            )
-              .select("title status end_time results_public")
-              .populate("candidates", "name position vote_count")
-              .lean();
+              return sessions
+                .filter((session) => calculateSessionStatus(session) === "ended")
+                .map((session) => {
+                  const winners = {};
+                  const resultsByPosition = {};
 
-            if (!session) return null;
+                  session.candidates.forEach((candidate) => {
+                    if (!resultsByPosition[candidate.position]) {
+                      resultsByPosition[candidate.position] = [];
+                    }
+                    resultsByPosition[candidate.position].push(candidate);
+                  });
 
-            const sessionStatus = calculateSessionStatus(session);
-            if (sessionStatus !== "ended") return null;
+                  Object.entries(resultsByPosition).forEach(
+                    ([position, candidates]) => {
+                      const maxVotes = Math.max(
+                        ...candidates.map((candidate) => candidate.vote_count),
+                      );
+                      winners[position] =
+                        candidates.find(
+                          (candidate) => candidate.vote_count === maxVotes,
+                        ) || null;
+                    },
+                  );
 
-            const resultsByPosition = {};
-            session.candidates.forEach((candidate) => {
-              if (!resultsByPosition[candidate.position]) {
-                resultsByPosition[candidate.position] = [];
-              }
-              resultsByPosition[candidate.position].push({
-                name: candidate.name,
-                vote_count: candidate.vote_count,
-              });
-            });
+                  return {
+                    session_id: session._id,
+                    title: session.title,
+                    end_time: session.end_time,
+                    winners,
+                  };
+                });
+            },
+            180,
+          )
+        : [];
 
-            const winners = {};
-            Object.keys(resultsByPosition).forEach((position) => {
-              const candidates = resultsByPosition[position];
-              const maxVotes = Math.max(...candidates.map((c) => c.vote_count));
-              winners[position] = candidates.find(
-                (candidate) => candidate.vote_count === maxVotes,
-              );
-            });
-
-            return {
-              session_id: session._id,
-              title: session.title,
-              end_time: session.end_time,
-              winners,
-            };
-          },
-          180,
-        );
-
-        if (sessionResult) {
-          recentResults.push(sessionResult);
-        }
-      }
+      const recentResults = recentResultSessions;
 
       const notifications = [];
       const activeNotVoted = eligibleSessions.filter(

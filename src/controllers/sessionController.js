@@ -3,7 +3,6 @@ const VotingSession = require("../models/VotingSession");
 const Student = require("../models/Student");
 const Candidate = require("../models/Candidate");
 const Vote = require("../models/Vote");
-const College = require("../models/College");
 const cacheService = require("../services/cacheService");
 const {
   getTenantScopedFilter,
@@ -11,6 +10,9 @@ const {
   prependTenantMatch,
 } = require("../utils/tenantScope");
 const { getTenantEligibilityPolicy } = require("../utils/tenantSettings");
+const {
+  getDepartmentNameMap,
+} = require("../utils/departmentLookup");
 
 const SESSION_LIST_SELECT =
   "_id title description start_time end_time categories location is_off_campus_allowed eligible_college eligible_departments eligible_levels results_public candidates";
@@ -31,31 +33,32 @@ function calculateSessionStatus(session) {
   return "ended";
 }
 
-function resolveEligibleDepartmentNames(eligibleDepartmentIds, colleges) {
+function resolveEligibleDepartmentNames(eligibleDepartmentIds, departmentNameMap) {
   if (!eligibleDepartmentIds || eligibleDepartmentIds.length === 0) {
     return [];
   }
 
-  const names = [];
-
-  colleges.forEach((college) => {
-    college.departments.forEach((department) => {
-      if (eligibleDepartmentIds.includes(department._id.toString())) {
-        names.push(department.name);
-      }
-    });
-  });
-
-  return names;
+  const seen = new Set();
+  return eligibleDepartmentIds.reduce((names, departmentId) => {
+    const resolved = departmentNameMap[String(departmentId)] || null;
+    if (resolved && !seen.has(resolved)) {
+      seen.add(resolved);
+      names.push(resolved);
+    }
+    return names;
+  }, []);
 }
 
-function buildEligibilityScope(session, tenant, colleges) {
+function buildEligibilityScope(session, tenant, departmentNameMap) {
   const eligibilityPolicy = getTenantEligibilityPolicy(tenant || null);
   const college = eligibilityPolicy.college
     ? session.eligible_college || null
     : null;
   const departments = eligibilityPolicy.department
-    ? resolveEligibleDepartmentNames(session.eligible_departments || [], colleges)
+    ? resolveEligibleDepartmentNames(
+        session.eligible_departments || [],
+        departmentNameMap,
+      )
     : [];
   const levels = eligibilityPolicy.level
     ? session.eligible_levels || []
@@ -84,7 +87,7 @@ function buildEligibilityScope(session, tenant, colleges) {
   };
 }
 
-function getSessionEligibility(session, student, colleges) {
+function getSessionEligibility(session, student, departmentNameMap) {
   const eligibilityPolicy = getTenantEligibilityPolicy(student?.tenant || null);
 
   if (
@@ -105,7 +108,7 @@ function getSessionEligibility(session, student, colleges) {
   ) {
     const departmentNames = resolveEligibleDepartmentNames(
       session.eligible_departments,
-      colleges,
+      departmentNameMap,
     );
 
     if (!departmentNames.includes(student.department)) {
@@ -166,15 +169,13 @@ class SessionController {
   }
 
   async getStudentAndCollegeContext(req, studentId) {
-    const [student, colleges] = await Promise.all([
+    const [student, departmentNameMap] = await Promise.all([
       Student.findOne(getTenantScopedFilter(req, { _id: studentId }))
         .select(
           "matric_no full_name email college department level photo_url has_voted_sessions tenant_id",
         )
         .lean(),
-      College.find(getTenantScopedFilter(req, {}))
-        .select("departments._id departments.name")
-        .lean(),
+      getDepartmentNameMap(req),
     ]);
 
     const tenantId =
@@ -190,7 +191,7 @@ class SessionController {
             tenant: req.tenant || (tenantId ? { _id: tenantId } : null),
           }
         : null,
-      colleges,
+      departmentNameMap,
     };
   }
 
@@ -214,7 +215,7 @@ class SessionController {
         });
       }
 
-      const { student, colleges } = await this.getStudentAndCollegeContext(
+      const { student, departmentNameMap } = await this.getStudentAndCollegeContext(
         req,
         studentId,
       );
@@ -239,12 +240,20 @@ class SessionController {
           return acc;
         }
 
-        const { eligible } = getSessionEligibility(session, student, colleges);
+        const { eligible } = getSessionEligibility(
+          session,
+          student,
+          departmentNameMap,
+        );
         if (!eligible) {
           return acc;
         }
 
-        const eligibilityScope = buildEligibilityScope(session, student.tenant, colleges);
+        const eligibilityScope = buildEligibilityScope(
+          session,
+          student.tenant,
+          departmentNameMap,
+        );
 
         acc.push({
           ...session,
@@ -313,16 +322,16 @@ class SessionController {
       ...session,
       status: calculateSessionStatus(session),
     };
-    const { eligible, reason } = getSessionEligibility(
-      calculatedSession,
-      context.student,
-      context.colleges,
-    );
-    const eligibilityScope = buildEligibilityScope(
-      calculatedSession,
-      context.student.tenant,
-      context.colleges,
-    );
+      const { eligible, reason } = getSessionEligibility(
+        calculatedSession,
+        context.student,
+        context.departmentNameMap,
+      );
+      const eligibilityScope = buildEligibilityScope(
+        calculatedSession,
+        context.student.tenant,
+        context.departmentNameMap,
+      );
 
     const responseData = {
       session: {

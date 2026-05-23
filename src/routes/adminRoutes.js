@@ -652,6 +652,19 @@ router.post(
  *                   $ref: '#/components/schemas/Pagination'
  */
 router.get("/students", ...tenantAdminMiddlewares, adminController.getStudents);
+/**
+ * @swagger
+ * /admin/participants:
+ *   get:
+ *     summary: List participants
+ *     description: Alias of the student registry endpoint for tenants using participant terminology.
+ *     tags: [Admin - Students]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Paginated participant list
+ */
 router.get(
   "/participants",
   ...tenantAdminMiddlewares,
@@ -662,6 +675,16 @@ router.get(
   ...tenantAdminMiddlewares,
   adminController.getStudentsOverview,
 );
+/**
+ * @swagger
+ * /admin/participants/overview:
+ *   get:
+ *     summary: Get participant overview
+ *     description: Alias of the student overview endpoint for participant-labelled tenants.
+ *     tags: [Admin - Students]
+ *     security:
+ *       - BearerAuth: []
+ */
 router.get(
   "/participants/overview",
   ...tenantAdminMiddlewares,
@@ -708,6 +731,32 @@ router.get(
   ...tenantAdminMiddlewares,
   adminController.getStudentById,
 );
+/**
+ * @swagger
+ * /admin/participants/{id}:
+ *   get:
+ *     summary: Get participant by ID
+ *     description: Alias of the student detail endpoint for participant-labelled tenants.
+ *     tags: [Admin - Students]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *   patch:
+ *     summary: Update participant by ID
+ *     tags: [Admin - Students]
+ *     security:
+ *       - BearerAuth: []
+ *   delete:
+ *     summary: Delete or deactivate participant
+ *     tags: [Admin - Students]
+ *     security:
+ *       - BearerAuth: []
+ */
 router.get(
   "/participants/:id",
   ...tenantAdminMiddlewares,
@@ -1079,6 +1128,18 @@ router.get(
  *                   $ref: '#/components/schemas/Pagination'
  */
 router.get("/sessions", ...tenantAdminMiddlewares, adminController.getSessions);
+/**
+ * @swagger
+ * /admin/sessions/summary:
+ *   get:
+ *     summary: Get election registry summary
+ *     tags: [Admin - Elections]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Session summary counts and aggregates
+ */
 
 router.get(
   "/sessions/summary",
@@ -1143,6 +1204,24 @@ router.get(
   ...tenantAdminMiddlewares,
   adminController.getSessionLive,
 );
+/**
+ * @swagger
+ * /admin/sessions/{id}/live:
+ *   get:
+ *     summary: Get admin live election payload
+ *     tags: [Admin - Elections]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Admin live election payload
+ */
 
 router.get(
   "/sessions/:id",

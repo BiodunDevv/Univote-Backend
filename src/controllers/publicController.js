@@ -88,6 +88,10 @@ function createApplicationReference() {
     .toUpperCase()}`;
 }
 
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function appendStatusTimeline(tenant, status, label, note = null) {
   if (!tenant.onboarding) {
     tenant.onboarding = {};
@@ -188,9 +192,10 @@ class PublicController {
       };
 
       if (search) {
+        const safeSearch = escapeRegex(search);
         filter.$or = [
-          { name: { $regex: search, $options: "i" } },
-          { slug: { $regex: search, $options: "i" } },
+          { name: { $regex: safeSearch, $options: "i" } },
+          { slug: { $regex: safeSearch, $options: "i" } },
         ];
       }
 

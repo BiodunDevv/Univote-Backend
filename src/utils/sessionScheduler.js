@@ -143,7 +143,7 @@ class SessionScheduler {
         session.eligible_departments.length > 0
       ) {
         const College = require("../models/College");
-        const colleges = await College.find({}).select("departments").lean();
+        const colleges = await College.find({ tenant_id: session.tenant_id }).select("departments").lean();
         const departmentNames = [];
 
         colleges.forEach((college) => {
@@ -165,6 +165,7 @@ class SessionScheduler {
 
       // Get all eligible students who voted in this session
       const studentsWhoVoted = await Student.find({
+        tenant_id: session.tenant_id,
         ...eligibilityFilter,
         has_voted_sessions: session._id,
       }).select("email full_name");

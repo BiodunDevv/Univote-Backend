@@ -668,6 +668,21 @@ router.get(
   requireStructureField("department"),
   collegeController.getDepartments,
 );
+/**
+ * @swagger
+ * /admin/structure/colleges/{id}/departments:
+ *   get:
+ *     summary: List departments using structure-aware college alias route
+ *     tags: [Colleges]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ */
 
 /**
  * @swagger
@@ -715,6 +730,15 @@ router.get(
   requireStructureField("department"),
   collegeController.getDepartmentById,
 );
+/**
+ * @swagger
+ * /admin/structure/colleges/{collegeId}/departments/{deptId}:
+ *   get:
+ *     summary: Get department using structure-aware alias route
+ *     tags: [Colleges]
+ *     security:
+ *       - BearerAuth: []
+ */
 
 /**
  * @swagger

@@ -186,20 +186,41 @@ async function resolveEligibleDepartmentNames(req, eligibleDepartmentIds = []) {
     return [];
   }
 
-  const colleges = await College.find(getTenantScopedFilter(req, {}))
-    .select("departments")
-    .lean();
-  const departmentNames = [];
-
-  colleges.forEach((college) => {
-    (college.departments || []).forEach((department) => {
-      if (eligibleDepartmentIds.includes(department._id.toString())) {
-        departmentNames.push(department.name);
+  const departmentObjectIds = eligibleDepartmentIds
+    .map((id) => {
+      try {
+        return new mongoose.Types.ObjectId(id);
+      } catch {
+        return null;
       }
-    });
-  });
+    })
+    .filter(Boolean);
 
-  return departmentNames;
+  if (departmentObjectIds.length === 0) {
+    return [];
+  }
+
+  const rows = await College.aggregate([
+    {
+      $match: getTenantScopedFilter(req, {
+        "departments._id": { $in: departmentObjectIds },
+      }),
+    },
+    { $unwind: "$departments" },
+    {
+      $match: {
+        "departments._id": { $in: departmentObjectIds },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        name: "$departments.name",
+      },
+    },
+  ]);
+
+  return rows.map((row) => row.name).filter(Boolean);
 }
 
 async function getVoteEligibilityFailure(req, session, student) {
@@ -894,18 +915,7 @@ class VoteController {
         session.eligible_departments &&
         session.eligible_departments.length > 0
       ) {
-        const colleges = await College.find(getTenantScopedFilter(req, {}))
-          .select("departments")
-          .lean();
-        const departmentNames = [];
-
-        colleges.forEach((college) => {
-          college.departments.forEach((dept) => {
-            if (session.eligible_departments.includes(dept._id.toString())) {
-              departmentNames.push(dept.name);
-            }
-          });
-        });
+        const departmentNames = await resolveEligibleDepartmentNames(req, session.eligible_departments);
 
         if (!departmentNames.includes(student.department)) {
           await mongoSession.abortTransaction();
@@ -1419,13 +1429,18 @@ class VoteController {
   async getVotingHistory(req, res) {
     try {
       const studentId = req.studentId;
+      const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+      const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+      const skip = (page - 1) * limit;
 
       const votes = await Vote.find(
         getTenantScopedFilter(req, { student_id: studentId, status: "valid" }),
       )
         .populate("session_id", "title description start_time end_time")
         .populate("candidate_id", "name position photo_url")
-        .sort({ timestamp: -1 });
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(limit);
 
       // Group votes by session
       const votingHistory = votes.reduce((acc, vote) => {

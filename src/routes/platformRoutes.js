@@ -33,6 +33,26 @@ router.get(
   requireSuperAdmin,
   platformController.getPlatformSettings,
 );
+/**
+ * @swagger
+ * /platform/settings/defaults:
+ *   get:
+ *     summary: Get platform default settings
+ *     tags: [Platform]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Platform default settings
+ *   patch:
+ *     summary: Update platform default settings
+ *     tags: [Platform]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Platform default settings updated
+ */
 
 router.patch(
   "/settings/defaults",
@@ -375,6 +395,21 @@ router.post(
  *     responses:
  *       200:
  *         description: Testimonial updated successfully
+ */
+/**
+ * @swagger
+ * /platform/testimonials/{id}:
+ *   patch:
+ *     summary: Update a moderated testimonial
+ *     tags: [Platform]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
  */
 router.patch(
   "/testimonials/:id",

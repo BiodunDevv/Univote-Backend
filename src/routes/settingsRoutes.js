@@ -126,11 +126,35 @@ router.get(
   ...tenantSettingsAccess,
   settingsController.getFeatureAccess,
 );
+/**
+ * @swagger
+ * /admin/settings/feature-access:
+ *   get:
+ *     summary: Get tenant feature access
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tenant feature access details
+ */
 router.get(
   "/plan-entitlements",
   ...tenantSettingsAccess,
   settingsController.getPlanEntitlements,
 );
+/**
+ * @swagger
+ * /admin/settings/plan-entitlements:
+ *   get:
+ *     summary: Get tenant plan entitlements
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tenant plan entitlements
+ */
 
 /**
  * @swagger
@@ -406,16 +430,55 @@ router.post("/test-biometric", ...tenantSettingsAccess, settingsController.testB
 
 // Tenant testing endpoints are mounted under /api/admin/settings/testing/*
 // through app.use("/api/admin/settings", settingsRoutes) in src/app.js.
+/**
+ * @swagger
+ * /admin/settings/testing/liveness/session:
+ *   post:
+ *     summary: Start a tenant biometric testing liveness session
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       201:
+ *         description: Testing liveness session created
+ */
 router.post(
   "/testing/liveness/session",
   ...tenantSettingsAccess,
   settingsController.createTestingLivenessSession,
 );
+/**
+ * @swagger
+ * /admin/settings/testing/liveness/session/{id}:
+ *   get:
+ *     summary: Resolve a tenant biometric testing liveness session
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ */
 router.get(
   "/testing/liveness/session/:id",
   ...tenantSettingsAccess,
   settingsController.getTestingLivenessSessionResult,
 );
+/**
+ * @swagger
+ * /admin/settings/testing/compare:
+ *   post:
+ *     summary: Compare a student biometric during testing
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Biometric comparison result
+ */
 router.post(
   "/testing/compare",
   ...tenantSettingsAccess,
@@ -631,6 +694,18 @@ router.delete(
  *                   items:
  *                     type: object
  */
+/**
+ * @swagger
+ * /admin/settings/export:
+ *   post:
+ *     summary: Export tenant operational data
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Export payload generated successfully
+ */
 router.post(
   "/export",
   ...tenantSettingsAccess,
@@ -697,6 +772,18 @@ router.get(
  *                   type: string
  *                 notification_preferences:
  *                   type: object
+ */
+/**
+ * @swagger
+ * /admin/settings/notifications:
+ *   patch:
+ *     summary: Update current admin notification preferences
+ *     tags: [Settings]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Notification preferences updated
  */
 router.patch(
   "/notifications",

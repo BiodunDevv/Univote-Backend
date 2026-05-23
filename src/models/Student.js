@@ -137,6 +137,11 @@ studentSchema.index(
   { unique: true, partialFilterExpression: { tenant_id: { $type: "objectId" } } },
 );
 studentSchema.index({ tenant_id: 1, email: 1 });
+studentSchema.index({ tenant_id: 1, is_active: 1, college: 1 });
+studentSchema.index({ tenant_id: 1, is_active: 1, department: 1 });
+studentSchema.index({ tenant_id: 1, is_active: 1, level: 1 });
+studentSchema.index({ tenant_id: 1, last_login_at: -1 });
+studentSchema.index({ tenant_id: 1, has_voted_sessions: 1 });
 studentSchema.index({ department: 1, college: 1, level: 1 });
 studentSchema.index({ college: 1, is_active: 1 });
 studentSchema.index({ department: 1, is_active: 1 });
@@ -145,7 +150,7 @@ studentSchema.index({ last_login_at: -1 });
 studentSchema.index({ createdAt: -1 });
 studentSchema.index({ has_voted_sessions: 1 });
 studentSchema.index({ tenant_id: 1, createdAt: -1 });
-studentSchema.index({ is_active: 1, college: 1, department: 1, level: 1 }); // For eligibility queries
+studentSchema.index({ tenant_id: 1, is_active: 1, college: 1, department: 1, level: 1 }); // For tenant-scoped eligibility queries
 studentSchema.index({
   full_name: "text",
   email: "text",

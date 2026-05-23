@@ -722,12 +722,13 @@ class SupportController {
       }
 
       if (search) {
+        const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         filter.$or = [
-          { ticket_number: { $regex: search, $options: "i" } },
-          { subject: { $regex: search, $options: "i" } },
-          { description: { $regex: search, $options: "i" } },
-          { "requester_snapshot.name": { $regex: search, $options: "i" } },
-          { "requester_snapshot.email": { $regex: search, $options: "i" } },
+          { ticket_number: { $regex: escapedSearch, $options: "i" } },
+          { subject: { $regex: escapedSearch, $options: "i" } },
+          { description: { $regex: escapedSearch, $options: "i" } },
+          { "requester_snapshot.name": { $regex: escapedSearch, $options: "i" } },
+          { "requester_snapshot.email": { $regex: escapedSearch, $options: "i" } },
         ];
       }
 

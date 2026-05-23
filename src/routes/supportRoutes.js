@@ -104,6 +104,26 @@ router.get("/overview", supportController.getOverview);
  *       201:
  *         description: Support ticket created successfully
  */
+/**
+ * @swagger
+ * /support/tickets:
+ *   get:
+ *     summary: List support tickets
+ *     tags: [Support]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Support ticket list
+ *   post:
+ *     summary: Create a support ticket
+ *     tags: [Support]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       201:
+ *         description: Support ticket created successfully
+ */
 router.get("/tickets", supportController.listTickets);
 
 router.post(
@@ -145,6 +165,35 @@ router.post(
  *   patch:
  *     summary: Update support ticket
  *     description: Updates support ticket status, priority, category, or assignment. Students can only close their own tickets.
+ *     tags: [Support]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Support ticket updated successfully
+ */
+/**
+ * @swagger
+ * /support/tickets/{id}:
+ *   get:
+ *     summary: Get support ticket by ID
+ *     tags: [Support]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *   patch:
+ *     summary: Update a support ticket
  *     tags: [Support]
  *     security:
  *       - BearerAuth: []

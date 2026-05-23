@@ -84,6 +84,20 @@ const auditLogger = require("../middleware/auditLogger");
  *       429:
  *         description: Rate limit exceeded
  */
+/**
+ * @swagger
+ * /vote/liveness/session:
+ *   post:
+ *     summary: Start a live face verification session
+ *     tags: [Voting]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       201:
+ *         description: Liveness session created
+ *       503:
+ *         description: Biometric provider unavailable
+ */
 router.post(
   "/liveness/session",
   authenticateStudent,
@@ -93,6 +107,24 @@ router.post(
   voteController.createLivenessSession,
 );
 
+/**
+ * @swagger
+ * /vote/liveness/session/{id}:
+ *   get:
+ *     summary: Resolve a live face verification session result
+ *     tags: [Voting]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Liveness session result
+ */
 router.get(
   "/liveness/session/:id",
   authenticateStudent,
@@ -101,6 +133,26 @@ router.get(
   voteController.getLivenessSessionResult,
 );
 
+/**
+ * @swagger
+ * /vote/session/{sessionId}/submitted:
+ *   get:
+ *     summary: Get the authenticated student's submitted ballot for an election
+ *     tags: [Voting]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Submitted ballot receipt
+ *       404:
+ *         description: Submitted ballot not found
+ */
 router.get(
   "/session/:sessionId/submitted",
   authenticateStudent,
@@ -108,6 +160,34 @@ router.get(
   voteController.getSubmittedBallotBySession,
 );
 
+/**
+ * @swagger
+ * /vote/location-check:
+ *   post:
+ *     summary: Verify whether the student's current location is allowed for voting
+ *     tags: [Voting]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [session_id, lat, lng]
+ *             properties:
+ *               session_id:
+ *                 type: string
+ *               lat:
+ *                 type: number
+ *               lng:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Location is accepted for voting
+ *       403:
+ *         description: Location or eligibility denied
+ */
 router.post(
   "/location-check",
   authenticateStudent,

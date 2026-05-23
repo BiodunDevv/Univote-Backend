@@ -2,32 +2,14 @@ const mongoose = require("mongoose");
 const VotingSession = require("../models/VotingSession");
 const Vote = require("../models/Vote");
 const Student = require("../models/Student");
-const College = require("../models/College");
 const {
   getTenantScopedFilter,
   prependTenantMatch,
 } = require("../utils/tenantScope");
+const { resolveDepartmentNames } = require("../utils/departmentLookup");
 
 async function resolveEligibleDepartmentNames(req, departmentIds) {
-  if (!departmentIds || departmentIds.length === 0) {
-    return [];
-  }
-
-  const colleges = await College.find(getTenantScopedFilter(req, {}))
-    .select("departments._id departments.name")
-    .lean();
-
-  const matchedNames = [];
-
-  colleges.forEach((college) => {
-    college.departments.forEach((department) => {
-      if (departmentIds.includes(department._id.toString())) {
-        matchedNames.push(department.name);
-      }
-    });
-  });
-
-  return matchedNames;
+  return resolveDepartmentNames(req, departmentIds);
 }
 
 function buildEligibilityFilter(req, session, departmentNames) {
@@ -248,24 +230,30 @@ class ResultController {
       let totalTurnout = 0;
       let sessionsWithTurnout = 0;
 
-      for (const session of endedSessions) {
-        const departmentNames =
-          session.eligible_departments && session.eligible_departments.length > 0
-            ? await resolveEligibleDepartmentNames(req, session.eligible_departments)
-            : [];
+      const turnoutResults = await Promise.all(
+        endedSessions.map(async (session) => {
+          const departmentNames =
+            session.eligible_departments && session.eligible_departments.length > 0
+              ? await resolveEligibleDepartmentNames(req, session.eligible_departments)
+              : [];
 
-        const [eligibleStudents, sessionVotes] = await Promise.all([
-          Student.countDocuments(
-            buildEligibilityFilter(req, session, departmentNames),
-          ),
-          Vote.countDocuments(
-            getTenantScopedFilter(req, {
-              session_id: session._id,
-              status: "valid",
-            }),
-          ),
-        ]);
+          const [eligibleStudents, sessionVotes] = await Promise.all([
+            Student.countDocuments(
+              buildEligibilityFilter(req, session, departmentNames),
+            ),
+            Vote.countDocuments(
+              getTenantScopedFilter(req, {
+                session_id: session._id,
+                status: "valid",
+              }),
+            ),
+          ]);
 
+          return { eligibleStudents, sessionVotes };
+        }),
+      );
+
+      for (const { eligibleStudents, sessionVotes } of turnoutResults) {
         if (eligibleStudents > 0) {
           totalTurnout += (sessionVotes / eligibleStudents) * 100;
           sessionsWithTurnout++;

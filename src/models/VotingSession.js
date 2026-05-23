@@ -104,6 +104,8 @@ votingSessionSchema.index({ createdAt: -1 });
 votingSessionSchema.index({ start_time: -1 });
 votingSessionSchema.index({ status: 1, createdAt: -1 });
 votingSessionSchema.index({ tenant_id: 1, status: 1, start_time: 1 });
+votingSessionSchema.index({ tenant_id: 1, start_time: -1 });
+votingSessionSchema.index({ tenant_id: 1, createdAt: -1 });
 votingSessionSchema.index(
   { tenant_id: 1, live_public_code: 1 },
   {

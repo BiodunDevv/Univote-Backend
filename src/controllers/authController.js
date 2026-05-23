@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const Student = require("../models/Student");
 const Admin = require("../models/Admin");
@@ -936,7 +937,7 @@ class AuthController {
         });
       }
 
-      const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const resetCode = (100000 + crypto.randomInt(900000)).toString();
       const salt = await bcrypt.genSalt(10);
       const hashedCode = await bcrypt.hash(resetCode, salt);
 
@@ -1094,7 +1095,7 @@ class AuthController {
       }
 
       // Generate 6-digit code
-      const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const resetCode = (100000 + crypto.randomInt(900000)).toString();
 
       // Hash the code before storing
       const salt = await bcrypt.genSalt(10);

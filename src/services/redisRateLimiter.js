@@ -87,12 +87,14 @@ const authLimiter = createRedisRateLimiter({
   message: "Too many login attempts, please try again after 15 minutes.",
   skipSuccessfulRequests: true,
   keyGenerator: (req) => {
-    return (
-      req.body.email ||
-      req.body.identifier ||
-      req.body.matric_no ||
-      resolveClientKey(req, "auth")
-    );
+    const email = req.body.email || req.body.identifier;
+    if (email && typeof email === "string") {
+      return `auth:${email.trim().toLowerCase()}`;
+    }
+    if (req.body.matric_no) {
+      return `auth:${String(req.body.matric_no).trim().toLowerCase()}`;
+    }
+    return resolveClientKey(req, "auth");
   },
 });
 

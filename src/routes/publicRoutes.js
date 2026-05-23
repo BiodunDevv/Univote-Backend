@@ -26,6 +26,30 @@ router.get(
 
 /**
  * @swagger
+ * /public/live/{tenantSlug}/{liveCode}:
+ *   get:
+ *     summary: Get public live election turnout view
+ *     tags: [Public]
+ *     parameters:
+ *       - in: path
+ *         name: tenantSlug
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: liveCode
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Live election turnout payload
+ *       404:
+ *         description: Live election not found
+ */
+
+/**
+ * @swagger
  * /public/organizations:
  *   get:
  *     summary: List active organizations for portal selection
@@ -93,6 +117,23 @@ router.get(
  *         description: Published testimonials retrieved successfully
  */
 router.get("/testimonials", apiLimiter, publicController.listTestimonials);
+/**
+ * @swagger
+ * /public/testimonials/submissions:
+ *   post:
+ *     summary: Submit a public testimonial for moderation
+ *     tags: [Public]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [author_name, author_role, institution_name, quote]
+ *     responses:
+ *       201:
+ *         description: Testimonial submitted successfully
+ */
 router.post(
   "/testimonials/submissions",
   apiLimiter,
@@ -157,6 +198,16 @@ router.post(
  *       201:
  *         description: Tenant application submitted successfully
  */
+/**
+ * @swagger
+ * /public/applications:
+ *   post:
+ *     summary: Submit a university workspace application
+ *     tags: [Public]
+ *     responses:
+ *       201:
+ *         description: Application submitted successfully
+ */
 router.post(
   "/applications",
   apiLimiter,
@@ -188,6 +239,24 @@ router.post(
   publicController.submitTenantApplication,
 );
 
+/**
+ * @swagger
+ * /public/applications/{reference}:
+ *   patch:
+ *     summary: Update an existing university workspace application
+ *     tags: [Public]
+ *     parameters:
+ *       - in: path
+ *         name: reference
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Application updated successfully
+ *       404:
+ *         description: Application not found
+ */
 router.patch(
   "/applications/:reference",
   apiLimiter,
@@ -207,6 +276,16 @@ router.patch(
   publicController.updateTenantApplication,
 );
 
+/**
+ * @swagger
+ * /public/applications/status:
+ *   get:
+ *     summary: Check a university workspace application status
+ *     tags: [Public]
+ *     responses:
+ *       200:
+ *         description: Application status payload
+ */
 router.get(
   "/applications/status",
   apiLimiter,

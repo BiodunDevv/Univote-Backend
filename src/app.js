@@ -93,12 +93,6 @@ pingRedis()
   })
   .catch((err) => console.warn("⚠  Redis:", err.message));
 
-connectDB()
-  .then(async () => {
-    require("./utils/sessionScheduler").start();
-  })
-  .catch((err) => console.error("✗ MongoDB failed:", err.message));
-
 // ── Middleware ───────────────────────────────────────────
 app.use(
   cors({
@@ -151,7 +145,6 @@ app.use(
   "/api-docs",
   swaggerUi.serve,
   swaggerUi.setup(swaggerSpec, {
-    customCss: ".swagger-ui .topbar { display: none }",
     customSiteTitle: "Univote API Documentation",
   }),
 );
@@ -203,8 +196,11 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error("Error:", err);
   const statusCode = err.statusCode || 500;
+  const isOperational = err.isOperational || statusCode < 500;
   res.status(statusCode).json({
-    error: err.message || "Internal Server Error",
+    error: isOperational || ENV === "development"
+      ? err.message || "Internal Server Error"
+      : "Internal Server Error",
     ...(ENV === "development" && { stack: err.stack }),
   });
 });
@@ -213,8 +209,20 @@ app.use((err, req, res, next) => {
 const server = http.createServer(app);
 initializeSocketServer(server);
 
-server.listen(PORT, () => {
-  console.log(`
+let keepAlive = null;
+
+async function startServer() {
+  try {
+    await connectDB();
+    require("./utils/sessionScheduler").start();
+  } catch (err) {
+    console.error("✗ MongoDB failed:", err.message);
+    process.exit(1);
+  }
+
+  return new Promise((resolve) => {
+    server.listen(PORT, () => {
+      console.log(`
   ╔══════════════════════════════════════════╗
   ║         UNIVOTE API  ·  v1.0.0          ║
   ╠══════════════════════════════════════════╣
@@ -224,14 +232,22 @@ server.listen(PORT, () => {
   ╚══════════════════════════════════════════╝
   `);
 
-  // Keep-alive self-ping (works in all environments)
-  const KeepAlive = require("./utils/keepAlive");
-  const keepAlive = new KeepAlive(
-    `${SERVER_URL}/api/health/ping`,
-    14 * 60 * 1000,
-  );
-  keepAlive.start();
-});
+      // Keep-alive self-ping (works in all environments)
+      const KeepAlive = require("./utils/keepAlive");
+      keepAlive = new KeepAlive(
+        `${SERVER_URL}/api/health/ping`,
+        14 * 60 * 1000,
+      );
+      keepAlive.start();
+      resolve(server);
+    });
+  });
+}
+
+if (require.main === module) {
+  void startServer();
+}
 
 module.exports = app;
 module.exports.server = server;
+module.exports.startServer = startServer;

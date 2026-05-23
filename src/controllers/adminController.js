@@ -1210,9 +1210,10 @@ class AdminController {
         candidateFilter.position = position;
       }
       if (search) {
+        const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         candidateFilter.$or = [
-          { name: { $regex: search, $options: "i" } },
-          { position: { $regex: search, $options: "i" } },
+          { name: { $regex: escapedSearch, $options: "i" } },
+          { position: { $regex: escapedSearch, $options: "i" } },
         ];
       }
 
@@ -1783,7 +1784,8 @@ class AdminController {
   async getStudentsByCollege(req, res) {
     try {
       const { collegeId } = req.params;
-      const { department, level, search, page = 1, limit = 50 } = req.query;
+      const { department, level, search, page = 1 } = req.query;
+      const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
 
       // First, get the college to get its name
       const College = require("../models/College");
@@ -1861,7 +1863,8 @@ class AdminController {
   async getStudentsByDepartment(req, res) {
     try {
       const { collegeId, departmentId } = req.params;
-      const { level, search, page = 1, limit = 50 } = req.query;
+      const { level, search, page = 1 } = req.query;
+      const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
 
       // Get college and department
       const College = require("../models/College");
