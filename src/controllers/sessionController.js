@@ -298,7 +298,7 @@ class SessionController {
     if (!session) {
       return {
         statusCode: 404,
-        payload: { error: "Session not found" },
+        payload: { error: "Election not found" },
       };
     }
 
@@ -507,7 +507,7 @@ class SessionController {
       ]);
 
       if (!session) {
-        return res.status(404).json({ error: "Session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       const calculatedSession = {

@@ -598,7 +598,7 @@ class DashboardController {
       if (activeNotVoted.length > 0) {
         notifications.push({
           type: "active_sessions",
-          message: `You have ${activeNotVoted.length} active voting session(s) available`,
+          message: `You have ${activeNotVoted.length} active election(s) available`,
           count: activeNotVoted.length,
           priority: "high",
         });
@@ -607,7 +607,7 @@ class DashboardController {
       if (upcomingSessions > 0) {
         notifications.push({
           type: "upcoming_sessions",
-          message: `${upcomingSessions} voting session(s) starting soon`,
+          message: `${upcomingSessions} election(s) starting soon`,
           count: upcomingSessions,
           priority: "medium",
         });
@@ -673,7 +673,7 @@ class DashboardController {
           total_eligible: eligibleSessions.length,
         },
         voting_history: votingHistory.map((vote) => ({
-          session: vote.session_id?.title || "Unknown Session",
+          session: vote.session_id?.title || "Unknown Election",
           candidate: vote.candidate_id?.name || "Unknown Candidate",
           position: vote.candidate_id?.position || "Unknown Position",
           voted_at: vote.createdAt,

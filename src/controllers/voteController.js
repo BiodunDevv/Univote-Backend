@@ -8,7 +8,11 @@ const VerificationLog = require("../models/VerificationLog");
 const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
 const { createVerificationLog } = require("../services/biometricAnalyticsService");
-const { isWithinGeofence, isValidCoordinates } = require("../utils/geofence");
+const {
+  calculateDistance,
+  isWithinGeofence,
+  isValidCoordinates,
+} = require("../utils/geofence");
 const cacheService = require("../services/cacheService");
 const {
   getTenantScopedFilter,
@@ -177,6 +181,106 @@ async function logVerificationAttempt(req, payload = {}) {
   }
 }
 
+async function resolveEligibleDepartmentNames(req, eligibleDepartmentIds = []) {
+  if (!eligibleDepartmentIds || eligibleDepartmentIds.length === 0) {
+    return [];
+  }
+
+  const colleges = await College.find(getTenantScopedFilter(req, {}))
+    .select("departments")
+    .lean();
+  const departmentNames = [];
+
+  colleges.forEach((college) => {
+    (college.departments || []).forEach((department) => {
+      if (eligibleDepartmentIds.includes(department._id.toString())) {
+        departmentNames.push(department.name);
+      }
+    });
+  });
+
+  return departmentNames;
+}
+
+async function getVoteEligibilityFailure(req, session, student) {
+  const eligibilityPolicy = getTenantEligibilityPolicy(req.tenant);
+
+  if (
+    eligibilityPolicy.college &&
+    session.eligible_college &&
+    student.college !== session.eligible_college
+  ) {
+    return {
+      code: "COLLEGE_MISMATCH",
+      message: "You are not eligible for this election.",
+    };
+  }
+
+  if (
+    eligibilityPolicy.department &&
+    session.eligible_departments &&
+    session.eligible_departments.length > 0
+  ) {
+    const departmentNames = await resolveEligibleDepartmentNames(
+      req,
+      session.eligible_departments,
+    );
+
+    if (!departmentNames.includes(student.department)) {
+      return {
+        code: "DEPARTMENT_MISMATCH",
+        message: "You are not eligible for this election.",
+      };
+    }
+  }
+
+  if (
+    eligibilityPolicy.level &&
+    session.eligible_levels &&
+    session.eligible_levels.length > 0 &&
+    !session.eligible_levels.includes(student.level)
+  ) {
+    return {
+      code: "LEVEL_MISMATCH",
+      message: "You are not eligible for this election.",
+    };
+  }
+
+  return null;
+}
+
+function buildLocationCheckPayload({
+  allowed,
+  code,
+  message,
+  lat,
+  lng,
+  session,
+}) {
+  const center = session.location
+    ? {
+        lat: session.location.lat,
+        lng: session.location.lng,
+      }
+    : null;
+  const distanceMeters =
+    center && isValidCoordinates(lat, lng)
+      ? Math.round(
+          calculateDistance(lat, lng, center.lat, center.lng),
+        )
+      : null;
+
+  return {
+    allowed,
+    code,
+    message,
+    distance_meters: distanceMeters,
+    radius_meters: session.location?.radius_meters || null,
+    center,
+    checked_at: new Date().toISOString(),
+  };
+}
+
 class VoteController {
   async createLivenessSession(req, res) {
     try {
@@ -319,6 +423,161 @@ class VoteController {
       return res.status(500).json({
         error: "Failed to fetch liveness result.",
         code: "LIVENESS_FAILED",
+      });
+    }
+  }
+
+  async checkLocation(req, res) {
+    try {
+      const { session_id, lat, lng } = req.body;
+      const studentId = req.studentId;
+
+      if (!session_id || lat === undefined || lng === undefined) {
+        return res.status(400).json({
+          allowed: false,
+          code: "MISSING_REQUIRED_FIELDS",
+          message: "Election and location coordinates are required.",
+          checked_at: new Date().toISOString(),
+        });
+      }
+
+      if (!isValidCoordinates(Number(lat), Number(lng))) {
+        return res.status(400).json({
+          allowed: false,
+          code: "INVALID_COORDINATES",
+          message: "Your device returned invalid location coordinates.",
+          checked_at: new Date().toISOString(),
+        });
+      }
+
+      const [student, session] = await Promise.all([
+        Student.findOne(getTenantScopedFilter(req, { _id: studentId })),
+        VotingSession.findOne(getTenantScopedFilter(req, { _id: session_id })),
+      ]);
+
+      if (!student) {
+        return res.status(404).json({
+          allowed: false,
+          code: "STUDENT_NOT_FOUND",
+          message: "Student account could not be found.",
+          checked_at: new Date().toISOString(),
+        });
+      }
+
+      if (!session) {
+        return res.status(404).json({
+          allowed: false,
+          code: "SESSION_NOT_FOUND",
+          message: "Election could not be found.",
+          checked_at: new Date().toISOString(),
+        });
+      }
+
+      await session.updateStatus();
+
+      if (session.status !== "active") {
+        return res.status(400).json(
+          buildLocationCheckPayload({
+            allowed: false,
+            code: "SESSION_INACTIVE",
+            message: `Election is ${session.status}. You can only vote during active elections.`,
+            lat: Number(lat),
+            lng: Number(lng),
+            session,
+          }),
+        );
+      }
+
+      if (
+        (student.has_voted_sessions || []).some(
+          (value) => value.toString() === session_id.toString(),
+        )
+      ) {
+        return res.status(409).json(
+          buildLocationCheckPayload({
+            allowed: false,
+            code: "ALREADY_VOTED",
+            message: "Your vote has already been recorded for this election.",
+            lat: Number(lat),
+            lng: Number(lng),
+            session,
+          }),
+        );
+      }
+
+      const eligibilityFailure = await getVoteEligibilityFailure(
+        req,
+        session,
+        student,
+      );
+
+      if (eligibilityFailure) {
+        return res.status(403).json(
+          buildLocationCheckPayload({
+            allowed: false,
+            code: eligibilityFailure.code,
+            message: eligibilityFailure.message,
+            lat: Number(lat),
+            lng: Number(lng),
+            session,
+          }),
+        );
+      }
+
+      const geofenceDisabled = process.env.DISABLE_GEOFENCE === "true";
+
+      if (geofenceDisabled || session.is_off_campus_allowed) {
+        return res.json(
+          buildLocationCheckPayload({
+            allowed: true,
+            code: "LOCATION_RECORDED",
+            message: "Location recorded. You can continue to live verification.",
+            lat: Number(lat),
+            lng: Number(lng),
+            session,
+          }),
+        );
+      }
+
+      const withinGeofence = isWithinGeofence(
+        Number(lat),
+        Number(lng),
+        session.location.lat,
+        session.location.lng,
+        session.location.radius_meters,
+      );
+
+      if (!withinGeofence) {
+        return res.status(403).json(
+          buildLocationCheckPayload({
+            allowed: false,
+            code: "GEOFENCE_VIOLATION",
+            message:
+              "You are outside the approved voting area. Move within the voting radius and capture your location again.",
+            lat: Number(lat),
+            lng: Number(lng),
+            session,
+          }),
+        );
+      }
+
+      return res.json(
+        buildLocationCheckPayload({
+          allowed: true,
+          code: "WITHIN_GEOFENCE",
+          message: "You are within the approved voting area.",
+          lat: Number(lat),
+          lng: Number(lng),
+          session,
+        }),
+      );
+    } catch (error) {
+      console.error("Location check error:", error);
+      return res.status(500).json({
+        allowed: false,
+        code: "LOCATION_CHECK_FAILED",
+        message: "Failed to verify your voting location. Please try again.",
+        checked_at: new Date().toISOString(),
       });
     }
   }
@@ -507,7 +766,7 @@ class VoteController {
           geo_location: { lat, lng },
         });
         return res.status(409).json({
-          error: "You have already voted in this session",
+          error: "You have already voted in this election",
           code: "ALREADY_VOTED",
         });
       }
@@ -553,7 +812,7 @@ class VoteController {
           image_url,
           geo_location: { lat, lng },
         });
-        return res.status(404).json({ error: "Voting session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       // Update session status
@@ -577,7 +836,7 @@ class VoteController {
           meta: { session_status: session.status },
         });
         return res.status(400).json({
-          error: `Voting session is ${session.status}. You can only vote during active sessions.`,
+          error: `Election is ${session.status}. You can only vote during active elections.`,
         });
       }
 
@@ -597,7 +856,7 @@ class VoteController {
           geo_location: { lat, lng },
         });
         return res.status(409).json({
-          error: "You have already voted in this session",
+          error: "You have already voted in this election",
           code: "ALREADY_VOTED",
         });
       }
@@ -625,7 +884,7 @@ class VoteController {
         });
         return res.status(403).json({
           error:
-            "You are not eligible for this voting session (college mismatch)",
+            "You are not eligible for this election (college mismatch)",
         });
       }
 
@@ -664,7 +923,7 @@ class VoteController {
           });
           return res.status(403).json({
             error:
-              "You are not eligible for this voting session (department mismatch)",
+              "You are not eligible for this election (department mismatch)",
           });
         }
       }
@@ -690,7 +949,7 @@ class VoteController {
           });
           return res.status(403).json({
             error:
-              "You are not eligible for this voting session (level mismatch)",
+              "You are not eligible for this election (level mismatch)",
           });
         }
       }
@@ -1056,6 +1315,7 @@ class VoteController {
 
       // Invalidate cached results for this session
       await cacheService.del(`live_results:${tenantNamespace}:${session_id}`);
+      await cacheService.del(`admin:session_live:${tenantNamespace}:${session_id}`);
 
       // Invalidate student profile cache (has_voted_sessions changed)
       await cacheService.del(`student:profile:${studentId}`);
@@ -1298,7 +1558,7 @@ class VoteController {
         .lean();
 
       if (!session) {
-        return res.status(404).json({ error: "Voting session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       const submittedVotes = await Vote.find(
@@ -1315,7 +1575,7 @@ class VoteController {
       if (!submittedVotes.length) {
         return res
           .status(404)
-          .json({ error: "No submitted ballot found for this session" });
+          .json({ error: "No submitted ballot found for this election" });
       }
 
       const submittedAt =

@@ -17,6 +17,7 @@ const PlatformSetting = require("../src/models/PlatformSetting");
 const Announcement = require("../src/models/Announcement");
 const { cloneDefaultTenantSettings } = require("../src/utils/tenantSettings");
 const faceProviderService = require("../src/services/faceProviderService");
+const { assignLivePublicCode } = require("../src/services/liveSessionService");
 
 const DEFAULT_PASSWORD = "123456789";
 const DEPLOY_ROOT_DOMAIN = String(
@@ -1026,7 +1027,7 @@ function buildSeedSessionEligibility(tenant, colleges = []) {
 }
 
 async function seedTenantSessions(tenant, tenantAdminId, colleges = []) {
-  console.log("\n🗳️  Creating sample voting sessions...");
+  console.log("\n🗳️  Creating sample elections...");
 
   const now = new Date();
   const activeStart = addDays(now, -1);
@@ -1101,6 +1102,12 @@ async function seedTenantSessions(tenant, tenantAdminId, colleges = []) {
     },
   ]);
 
+  await Promise.all([
+    assignLivePublicCode(activeSession),
+    assignLivePublicCode(upcomingSession),
+    assignLivePublicCode(endedSession),
+  ]);
+
   const candidates = await Candidate.insertMany([
     {
       tenant_id: tenant._id,
@@ -1171,7 +1178,10 @@ async function seedTenantSessions(tenant, tenantAdminId, colleges = []) {
   const eligibilitySummary = seededEligibility.eligible_college
     ? `${seededEligibility.eligible_college} • ${seededEligibility.eligible_levels?.join(", ") || "all levels"}`
     : "tenant-wide eligibility";
-  console.log(`✅ Created 3 sessions with 4 candidates (${eligibilitySummary})`);
+  console.log(`✅ Created 3 elections with 4 candidates (${eligibilitySummary})`);
+  console.log(
+    `🔴 Live pages: ${activeSession.live_public_code}, ${upcomingSession.live_public_code}, ${endedSession.live_public_code}`,
+  );
   return {
     activeSession,
     upcomingSession,
@@ -1754,7 +1764,7 @@ async function seed() {
       `   - ${TENANT_ADMIN_EMAIL} and ${SECONDARY_TENANT_ADMIN_EMAIL} each have a direct approved university workspace for QA.`,
     );
     console.log(
-      "   - Bowen includes BU22CSC1005 (Muhammed Abiodun), one active live-test session, one historical seeded vote, and reviewed biometric logs for FRR/FAR visibility.",
+      "   - Bowen includes BU22CSC1005 (Muhammed Abiodun), one active live-test election, one historical seeded vote, and reviewed biometric logs for FRR/FAR visibility.",
     );
     console.log("=".repeat(60));
   } catch (error) {

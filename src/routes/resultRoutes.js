@@ -13,8 +13,8 @@ const { apiLimiter } = require("../middleware/rateLimiter");
  * @swagger
  * /results/{session_id}:
  *   get:
- *     summary: Get results for a voting session
- *     description: Retrieve final or live results for a specific voting session. Shows vote counts per candidate per category.
+ *     summary: Get results for an election
+ *     description: Retrieve final or live results for a specific election. Shows vote counts per candidate per category.
  *     tags: [Results]
  *     security:
  *       - BearerAuth: []
@@ -26,7 +26,7 @@ const { apiLimiter } = require("../middleware/rateLimiter");
  *           type: string
  *     responses:
  *       200:
- *         description: Session results
+ *         description: Election results
  *         content:
  *           application/json:
  *             schema:
@@ -64,7 +64,7 @@ const { apiLimiter } = require("../middleware/rateLimiter");
  *                 total_eligible:
  *                   type: integer
  *       404:
- *         description: Session not found
+ *         description: Election not found
  */
 router.get(
   "/stats/overview",
@@ -78,8 +78,8 @@ router.get(
  * @swagger
  * /results/{session_id}:
  *   get:
- *     summary: Get results for a voting session
- *     description: Retrieve final or live results for a specific voting session. Shows vote counts per candidate per category.
+ *     summary: Get results for an election
+ *     description: Retrieve final or live results for a specific election. Shows vote counts per candidate per category.
  *     tags: [Results]
  *     security:
  *       - BearerAuth: []
@@ -91,9 +91,9 @@ router.get(
  *           type: string
  *     responses:
  *       200:
- *         description: Session results
+ *         description: Election results
  *       404:
- *         description: Session not found
+ *         description: Election not found
  */
 router.get(
   "/:session_id",

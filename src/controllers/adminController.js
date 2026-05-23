@@ -22,6 +22,10 @@ const {
   getTenantQuotaStatus,
 } = require("../services/planAccessService");
 const {
+  assignLivePublicCode,
+  getAdminLivePayload,
+} = require("../services/liveSessionService");
+const {
   getTenantEligibilityPolicy,
   getTenantIdentityMetadata,
   getTenantSettings,
@@ -261,6 +265,7 @@ async function invalidateSessionCaches(req, sessionId) {
     cacheService.del(
       buildTenantCacheKey(req, `admin:advanced_session_stats:${sessionId}`),
     ),
+    cacheService.del(`admin:session_live:${tenantNamespace}:${sessionId}`),
     cacheService.del(`live_results:${tenantNamespace}:${sessionId}`),
     cacheService.del(`session:${tenantNamespace}:${sessionId}`),
     cacheService.del(`total_votes:${tenantNamespace}:${sessionId}`),
@@ -854,6 +859,7 @@ class AdminController {
       });
 
       await session.save();
+      await assignLivePublicCode(session);
 
       // Create candidates if provided
       if (candidates && Array.isArray(candidates)) {
@@ -876,7 +882,7 @@ class AdminController {
       await invalidateSessionCaches(req, session._id.toString());
 
       res.status(201).json({
-        message: "Voting session created successfully",
+        message: "Election created successfully",
         session,
       });
     } catch (error) {
@@ -899,7 +905,7 @@ class AdminController {
       );
 
       if (!session) {
-        return res.status(404).json({ error: "Session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       // Update session status based on current time
@@ -1063,7 +1069,7 @@ class AdminController {
 
       if (!session) {
         await mongoSession.abortTransaction();
-        return res.status(404).json({ error: "Session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       // Face++ uses stateless verification - no cleanup needed
@@ -1125,7 +1131,7 @@ class AdminController {
       );
 
       if (!session) {
-        return res.status(404).json({ error: "Session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       await session.updateStatus();
@@ -1276,7 +1282,7 @@ class AdminController {
       );
 
       if (!session) {
-        return res.status(404).json({ error: "Session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       await session.updateStatus();
@@ -1288,7 +1294,7 @@ class AdminController {
               ? "Cannot modify candidates in ended session"
               : "Cannot modify candidates",
           message:
-            "Candidate updates are no longer available for this session.",
+            "Candidate updates are no longer available for this election.",
         });
       }
 
@@ -1364,7 +1370,7 @@ class AdminController {
       );
 
       if (!session) {
-        return res.status(404).json({ error: "Session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       await session.updateStatus();
@@ -1494,7 +1500,7 @@ class AdminController {
       await mongoSession.commitTransaction();
 
       res.json({
-        message: "All sessions and votes cleaned up successfully",
+        message: "All elections and votes cleaned up successfully",
       });
     } catch (error) {
       await mongoSession.abortTransaction();
@@ -2796,7 +2802,7 @@ class AdminController {
         .lean();
 
       if (!session) {
-        return res.status(404).json({ error: "Session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       // Get vote statistics for this session - run in parallel
@@ -2875,7 +2881,7 @@ class AdminController {
         .lean();
 
       if (!session) {
-        return res.status(404).json({ error: "Session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       // Run all stat queries in parallel
@@ -2960,7 +2966,7 @@ class AdminController {
         .lean();
 
       if (!session) {
-        return res.status(404).json({ error: "Session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       const [
@@ -3017,6 +3023,32 @@ class AdminController {
     } catch (error) {
       console.error("Get advanced session analytics error:", error);
       res.status(500).json({ error: "Failed to get advanced session analytics" });
+    }
+  }
+
+  /**
+   * Get admin live session analytics
+   * GET /api/admin/sessions/:id/live
+   */
+  async getSessionLive(req, res) {
+    try {
+      const { id } = req.params;
+      const payload = await getAdminLivePayload(req, id);
+
+      if (!payload) {
+        return res.status(404).json({ error: "Election not found" });
+      }
+
+      res.set({
+        "Cache-Control": payload.session.is_live
+          ? "private, max-age=5"
+          : "private, max-age=60",
+      });
+
+      return res.json(payload);
+    } catch (error) {
+      console.error("Get session live analytics error:", error);
+      return res.status(500).json({ error: "Failed to get live session analytics" });
     }
   }
 

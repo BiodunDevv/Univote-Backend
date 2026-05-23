@@ -18,6 +18,12 @@ const router = express.Router();
  */
 router.get("/landing", apiLimiter, publicController.getLandingData);
 
+router.get(
+  "/live/:tenantSlug/:liveCode",
+  apiLimiter,
+  publicController.getPublicLiveSession,
+);
+
 /**
  * @swagger
  * /public/organizations:

@@ -100,9 +100,9 @@ router.post(
  * @swagger
  * /admin/create-session:
  *   post:
- *     summary: Create a new voting session
- *     description: Create a voting session with category names, top-level candidates, eligibility rules, location bounds, and time range.
- *     tags: [Admin - Sessions]
+ *     summary: Create a new election
+ *     description: Create an election with category names, top-level candidates, eligibility rules, location bounds, and time range.
+ *     tags: [Admin - Elections]
  *     security:
  *       - BearerAuth: []
  *     requestBody:
@@ -161,7 +161,7 @@ router.post(
  *                       type: string
  *     responses:
  *       201:
- *         description: Session created successfully
+ *         description: Election created successfully
  *         content:
  *           application/json:
  *             schema:
@@ -194,9 +194,9 @@ router.post(
  * @swagger
  * /admin/update-session/{id}:
  *   patch:
- *     summary: Update a voting session
- *     description: Update session details. Only allowed before the session starts or for limited fields during active session.
- *     tags: [Admin - Sessions]
+ *     summary: Update an election
+ *     description: Update election details. Only allowed before the session starts or for limited fields during active session.
+ *     tags: [Admin - Elections]
  *     security:
  *       - BearerAuth: []
  *     parameters:
@@ -205,7 +205,7 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
- *         description: Voting session ID
+ *         description: Election ID
  *     requestBody:
  *       content:
  *         application/json:
@@ -230,11 +230,11 @@ router.post(
  *                 type: boolean
  *     responses:
  *       200:
- *         description: Session updated successfully
+ *         description: Election updated successfully
  *       400:
- *         description: Cannot modify active/ended session
+ *         description: Cannot modify active/ended election
  *       404:
- *         description: Session not found
+ *         description: Election not found
  */
 router.patch(
   "/update-session/:id",
@@ -247,9 +247,9 @@ router.patch(
  * @swagger
  * /admin/delete-session/{id}:
  *   delete:
- *     summary: Delete a voting session
- *     description: Permanently delete a voting session and all associated votes. Only allowed for sessions that haven't started.
- *     tags: [Admin - Sessions]
+ *     summary: Delete an election
+ *     description: Permanently delete an election and all associated votes. Only allowed for elections that have not started.
+ *     tags: [Admin - Elections]
  *     security:
  *       - BearerAuth: []
  *     parameters:
@@ -258,14 +258,14 @@ router.patch(
  *         required: true
  *         schema:
  *           type: string
- *         description: Voting session ID
+ *         description: Election ID
  *     responses:
  *       200:
- *         description: Session deleted successfully
+ *         description: Election deleted successfully
  *       400:
- *         description: Cannot delete active session
+ *         description: Cannot delete active election
  *       404:
- *         description: Session not found
+ *         description: Election not found
  */
 router.delete(
   "/delete-session/:id",
@@ -278,8 +278,8 @@ router.delete(
  * @swagger
  * /admin/sessions/{id}/candidates:
  *   post:
- *     summary: Create a candidate for a session
- *     description: Create a new candidate inside an upcoming voting session.
+ *     summary: Create a candidate for an election
+ *     description: Create a new candidate inside an upcoming election.
  *     tags: [Admin - Candidates]
  *     security:
  *       - BearerAuth: []
@@ -289,7 +289,7 @@ router.delete(
  *         required: true
  *         schema:
  *           type: string
- *         description: Voting session ID
+ *         description: Election ID
  *     requestBody:
  *       required: true
  *       content:
@@ -312,9 +312,9 @@ router.delete(
  *       201:
  *         description: Candidate created
  *       403:
- *         description: Candidate mutations are locked for active or ended sessions
+ *         description: Candidate mutations are locked for active or ended elections
  *       404:
- *         description: Session not found
+ *         description: Election not found
  */
 router.post(
   "/sessions/:id/candidates",
@@ -334,7 +334,7 @@ router.post(
  * /admin/candidates:
  *   get:
  *     summary: List candidates
- *     description: Retrieve candidates across sessions with optional filters for session, search, category, session status, and pagination.
+ *     description: Retrieve candidates across elections with optional filters for election, search, category, election status, and pagination.
  *     tags: [Admin - Candidates]
  *     security:
  *       - BearerAuth: []
@@ -379,7 +379,7 @@ router.get(
  * /admin/candidates/{id}:
  *   get:
  *     summary: Get candidate by ID
- *     description: Retrieve a single candidate's details including vote count and session info.
+ *     description: Retrieve a single candidate's details including vote count and election info.
  *     tags: [Admin - Candidates]
  *     security:
  *       - BearerAuth: []
@@ -454,7 +454,7 @@ router.patch(
  * /admin/candidates/{id}:
  *   delete:
  *     summary: Delete a candidate
- *     description: Remove a candidate from a voting session category.
+ *     description: Remove a candidate from a election category.
  *     tags: [Admin - Candidates]
  *     security:
  *       - BearerAuth: []
@@ -520,14 +520,14 @@ router.delete(
  * @swagger
  * /admin/cleanup-all:
  *   delete:
- *     summary: Cleanup all sessions and votes
- *     description: Permanently delete all voting sessions and votes from the system. Super admin only. Irreversible operation.
+ *     summary: Cleanup all elections and votes
+ *     description: Permanently delete all elections and votes from the system. Super admin only. Irreversible operation.
  *     tags: [Admin - System]
  *     security:
  *       - BearerAuth: []
  *     responses:
  *       200:
- *         description: All sessions and votes cleaned up
+ *         description: All elections and votes cleaned up
  *       403:
  *         description: Super admin access required
  */
@@ -1044,9 +1044,9 @@ router.get(
  * @swagger
  * /admin/sessions:
  *   get:
- *     summary: Get all sessions
- *     description: Retrieve all voting sessions with pagination and optional status filter.
- *     tags: [Admin - Sessions]
+ *     summary: Get all elections
+ *     description: Retrieve all elections with pagination and optional status filter.
+ *     tags: [Admin - Elections]
  *     security:
  *       - BearerAuth: []
  *     parameters:
@@ -1065,7 +1065,7 @@ router.get(
  *           enum: [upcoming, active, ended]
  *     responses:
  *       200:
- *         description: List of voting sessions
+ *         description: List of elections
  *         content:
  *           application/json:
  *             schema:
@@ -1112,9 +1112,9 @@ router.get(
  * @swagger
  * /admin/sessions/{id}:
  *   get:
- *     summary: Get session by ID with statistics
- *     description: Retrieve detailed session information including vote counts, category stats, and participation metrics.
- *     tags: [Admin - Sessions]
+ *     summary: Get election by ID with statistics
+ *     description: Retrieve detailed election information including vote counts, category stats, and participation metrics.
+ *     tags: [Admin - Elections]
  *     security:
  *       - BearerAuth: []
  *     parameters:
@@ -1125,7 +1125,7 @@ router.get(
  *           type: string
  *     responses:
  *       200:
- *         description: Session details with statistics
+ *         description: Election details with statistics
  *         content:
  *           application/json:
  *             schema:
@@ -1136,8 +1136,14 @@ router.get(
  *                 statistics:
  *                   type: object
  *       404:
- *         description: Session not found
+ *         description: Election not found
  */
+router.get(
+  "/sessions/:id/live",
+  ...tenantAdminMiddlewares,
+  adminController.getSessionLive,
+);
+
 router.get(
   "/sessions/:id",
   ...tenantAdminMiddlewares,
@@ -1148,9 +1154,9 @@ router.get(
  * @swagger
  * /admin/session-stats/{id}:
  *   get:
- *     summary: Get session statistics
- *     description: Get detailed statistics for a voting session including turnout, per-category breakdowns, and demographic analysis.
- *     tags: [Admin - Sessions]
+ *     summary: Get election statistics
+ *     description: Get detailed statistics for an election including turnout, per-category breakdowns, and demographic analysis.
+ *     tags: [Admin - Elections]
  *     security:
  *       - BearerAuth: []
  *     parameters:
@@ -1161,9 +1167,9 @@ router.get(
  *           type: string
  *     responses:
  *       200:
- *         description: Session statistics
+ *         description: Election statistics
  *       404:
- *         description: Session not found
+ *         description: Election not found
  */
 router.get(
   "/session-stats/:id",
@@ -1175,8 +1181,8 @@ router.get(
  * @swagger
  * /admin/analytics/sessions/{id}:
  *   get:
- *     summary: Get advanced analytics for a session
- *     description: Retrieve detailed per-session analytics and candidate breakdown for advanced analytics tenants.
+ *     summary: Get advanced analytics for an election
+ *     description: Retrieve detailed per-election analytics and candidate breakdown for advanced analytics tenants.
  *     tags: [Admin - Analytics]
  *     security:
  *       - BearerAuth: []
@@ -1188,7 +1194,7 @@ router.get(
  *           type: string
  *     responses:
  *       200:
- *         description: Advanced session analytics
+ *         description: Advanced election analytics
  *       403:
  *         description: Feature not enabled for the tenant plan
  */

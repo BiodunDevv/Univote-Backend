@@ -29,7 +29,7 @@ function buildVoteConfirmationEmail({
       intro:
         "This is your transaction receipt for the ballot that was just accepted.",
       statusStripHtml: renderSummaryStrip([
-        { label: "Session", value: session.title },
+        { label: "Election", value: session.title },
         { label: "Recorded", value: formatDateTime(Date.now()) },
       ]),
       bodyHtml: `
@@ -37,7 +37,7 @@ function buildVoteConfirmationEmail({
           "Ballot receipt",
           renderKeyValueRows([
             { label: "Participant", value: student.full_name },
-            { label: "Session", value: session.title },
+            { label: "Election", value: session.title },
             { label: "Recorded", value: formatDateTime(Date.now()) },
           ]),
         )}
@@ -66,9 +66,9 @@ function buildResultAnnouncementEmail({
       badge: "Results published",
       headline: `Results are live for ${session.title}`,
       intro:
-        "The session has been completed and the official outcome is now available.",
+        "The election has been completed and the official outcome is now available.",
       statusStripHtml: renderSummaryStrip([
-        { label: "Session", value: session.title },
+        { label: "Election", value: session.title },
         { label: "Published", value: formatDateTime(Date.now()) },
         { label: "Accepted votes", value: String(totalVotes) },
       ]),
@@ -79,7 +79,7 @@ function buildResultAnnouncementEmail({
           )
         : renderSection(
             "Outcome",
-            `<p style="margin:0;font-size:14px;line-height:1.8;color:#233126;">The session result is available in your portal.</p>`,
+            `<p style="margin:0;font-size:14px;line-height:1.8;color:#233126;">The election result is available in your portal.</p>`,
           ),
       cta: resultsUrl ? { label: "View results", url: resultsUrl } : null,
     }),

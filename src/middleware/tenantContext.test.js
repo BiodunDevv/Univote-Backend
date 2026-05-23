@@ -32,7 +32,7 @@ describe("tenantContext middleware", () => {
     const next = jest.fn();
 
     Tenant.findOne.mockReturnValue({
-      select: jest.fn().mockResolvedValue({
+      lean: jest.fn().mockResolvedValue({
         _id: "tenant-1",
         slug: "bowen-university",
         status: "active",
@@ -64,7 +64,7 @@ describe("tenantContext middleware", () => {
     const next = jest.fn();
 
     Tenant.findOne.mockReturnValue({
-      select: jest.fn().mockResolvedValue({
+      lean: jest.fn().mockResolvedValue({
         _id: "tenant-2",
         slug: "default-campus",
         status: "active",

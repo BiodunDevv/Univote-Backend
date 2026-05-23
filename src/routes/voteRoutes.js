@@ -14,7 +14,7 @@ const auditLogger = require("../middleware/auditLogger");
  *   post:
  *     summary: Submit a vote
  *     description: |
- *       Submit votes for a voting session. Requires facial verification and location data.
+ *       Submit votes for an election. Requires facial verification and location data.
  *       The vote flow includes:
  *       1. Redis-based atomic lock to prevent double voting
  *       2. Session status and eligibility verification
@@ -34,7 +34,7 @@ const auditLogger = require("../middleware/auditLogger");
  *             properties:
  *               session_id:
  *                 type: string
- *                 description: ID of the voting session
+ *                 description: ID of the election
  *               choices:
  *                 type: array
  *                 minItems: 1
@@ -80,7 +80,7 @@ const auditLogger = require("../middleware/auditLogger");
  *       403:
  *         description: Not eligible, geofence violation, or face verification failed
  *       404:
- *         description: Session not found
+ *         description: Election not found
  *       429:
  *         description: Rate limit exceeded
  */
@@ -106,6 +106,14 @@ router.get(
   authenticateStudent,
   requireTenantAccess,
   voteController.getSubmittedBallotBySession,
+);
+
+router.post(
+  "/location-check",
+  authenticateStudent,
+  requireTenantAccess,
+  voteLimiter,
+  voteController.checkLocation,
 );
 
 router.post(

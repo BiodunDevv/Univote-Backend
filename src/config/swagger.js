@@ -342,7 +342,7 @@ const options = {
       {
         name: "Auth",
         description:
-          "Participant and admin authentication, password management, session bootstrap, and organization-aware portal login",
+          "Participant and admin authentication, password management, login session bootstrap, and organization-aware portal login",
       },
       {
         name: "Public",
@@ -350,8 +350,8 @@ const options = {
           "Public landing data, organization discovery, testimonials, and tenant application endpoints",
       },
       {
-        name: "Admin - Sessions",
-        description: "Admin management of voting sessions",
+        name: "Admin - Elections",
+        description: "Admin management of elections",
       },
       {
         name: "Admin - Students",
@@ -375,8 +375,8 @@ const options = {
         description: "Tenant structure management for colleges, departments, and canonical structure aliases",
       },
       {
-        name: "Sessions",
-        description: "Participant-facing session browsing, ballot details, and live session visibility",
+        name: "Elections",
+        description: "Participant-facing election browsing, ballot details, and live election visibility",
       },
       {
         name: "Voting",

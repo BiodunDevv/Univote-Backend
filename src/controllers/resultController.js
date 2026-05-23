@@ -68,7 +68,7 @@ class ResultController {
       ]);
 
       if (!session) {
-        return res.status(404).json({ error: "Session not found" });
+        return res.status(404).json({ error: "Election not found" });
       }
 
       if (!student) {
@@ -87,7 +87,7 @@ class ResultController {
         return res.status(403).json({
           error: "Results are not yet available",
           message:
-            "Results will be automatically published when the voting session ends",
+            "Results will be automatically published when the election ends",
         });
       }
 

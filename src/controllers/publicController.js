@@ -11,6 +11,7 @@ const {
 } = require("../utils/tenantSettings");
 const emailService = require("../services/emailService");
 const cacheService = require("../services/cacheService");
+const { getPublicLivePayload } = require("../services/liveSessionService");
 
 function getDefaultUniversityStructure() {
   return {
@@ -143,6 +144,31 @@ function applyApplicationPayloadToTenant(tenant, payload) {
 }
 
 class PublicController {
+  async getPublicLiveSession(req, res) {
+    try {
+      const payload = await getPublicLivePayload(
+        req.params.tenantSlug,
+        req.params.liveCode,
+      );
+
+      if (!payload) {
+        return res.status(404).json({ error: "Live session not found" });
+      }
+
+      res.set({
+        "Cache-Control": payload.session.is_live
+          ? "public, max-age=10"
+          : "public, max-age=60",
+        ETag: `"${payload.organization.slug}-${payload.session.live_public_code}-${payload.totals.voted}"`,
+      });
+
+      return res.json(payload);
+    } catch (error) {
+      console.error("Get public live session error:", error);
+      return res.status(500).json({ error: "Failed to fetch live session" });
+    }
+  }
+
   async listOrganizations(req, res) {
     try {
       const search = String(req.query.search || "").trim();

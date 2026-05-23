@@ -10,13 +10,13 @@ const { apiLimiter } = require("../middleware/rateLimiter");
  * /sessions:
  *   get:
  *     summary: Get eligible sessions for student
- *     description: Returns all voting sessions the authenticated student is eligible to participate in, based on college, department, and level.
- *     tags: [Sessions]
+ *     description: Returns all elections the authenticated student is eligible to participate in, based on college, department, and level.
+ *     tags: [Elections]
  *     security:
  *       - BearerAuth: []
  *     responses:
  *       200:
- *         description: List of eligible voting sessions
+ *         description: List of eligible elections
  *         content:
  *           application/json:
  *             schema:
@@ -42,8 +42,8 @@ router.get(
  * /sessions/{id}:
  *   get:
  *     summary: Get session details
- *     description: Retrieve detailed information about a specific voting session including categories, candidates, and voting status.
- *     tags: [Sessions]
+ *     description: Retrieve detailed information about a specific election including categories, candidates, and voting status.
+ *     tags: [Elections]
  *     security:
  *       - BearerAuth: []
  *     parameters:
@@ -52,7 +52,7 @@ router.get(
  *         required: true
  *         schema:
  *           type: string
- *         description: Voting session ID
+ *         description: Election ID
  *     responses:
  *       200:
  *         description: Session details
@@ -66,7 +66,7 @@ router.get(
  *                 has_voted:
  *                   type: boolean
  *       404:
- *         description: Session not found
+ *         description: Election not found
  */
 router.get("/:id", authenticateStudent, requireTenantAccess, sessionController.getSession);
 
@@ -76,7 +76,7 @@ router.get("/:id", authenticateStudent, requireTenantAccess, sessionController.g
  *   get:
  *     summary: Get live results for a session
  *     description: Retrieve real-time vote tallies for an active or ended session. Optimized with Redis caching for high traffic.
- *     tags: [Sessions]
+ *     tags: [Elections]
  *     security:
  *       - BearerAuth: []
  *     parameters:
@@ -118,7 +118,7 @@ router.get("/:id", authenticateStudent, requireTenantAccess, sessionController.g
  *                             percentage:
  *                               type: number
  *       404:
- *         description: Session not found
+ *         description: Election not found
  */
 router.get(
   "/:id/live-results",
@@ -134,7 +134,7 @@ router.get(
  *   get:
  *     summary: Get candidate details by ID
  *     description: Retrieve full details of a specific candidate including manifesto and photo.
- *     tags: [Sessions]
+ *     tags: [Elections]
  *     security:
  *       - BearerAuth: []
  *     parameters:

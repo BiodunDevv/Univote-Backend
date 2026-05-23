@@ -76,6 +76,18 @@ const votingSessionSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    live_public_code: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: null,
+      index: true,
+    },
+    live_sequence: {
+      type: Number,
+      default: null,
+      index: true,
+    },
     created_by: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
@@ -92,6 +104,20 @@ votingSessionSchema.index({ createdAt: -1 });
 votingSessionSchema.index({ start_time: -1 });
 votingSessionSchema.index({ status: 1, createdAt: -1 });
 votingSessionSchema.index({ tenant_id: 1, status: 1, start_time: 1 });
+votingSessionSchema.index(
+  { tenant_id: 1, live_public_code: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { live_public_code: { $type: "string" } },
+  },
+);
+votingSessionSchema.index(
+  { tenant_id: 1, live_sequence: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { live_sequence: { $type: "number" } },
+  },
+);
 
 // Virtual to check if session is currently active
 votingSessionSchema.virtual("is_active").get(function () {
