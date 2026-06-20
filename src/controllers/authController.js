@@ -97,6 +97,7 @@ function serializeStudent(student) {
         ? "failed"
         : "pending",
     last_face_enrollment_error: student.last_face_enrollment_error || null,
+    first_login: Boolean(student.first_login),
     created_at: student.createdAt || student.created_at,
     last_login_at: student.last_login_at,
   };
@@ -312,6 +313,7 @@ class AuthController {
           has_voted_sessions: student.has_voted_sessions,
           aws_face_id: student.aws_face_id,
           is_active: student.is_active,
+          first_login: student.first_login,
           active_token: student.active_token,
         },
         900, // 15 minutes TTL
@@ -526,7 +528,40 @@ class AuthController {
       const newToken = generateStudentToken(student);
       student.active_token = newToken;
       student.is_logged_in = true;
+      student.last_login_at = new Date();
       await student.save();
+
+      await cacheService.set(
+        `session:student:${student._id}`,
+        {
+          token: newToken,
+          studentId: student._id.toString(),
+          deviceInfo: student.last_login_device || null,
+          loginAt: student.last_login_at.toISOString(),
+        },
+        86400,
+      );
+
+      await cacheService.set(
+        `student:profile:${student._id}`,
+        {
+          _id: student._id,
+          tenant_id: student.tenant_id || null,
+          matric_no: student.matric_no,
+          full_name: student.full_name,
+          email: student.email,
+          department: student.department,
+          department_code: student.department_code,
+          college: student.college,
+          level: student.level,
+          has_voted_sessions: student.has_voted_sessions,
+          aws_face_id: student.aws_face_id,
+          is_active: student.is_active,
+          first_login: student.first_login,
+          active_token: student.active_token,
+        },
+        900,
+      );
 
       // Send welcome email after first password change
       if (isFirstLogin) {
