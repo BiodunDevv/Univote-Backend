@@ -1,6 +1,6 @@
 const { renderKeyValueRows, renderList, renderNoticeBox, renderSection, renderSummaryStrip } = require("./fragments");
 const { buildEmailShell, getBranding, absoluteEmailUrl } = require("./shell");
-const { COLORS, FONT_MONO, FONT_SANS, FONT_SERIF } = require("./theme");
+const { COLORS, DARK_COLORS, FONT_MONO, FONT_SANS, FONT_SERIF } = require("./theme");
 const { escapeHtml, formatDate, formatDateTime, stripHtml } = require("./utils");
 const {
   buildStudentAccountCreatedEmail,
@@ -31,6 +31,7 @@ const {
 
 module.exports = {
   COLORS,
+  DARK_COLORS,
   FONT_MONO,
   FONT_SANS,
   FONT_SERIF,

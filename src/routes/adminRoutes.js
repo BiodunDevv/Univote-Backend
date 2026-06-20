@@ -700,6 +700,53 @@ router.patch(
 
 /**
  * @swagger
+ * /admin/students/{id}/reinvite:
+ *   post:
+ *     summary: Resend student portal invitation
+ *     description: Generate a fresh temporary password, require first-login password change, and email the student their matric number, email, and temporary password.
+ *     tags: [Admin - Students]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Invitation resent
+ *       400:
+ *         description: Student has no email address
+ *       404:
+ *         description: Student not found
+ */
+router.post(
+  "/students/:id/reinvite",
+  ...tenantAdminMiddlewares,
+  auditLogger("reinvite_student", "students"),
+  adminController.reinviteStudent,
+);
+
+/**
+ * @swagger
+ * /admin/participants/{id}/reinvite:
+ *   post:
+ *     summary: Resend participant portal invitation
+ *     description: Alias of the student reinvite endpoint for participant-labelled tenants.
+ *     tags: [Admin - Students]
+ *     security:
+ *       - BearerAuth: []
+ */
+router.post(
+  "/participants/:id/reinvite",
+  ...tenantAdminMiddlewares,
+  auditLogger("reinvite_student", "students"),
+  adminController.reinviteStudent,
+);
+
+/**
+ * @swagger
  * /admin/students/{id}:
  *   get:
  *     summary: Get single student by ID

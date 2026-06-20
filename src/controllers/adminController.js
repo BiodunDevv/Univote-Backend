@@ -2164,6 +2164,56 @@ class AdminController {
    * Activate student
    * PATCH /api/admin/students/:id/activate
    */
+  async reinviteStudent(req, res) {
+    try {
+      const { id } = req.params;
+
+      const student = await Student.findOne(getTenantScopedFilter(req, { _id: id }));
+      if (!student) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      if (!student.email) {
+        return res.status(400).json({
+          error: "Student does not have an email address for invitation delivery",
+        });
+      }
+
+      const temporaryPassword = generateTemporaryPassword();
+      const salt = await bcrypt.genSalt(
+        parseInt(process.env.BCRYPT_ROUNDS || 10),
+      );
+      student.password_hash = await bcrypt.hash(temporaryPassword, salt);
+      student.first_login = true;
+      await student.save();
+
+      await emailService.sendStudentAccountCreatedEmail({
+        student,
+        tenant: req.tenant,
+        temporaryPassword,
+      });
+
+      return res.json({
+        message: "Student invitation resent",
+        student: {
+          id: student._id,
+          matric_no: student.matric_no,
+          email: student.email,
+          first_login: student.first_login,
+        },
+      });
+    } catch (error) {
+      console.error("Reinvite student error:", error);
+      return res.status(500).json({
+        error: "Failed to resend student invitation",
+      });
+    }
+  }
+
+  /**
+   * Activate student
+   * PATCH /api/admin/students/:id/activate
+   */
   async activateStudent(req, res) {
     try {
       const { id } = req.params;
