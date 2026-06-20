@@ -1,5 +1,12 @@
 const Testimonial = require("../models/Testimonial");
 const { serializeTestimonial } = require("../utils/testimonials");
+const cacheService = require("../services/cacheService");
+
+const PUBLIC_CACHE_KEYS = ["public:landing", "public:testimonials"];
+
+async function bustPublicTestimonialCache() {
+  await Promise.all(PUBLIC_CACHE_KEYS.map((key) => cacheService.del(key)));
+}
 
 class PlatformTestimonialController {
   async listTestimonials(req, res) {
@@ -63,6 +70,8 @@ class PlatformTestimonialController {
         published_at: req.body.status === "published" ? new Date() : null,
       });
 
+      await bustPublicTestimonialCache();
+
       return res.status(201).json({
         message: "Testimonial created successfully",
         testimonial: serializeTestimonial(testimonial),
@@ -70,6 +79,23 @@ class PlatformTestimonialController {
     } catch (error) {
       console.error("Create testimonial error:", error);
       return res.status(500).json({ error: "Failed to create testimonial" });
+    }
+  }
+
+  async deleteTestimonial(req, res) {
+    try {
+      const testimonial = await Testimonial.findById(req.params.id);
+      if (!testimonial) {
+        return res.status(404).json({ error: "Testimonial not found" });
+      }
+
+      await testimonial.deleteOne();
+      await bustPublicTestimonialCache();
+
+      return res.json({ message: "Testimonial deleted successfully" });
+    } catch (error) {
+      console.error("Delete testimonial error:", error);
+      return res.status(500).json({ error: "Failed to delete testimonial" });
     }
   }
 
@@ -125,6 +151,7 @@ class PlatformTestimonialController {
       }
 
       await testimonial.save();
+      await bustPublicTestimonialCache();
 
       return res.json({
         message: "Testimonial updated successfully",

@@ -430,4 +430,12 @@ router.patch(
   platformTestimonialController.updateTestimonial,
 );
 
+router.delete(
+  "/testimonials/:id",
+  authenticateAdmin,
+  requireSuperAdmin,
+  auditLogger("delete_testimonial", "testimonials"),
+  platformTestimonialController.deleteTestimonial,
+);
+
 module.exports = router;
