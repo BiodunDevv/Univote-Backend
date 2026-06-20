@@ -1,13 +1,21 @@
 const crypto = require("crypto");
-const constants = require("../config/constants");
 
 /**
  * Generate secure temporary password
- * Requirements: 12 chars, uppercase, lowercase, numbers, special chars
+ * Requirements: 14 chars drawn from uppercase, lowercase, numbers, and symbols
  * @returns {string} Secure temporary password
  */
 function generateTemporaryPassword() {
-  return constants.defaultPassword;
+  const alphabet =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  const bytes = crypto.randomBytes(14);
+  let password = "";
+
+  for (const byte of bytes) {
+    password += alphabet[byte % alphabet.length];
+  }
+
+  return password;
 }
 
 /**

@@ -8,6 +8,7 @@ const {
   buildPasswordResetEmail,
   buildProviderAlertEmail,
   buildResultAnnouncementEmail,
+  buildStudentAccountCreatedEmail,
   buildSupportTicketEmail,
   buildTenantApplicationApprovedEmail,
   buildTenantApplicationRejectedEmail,
@@ -105,16 +106,53 @@ class EmailService {
   }
 
   async sendWelcomeEmail(student, tenant = null) {
+    const studentPayload =
+      typeof student?.toObject === "function"
+        ? student.toObject({ virtuals: true })
+        : { ...student };
+    const studentEmail = studentPayload.email || student?.email || null;
     const { html, subject } = buildWelcomeEmail({
       branding: this.getBranding(tenant),
       student: {
-        ...student,
-        ctaUrl: buildStudentSignInUrl({ organization: tenant?.slug || null }),
+        ...studentPayload,
+        email: studentEmail,
+        ctaUrl: buildStudentSignInUrl({
+          organization: tenant?.slug || null,
+          email: studentEmail,
+        }),
       },
     });
 
     return this.dispatch({
-      to: student.email,
+      to: studentEmail,
+      subject,
+      html,
+      tenant,
+      critical: false,
+    });
+  }
+
+  async sendStudentAccountCreatedEmail({ student, tenant = null, temporaryPassword }) {
+    const studentPayload =
+      typeof student?.toObject === "function"
+        ? student.toObject({ virtuals: true })
+        : { ...student };
+    const studentEmail = studentPayload.email || student?.email || null;
+    const { html, subject } = buildStudentAccountCreatedEmail({
+      branding: this.getBranding(tenant),
+      student: {
+        ...studentPayload,
+        email: studentEmail,
+        ctaUrl: buildStudentSignInUrl({
+          organization: tenant?.slug || null,
+          email: studentEmail,
+        }),
+      },
+      temporaryPassword,
+    });
+
+    return this.dispatch({
+      to: studentEmail,
       subject,
       html,
       tenant,

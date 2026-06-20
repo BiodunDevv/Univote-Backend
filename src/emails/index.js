@@ -3,6 +3,7 @@ const { buildEmailShell, getBranding, absoluteEmailUrl } = require("./shell");
 const { COLORS, FONT_MONO, FONT_SANS, FONT_SERIF } = require("./theme");
 const { escapeHtml, formatDate, formatDateTime, stripHtml } = require("./utils");
 const {
+  buildStudentAccountCreatedEmail,
   buildWelcomeEmail,
   buildNewDeviceAlertEmail,
   buildPasswordResetEmail,
@@ -43,6 +44,7 @@ module.exports = {
   buildPasswordResetEmail,
   buildProviderAlertEmail,
   buildResultAnnouncementEmail,
+  buildStudentAccountCreatedEmail,
   buildSupportTicketEmail,
   buildTenantApplicationApprovedEmail,
   buildTenantApplicationRejectedEmail,

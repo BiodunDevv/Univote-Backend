@@ -15,9 +15,10 @@ function buildApplicationStatusUrl({ reference, email } = {}) {
   );
 }
 
-function buildStudentSignInUrl({ organization } = {}) {
+function buildStudentSignInUrl({ organization, email } = {}) {
   const params = new URLSearchParams();
   if (organization) params.set("organization", organization);
+  if (email) params.set("email", email);
   const query = params.toString();
   return buildEmailRoute(`/students/login${query ? `?${query}` : ""}`);
 }

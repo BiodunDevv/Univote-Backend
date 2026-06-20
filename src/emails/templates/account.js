@@ -42,6 +42,56 @@ function buildWelcomeEmail({ branding, student }) {
   };
 }
 
+function buildStudentAccountCreatedEmail({
+  branding,
+  student,
+  temporaryPassword,
+}) {
+  const recipientName = student.full_name || "student";
+  const identifier =
+    student.display_identifier ||
+    student.matric_no ||
+    student.email ||
+    "Use your registered email";
+  const bodyHtml = `
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.8;color:#233126;">Hello ${escapeHtml(
+      recipientName,
+    )}, your university voting account has been created.</p>
+    ${renderSection(
+      "Sign-in details",
+      renderKeyValueRows([
+        { label: "Identifier", value: identifier },
+        { label: "Email", value: student.email || "Not provided" },
+        { label: "Temporary password", value: temporaryPassword },
+      ]),
+    )}
+    ${renderSection(
+      "Security note",
+      renderNoticeBox(
+        "You will be asked to change this temporary password after your first sign in.",
+        "warning",
+      ),
+    )}
+  `;
+
+  return {
+    subject: "Your Univote student account is ready",
+    html: buildEmailShell({
+      branding,
+      variant: "security",
+      preheader: "Your student account has been created.",
+      badge: "Account created",
+      headline: "Your voting account is ready",
+      intro:
+        "Use the temporary password below to sign in to your student portal.",
+      bodyHtml,
+      cta: student?.ctaUrl
+        ? { label: "Sign in to student portal", url: student.ctaUrl }
+        : null,
+    }),
+  };
+}
+
 function buildNewDeviceAlertEmail({ branding, student, deviceInfo }) {
   return {
     subject: "New device sign-in detected",
@@ -131,5 +181,6 @@ function buildPasswordResetEmail({ branding, audience, email, recipientName, res
 module.exports = {
   buildNewDeviceAlertEmail,
   buildPasswordResetEmail,
+  buildStudentAccountCreatedEmail,
   buildWelcomeEmail,
 };

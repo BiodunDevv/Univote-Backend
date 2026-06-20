@@ -7,7 +7,7 @@ const Vote = require("../models/Vote");
 const AuditLog = require("../models/AuditLog");
 const faceProviderService = require("../services/faceProviderService");
 const emailService = require("../services/emailService");
-const constants = require("../config/constants");
+const { generateTemporaryPassword } = require("../utils/passwordUtils");
 const mongoose = require("mongoose");
 const cacheService = require("../services/cacheService");
 const College = require("../models/College");
@@ -586,15 +586,6 @@ class AdminController {
         },
       };
 
-      // Hash default password once
-      const salt = await bcrypt.genSalt(
-        parseInt(process.env.BCRYPT_ROUNDS || 10),
-      );
-      const defaultPasswordHash = await bcrypt.hash(
-        constants.defaultPassword,
-        salt,
-      );
-
       for (const row of csv_data) {
         try {
           const identity = buildParticipantIdentityPayload(req.tenant, row);
@@ -715,12 +706,18 @@ class AdminController {
           let photoUrl = row.photo_url || null;
           let faceEnrollmentWarning = null;
 
+          const temporaryPassword = generateTemporaryPassword();
+          const salt = await bcrypt.genSalt(
+            parseInt(process.env.BCRYPT_ROUNDS || 10),
+          );
+          const passwordHash = await bcrypt.hash(temporaryPassword, salt);
+
           const student = new Student({
             ...assignTenantId(req, {}),
             matric_no: identity.normalized.matric_no,
             full_name,
             email,
-            password_hash: defaultPasswordHash,
+            password_hash: passwordHash,
             department,
             department_code: deptDoc?.code || null,
             college,
@@ -758,6 +755,27 @@ class AdminController {
 
           results.created++;
 
+          if (student.email) {
+            try {
+              await emailService.sendStudentAccountCreatedEmail({
+                student,
+                tenant: req.tenant,
+                temporaryPassword,
+              });
+            } catch (emailError) {
+              console.error(
+                `Failed to send student account email to ${student.email}:`,
+                emailError,
+              );
+              results.errors.push({
+                matric_no: participantIdentifier,
+                full_name,
+                warning:
+                  "Student created, but the account email could not be sent.",
+              });
+            }
+          }
+
           if (faceEnrollmentWarning) {
             results.errors.push({
               matric_no: participantIdentifier,
@@ -766,7 +784,6 @@ class AdminController {
             });
           }
 
-          // Welcome email will be sent after first login and password change
         } catch (error) {
           console.error("Error processing student:", error);
           results.failed++;
