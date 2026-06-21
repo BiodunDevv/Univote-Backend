@@ -309,7 +309,7 @@ class PublicController {
             .lean(),
           Tenant.countDocuments({ status: "active", is_active: true }),
           Student.countDocuments({ is_active: true }),
-          Vote.countDocuments({ status: "accepted" }),
+          Vote.countDocuments({ status: "valid" }),
         ]);
       const payload = {
         stats: {
